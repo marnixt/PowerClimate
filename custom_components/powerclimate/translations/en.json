@@ -1,0 +1,104 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "PowerClimate",
+        "description": "Start by naming the integration and selecting the room temperature sensor.",
+        "data": {
+          "entry_name": "Integration name",
+          "room_sensor_entity_id": "Room temperature sensor"
+        }
+      },
+      "primary": {
+        "title": "Water-based heat pump",
+        "description": "Configure the water-based heat pump along with its sensors and setpoint offsets.",
+        "data": {
+          "climate_entity_id": "Water-based heat pump thermostat",
+          "energy_sensor_entity_id": "Water-based heat pump power sensor",
+          "water_sensor_entity_id": "Water-based heat pump water temperature sensor",
+          "lower_setpoint_offset": "Lower setpoint offset (°C)",
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "add_more_devices": "Configure Additional heat pumps"
+        },
+        "data_description": {
+          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+        }
+      },
+      "devices": {
+        "title": "{hp_label}",
+        "description": "Configure {hp_label}. Configured HPs: {device_list}.",
+        "data": {
+          "climate_entity_id": "HP thermostat",
+          "energy_sensor_entity_id": "HP power sensor",
+          "lower_setpoint_offset": "Lower setpoint offset (°C)",
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "add_another_device": "Add another HP after this"
+        },
+        "data_description": {
+          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+        }
+      }
+    },
+    "error": {
+      "room_sensor_required": "Select a room temperature sensor.",
+      "no_devices": "Add at least one device before finishing.",
+      "required": "This field is required.",
+      "duplicate": "Device ID already exists.",
+      "invalid": "Select a valid value.",
+      "invalid_offsets": "Lower offset must be less than or equal to upper offset."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update PowerClimate",
+        "description": "Rename the integration or change the room temperature sensor.",
+        "data": {
+          "entry_name": "Integration name",
+          "room_sensor_entity_id": "Room temperature sensor"
+        }
+      },
+      "primary": {
+        "title": "Water-based heat pump",
+        "description": "Adjust the water-based heat pump along with its sensors and setpoint offsets. Toggle \"Configure additional heat pump\" to edit the remaining HPs.",
+        "data": {
+          "climate_entity_id": "Water-based heat pump thermostat",
+          "energy_sensor_entity_id": "Water-based heat pump power sensor",
+          "water_sensor_entity_id": "Water-based heat pump water temperature sensor",
+          "lower_setpoint_offset": "Lower setpoint offset (°C)",
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "add_more_devices": "Configure additional heat pump"
+        },
+        "data_description": {
+          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+        }
+      },
+      "devices": {
+        "title": "{hp_label}",
+        "description": "Edit {hp_label}. Configured HPs: {device_list}. Leave \"Add another HP after this\" unchecked to finish after this device.",
+        "data": {
+          "climate_entity_id": "HP thermostat",
+          "energy_sensor_entity_id": "HP power sensor",
+          "lower_setpoint_offset": "Lower setpoint offset (°C)",
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "add_another_device": "Add another HP after this"
+        },
+        "data_description": {
+          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+        }
+      }
+    },
+    "error": {
+      "room_sensor_required": "Select a room temperature sensor.",
+      "no_devices": "Add at least one device before finishing.",
+      "required": "This field is required.",
+      "duplicate": "Device ID already exists.",
+      "invalid": "Select a valid value.",
+      "invalid_offsets": "Lower offset must be less than or equal to upper offset."
+    }
+  }
+}
