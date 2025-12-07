@@ -14,6 +14,7 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_DEVICES,
+    CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_LOWER_SETPOINT_OFFSET,
@@ -139,6 +140,10 @@ def _hp1_form_defaults(
         defaults[CONF_CLIMATE_ENTITY] = primary_device.get(CONF_CLIMATE_ENTITY)
         defaults[CONF_ENERGY_SENSOR] = primary_device.get(CONF_ENERGY_SENSOR)
         defaults[CONF_WATER_SENSOR] = primary_device.get(CONF_WATER_SENSOR)
+        defaults[CONF_COPY_SETPOINT_TO_POWERCLIMATE] = primary_device.get(
+            CONF_COPY_SETPOINT_TO_POWERCLIMATE,
+            False,
+        )
         defaults[CONF_LOWER_SETPOINT_OFFSET] = primary_device.get(
             CONF_LOWER_SETPOINT_OFFSET,
             DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
@@ -195,6 +200,10 @@ def _build_hp1_schema(defaults: dict[str, Any]) -> vol.Schema:
             DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
         ),
     )] = vol.Coerce(float)
+    schema_fields[vol.Optional(
+        CONF_COPY_SETPOINT_TO_POWERCLIMATE,
+        default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
+    )] = bool
     schema_fields[vol.Optional(
         ADD_MORE_DEVICES_FIELD,
         default=defaults.get(ADD_MORE_DEVICES_FIELD, False),
@@ -257,6 +266,9 @@ def _process_hp1_input(
         CONF_CLIMATE_ENTITY: climate_entity,
         CONF_ENERGY_SENSOR: energy_sensor,
         CONF_WATER_SENSOR: water_sensor,
+        CONF_COPY_SETPOINT_TO_POWERCLIMATE: bool(
+            user_input.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
+        ),
         CONF_LOWER_SETPOINT_OFFSET: lower_offset,
         CONF_UPPER_SETPOINT_OFFSET: upper_offset,
     }
@@ -280,6 +292,7 @@ def _additional_form_defaults(
         CONF_UPPER_SETPOINT_OFFSET,
         DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     )
+    defaults.setdefault(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
     defaults.setdefault(ADD_ANOTHER_DEVICE_FIELD, has_pending_defaults)
     if user_input:
         defaults.update(user_input)
@@ -318,6 +331,10 @@ def _build_additional_schema(
             DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
         ),
     )] = vol.Coerce(float)
+    schema_fields[vol.Optional(
+        CONF_COPY_SETPOINT_TO_POWERCLIMATE,
+        default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
+    )] = bool
     schema_fields[vol.Optional(
         ADD_ANOTHER_DEVICE_FIELD,
         default=defaults.get(ADD_ANOTHER_DEVICE_FIELD, False),
@@ -372,6 +389,9 @@ def _build_additional_device_data(
         CONF_DEVICE_NAME: _generate_device_name(climate_entity),
         CONF_CLIMATE_ENTITY: climate_entity,
         CONF_ENERGY_SENSOR: energy_sensor,
+        CONF_COPY_SETPOINT_TO_POWERCLIMATE: bool(
+            user_input.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
+        ),
         CONF_LOWER_SETPOINT_OFFSET: lower_offset,
         CONF_UPPER_SETPOINT_OFFSET: upper_offset,
     }

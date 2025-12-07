@@ -23,6 +23,7 @@ CONF_ENERGY_SENSOR = "energy_sensor_entity_id"
 CONF_WATER_SENSOR = "water_sensor_entity_id"
 CONF_DEVICE_ID = "id"
 CONF_DEVICE_NAME = "name"
+CONF_COPY_SETPOINT_TO_POWERCLIMATE = "copy_setpoint_to_powerclimate"
 
 # Setpoint offset configuration (replaces keep-on threshold)
 # Floor = current_temp + lower_offset (lower is typically negative or zero)

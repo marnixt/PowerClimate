@@ -35,7 +35,7 @@ from homeassistant.components.climate.const import (
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.const import UnitOfTemperature
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Context, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -45,6 +45,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_CLIMATE_ENTITY,
+    CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_NAME,
     CONF_DEVICES,
     CONF_LOWER_SETPOINT_OFFSET,
@@ -126,6 +127,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._pending_state_refresh = False
         self._last_mode_call: dict[str, datetime] = {}
         self._last_temp_call: dict[str, datetime] = {}
+        self._copy_enabled_entities: set[str] = set()
+        self._integration_context = Context()
 
     @property
     def current_temperature(self) -> float | None:
@@ -197,6 +200,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         device_payloads = self._coordinator_devices()
         self._devices_snapshot = [dict(device) for device in devices]
         self._device_payload_cache = device_payloads
+        self._copy_enabled_entities = {
+            device.get(CONF_CLIMATE_ENTITY)
+            for device in devices
+            if device.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE)
+            and device.get(CONF_CLIMATE_ENTITY)
+        }
 
         if not devices:
             await self._sync_devices([], set(), device_payloads, {})
@@ -596,8 +605,17 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     @callback
     def _handle_hp_state_change(self, event) -> None:
-        if self._pending_state_refresh:
+        pending_refresh = self._pending_state_refresh
+        entity_id = event.data.get("entity_id") if event and event.data else None
+        new_state = event.data.get("new_state") if event and event.data else None
+        old_state = event.data.get("old_state") if event and event.data else None
+
+        if entity_id and entity_id in self._copy_enabled_entities:
+            self._maybe_forward_setpoint(entity_id, old_state, new_state)
+
+        if pending_refresh:
             return
+
         self._pending_state_refresh = True
 
         async def _refresh() -> None:
@@ -607,6 +625,89 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 self._pending_state_refresh = False
 
         self.hass.async_create_task(_refresh())
+
+    def _state_context_is_integration(self, state) -> bool:
+        if not state or not state.context:
+            return False
+        return state.context.id == self._integration_context.id
+
+    def _has_temperature_change(
+        self,
+        old_state,
+        new_state,
+    ) -> tuple[bool, float | None]:
+        new_temp = _safe_float(
+            (new_state.attributes if new_state else {}).get(ATTR_TEMPERATURE),
+        )
+        old_temp = _safe_float(
+            (old_state.attributes if old_state else {}).get(ATTR_TEMPERATURE),
+        )
+        if new_temp is None:
+            return False, None
+        if old_temp is not None and abs(new_temp - old_temp) < 0.01:
+            return False, new_temp
+        return True, new_temp
+
+    def _maybe_forward_setpoint(self, entity_id, old_state, new_state) -> None:
+        if new_state is None:
+            return
+        if self._state_context_is_integration(new_state):
+            return
+
+        changed, temperature = self._has_temperature_change(old_state, new_state)
+        if not changed or temperature is None:
+            return
+
+        async def _forward() -> None:
+            await self._forward_setpoint_to_powerclimate(
+                temperature,
+                source_entity=entity_id,
+            )
+
+        self.hass.async_create_task(_forward())
+
+    async def _forward_setpoint_to_powerclimate(
+        self,
+        temperature: float,
+        source_entity: str | None = None,
+    ) -> None:
+        if not self.entity_id:
+            return
+        try:
+            await asyncio.wait_for(
+                self.hass.services.async_call(
+                    CLIMATE_DOMAIN,
+                    SERVICE_SET_TEMPERATURE,
+                    {
+                        ATTR_ENTITY_ID: self.entity_id,
+                        ATTR_TEMPERATURE: temperature,
+                    },
+                    blocking=True,
+                    context=self._integration_context,
+                ),
+                timeout=SERVICE_CALL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Forwarding setpoint from %s to %s timed out after %ss",
+                source_entity or "unknown",
+                self.entity_id,
+                SERVICE_CALL_TIMEOUT_SECONDS,
+            )
+        except ServiceNotFound:
+            _LOGGER.error(
+                "Service %s.%s not found while forwarding to %s",
+                CLIMATE_DOMAIN,
+                SERVICE_SET_TEMPERATURE,
+                self.entity_id,
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning(
+                "Failed to forward setpoint from %s to %s: %s",
+                source_entity or "unknown",
+                self.entity_id,
+                err,
+            )
 
     def _current_target_temperature(self) -> float | None:
         state = self.hass.states.get(self.entity_id)
@@ -638,6 +739,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                         ATTR_HVAC_MODE: mode,
                     },
                     blocking=True,
+                    context=self._integration_context,
                 ),
                 timeout=SERVICE_CALL_TIMEOUT_SECONDS,
             )
@@ -686,6 +788,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                         ATTR_TEMPERATURE: temperature,
                     },
                     blocking=True,
+                    context=self._integration_context,
                 ),
                 timeout=SERVICE_CALL_TIMEOUT_SECONDS,
             )

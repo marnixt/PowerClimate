@@ -18,6 +18,7 @@
           "water_sensor_entity_id": "Water-based heat pump water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
           "add_more_devices": "Configure Additional heat pumps"
         },
         "data_description": {
@@ -33,6 +34,7 @@
           "energy_sensor_entity_id": "HP power sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
           "add_another_device": "Add another HP after this"
         },
         "data_description": {
@@ -69,6 +71,7 @@
           "water_sensor_entity_id": "Water-based heat pump water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
           "add_more_devices": "Configure additional heat pump"
         },
         "data_description": {
@@ -84,6 +87,7 @@
           "energy_sensor_entity_id": "HP power sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
           "add_another_device": "Add another HP after this"
         },
         "data_description": {
