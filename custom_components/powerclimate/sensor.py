@@ -35,11 +35,11 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import (
-    COORDINATOR,
-    DOMAIN,
     CONF_CLIMATE_ENTITY,
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
+    COORDINATOR,
+    DOMAIN,
     SENSOR_POLL_INTERVAL_SECONDS,
 )
 from .helpers import (

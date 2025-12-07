@@ -4,17 +4,16 @@ import re
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
 from .const import (
     CONF_CLIMATE_ENTITY,
+    CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_DEVICES,
-    CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_LOWER_SETPOINT_OFFSET,

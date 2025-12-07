@@ -29,6 +29,8 @@ and coordinate their setpoints using per-device temperature offsets.
 - **Standard HA services**: No vendor-specific APIs—this integration
   orchestrates existing climate entities via Home Assistant services.
 
+- **Per-device copy-to-PowerClimate (optional):** Each heatpump now has an optional checkbox in the config flow (`Copy manual setpoint changes to PowerClimate thermostat`) which, when enabled, forwards manual setpoint changes from that heatpump to the PowerClimate climate entity via `climate.set_temperature` (default: off). This lets a single heatpump act as a co-master for setpoints while keeping the integration's steering logic intact.
+
 ## Quick Start
 
 1. Install the `powerclimate` folder into `custom_components/`.
@@ -123,3 +125,8 @@ PowerShell quick commands to create or copy these assets locally and to a Home A
 Copy-Item -Path .\custom_components\powerclimate\icon.png -Destination .\custom_components\powerclimate\logo.png -Force
 Copy-Item -Path .\custom_components\powerclimate\logo.png -Destination Z:\custom_components\powerclimate\logo.png -Force
 ```
+## Changelog
+
+- Feature: per-device copy-to-PowerClimate option added (see config flow). Implemented on branch `Co-master`.
+- **What it does:** When enabled for a heatpump, manual temperature setpoint changes made on that heatpump are forwarded to the PowerClimate climate entity via a Home Assistant service call (`climate.set_temperature`). This allows an individual heatpump to act as a co-master for setpoints without changing the global steering logic.
+

@@ -22,6 +22,7 @@ De powerclimate integratie maakt het mogelijk 2 of meer warmtepompen met één t
 - Offset per apparaat: onder- en bovengrenzen per warmtepomp in te stellen
 - Absolute grenzen: setpoints worden standaard begrensd tussen 16°C en 30°C.
 - Diagnostische sensoren: ruimte- en watertemperatuur, delta T en totaalvermogen zijn makkelijk inzichtelijk. 
+- Per-apparaat kopiëren naar PowerClimate (optioneel): Iedere warmtepomp heeft een optioneel selectievakje in de configuratiestroom (`Copy manual setpoint changes to PowerClimate thermostat`). Wanneer ingeschakeld worden handmatige setpoint-wijzigingen op die warmtepomp doorgestuurd naar de PowerClimate climate-entiteit via `climate.set_temperature` (standaard: uit).
 - Event-gedreven reacties: zodra een gekoppelde thermostaat van status verandert worden de PowerClimate-setpoints onmiddellijk herberekend.
 
 ## Snelstart
@@ -72,3 +73,12 @@ Algemene best practices (samengevat uit gangbare community-adviezen; controleer 
 - Offset- en min/max-waarden via de UI configureerbaar maken.
 - Energie- of COP-data gebruiken voor economische keuzes.
 - Unit tests uitbreiden voor gedragssensoren en assist-logica.
+
+## Co-master: Per-apparaat kopiëren naar PowerClimate (branch: Co-master)
+
+- **Functie:** Er is een per-apparaat optie toegevoegd: "Copy manual setpoint changes to PowerClimate thermostat". Dit is een selectievakje in de configuratiestroom voor elke geconfigureerde warmtepomp (HP1 en assists). Standaard is dit **uit**.
+- **Wat het doet:** Als deze optie voor een warmtepomp is ingeschakeld, worden handmatige setpoint-wijzigingen op die warmtepomp doorgestuurd naar de PowerClimate climate-entiteit via de Home Assistant service `climate.set_temperature`. Hierdoor kan een individuele warmtepomp fungeren als co-master voor setpoints zonder de globale stuurlogica te veranderen.
+- **Terugkoppelingspreventie:** Doorsturingen gebruiken een integratie-specifieke context; PowerClimate negeert updates die door zijn eigen service-aanroepen zijn veroorzaakt om feedback-lussen te vermijden.
+- **Waar inschakelen:** Tijdens installatie (primaire en aanvullende apparaatformulieren) of via de optiesstroom van een bestaande entry.
+- **Branch / notitie:** Implementatie staat op branch `Co-master`. Standaardgedrag blijft ongewijzigd wanneer het selectievakje niet is ingeschakeld.
+

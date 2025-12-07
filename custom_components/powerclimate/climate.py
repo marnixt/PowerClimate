@@ -19,22 +19,23 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Callable, Set
+from typing import Any, Callable
 
 from homeassistant.components.climate import (
     DOMAIN as CLIMATE_DOMAIN,
+)
+from homeassistant.components.climate import (
     ClimateEntity,
 )
 from homeassistant.components.climate.const import (
     ATTR_HVAC_MODE,
-    HVACMode,
-    ClimateEntityFeature,
     SERVICE_SET_HVAC_MODE,
     SERVICE_SET_TEMPERATURE,
+    ClimateEntityFeature,
+    HVACMode,
 )
-from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
-from homeassistant.const import UnitOfTemperature
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import Context, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -56,11 +57,11 @@ from .const import (
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
-    MIN_SET_CALL_INTERVAL_SECONDS,
-    SERVICE_CALL_TIMEOUT_SECONDS,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DOMAIN,
+    MIN_SET_CALL_INTERVAL_SECONDS,
+    SERVICE_CALL_TIMEOUT_SECONDS,
 )
 from .helpers import (
     entry_friendly_name,
@@ -225,7 +226,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             or self._target_temperature is None
         )
 
-        desired_devices: Set[str] = set()
+        desired_devices: set[str] = set()
         desired_targets: dict[str, float] = {}
         room_temp = self.current_temperature
 
@@ -370,7 +371,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     async def _sync_devices(
         self,
         devices: list[dict[str, Any]],
-        desired_devices: Set[str],
+        desired_devices: set[str],
         device_payloads: dict[str, dict[str, Any]],
         desired_targets: dict[str, float],
     ) -> None:

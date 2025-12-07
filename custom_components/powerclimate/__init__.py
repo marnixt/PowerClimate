@@ -22,12 +22,12 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .coordinator import OSDataUpdateCoordinator
 from .const import (
     COORDINATOR,
     DOMAIN,
     PLATFORMS,
 )
+from .coordinator import OSDataUpdateCoordinator
 
 LOGGER = logging.getLogger(__name__)
 

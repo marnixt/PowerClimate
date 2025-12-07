@@ -17,7 +17,6 @@ from custom_components.powerclimate.const import (
     CONF_CLIMATE_ENTITY,
     CONF_DEVICES,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
-    DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DOMAIN,
@@ -235,4 +234,3 @@ async def test_manual_setpoint_copy_ignores_integration_origin(hass):
     await hass.async_block_till_done()
 
     assert len(calls) == 0
-*** End File

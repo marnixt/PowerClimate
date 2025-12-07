@@ -66,4 +66,3 @@ async def test_compute_derivative_handles_insufficient_data(hass):
         )
         is None
     )
-*** End File
