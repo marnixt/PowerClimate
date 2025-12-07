@@ -23,10 +23,10 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
     This coordinator is responsible for:
     - Polling configured sensors at regular intervals (default: 60s)
     - Reading room temp, device states, energy, and water temperature
-    - Computing temperature derivatives using linear regression
+    - Computing temperature derivatives using oldest/newest slope
     - Maintaining temperature history for derivative calculations
 
-    The derivative uses linear regression over configurable time windows:
+    The derivative uses the oldest→newest slope over configurable time windows:
     - Room: DERIVATIVE_WINDOW_SECONDS (default: 900s / 15 minutes)
     - Water: DERIVATIVE_WATER_WINDOW_SECONDS (default: 600s / 10 min)
 
@@ -174,8 +174,8 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> float | None:
         """Compute temperature derivative using linear regression.
 
-        Uses least-squares linear regression over a sliding time window to
-        calculate the rate of temperature change.
+        Computes slope using the oldest and newest samples in the sliding
+        window to approximate the rate of temperature change.
 
         Args:
             history: List of (timestamp, temp) tuples. Modified in-place.

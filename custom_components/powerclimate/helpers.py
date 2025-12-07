@@ -5,9 +5,17 @@ This module provides shared utility functions used across the integration:
 - Dispatcher signal name generation
 - User-friendly entry naming
 - Device info creation for HA device registry
+- Lightweight translation loading with fallback to English
 """
 
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 
 from .const import (
@@ -17,6 +25,8 @@ from .const import (
     MANUFACTURER,
     SUMMARY_SIGNAL_TEMPLATE,
 )
+
+_STRING_CACHE: dict[str, dict[str, str]] = {}
 
 
 def merged_entry_data(entry: ConfigEntry) -> dict:
@@ -85,3 +95,53 @@ def integration_device_info(entry: ConfigEntry) -> DeviceInfo:
         manufacturer=MANUFACTURER,
         model="PowerClimate",
     )
+
+
+def _load_strings_from_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    try:
+        with path.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    strings = data.get("strings") or {}
+    return {str(key): str(value) for key, value in strings.items()}
+
+
+def get_strings(hass: HomeAssistant, language: str | None = None) -> dict[str, str]:
+    """Load translated strings for the integration.
+
+    We keep a tiny cache per language and fall back to English if the
+    requested language is unavailable.
+    """
+
+    lang = (language or hass.config.language or "en").split("-")[0]
+    if lang in _STRING_CACHE:
+        return _STRING_CACHE[lang]
+
+    translations_dir = Path(
+        hass.config.path("custom_components", DOMAIN, "translations")
+    )
+    if not translations_dir.exists():
+        translations_dir = Path(__file__).resolve().parent / "translations"
+
+    strings: dict[str, str] = {}
+    for candidate in (lang, "en"):
+        strings = _load_strings_from_file(
+            translations_dir / f"{candidate}.json"
+        )
+        if strings:
+            break
+
+    _STRING_CACHE[lang] = strings
+    return strings
+
+
+async def async_get_strings(
+    hass: HomeAssistant,
+    language: str | None = None,
+) -> dict[str, str]:
+    """Async wrapper around get_strings for use in entities."""
+
+    return await hass.async_add_executor_job(get_strings, hass, language)

@@ -92,6 +92,10 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | HP5 Behavior | Same logic as HP2 when a fifth pump is configured |
 | Total Power | Aggregated power from all configured pumps |
 
+Derivatives use the slope between the oldest and newest sample within the
+window (room: 15 minutes, water: 10 minutes), matching Home Assistant's
+Derivative helper behavior.
+
 Behavior sensors label each pump as `<first word> (hpX)` to match the Thermal Summary format.
 
 ## Heat Pump Tips

@@ -13,6 +13,7 @@ DERIVATIVE_WATER_WINDOW_SECONDS = 600
 
 # Minimum interval between set_temperature/set_hvac_mode calls per device
 MIN_SET_CALL_INTERVAL_SECONDS = 20
+SERVICE_CALL_TIMEOUT_SECONDS = 5
 
 
 CONF_DEVICES = "devices"

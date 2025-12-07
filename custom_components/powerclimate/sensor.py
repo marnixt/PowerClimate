@@ -43,11 +43,25 @@ from .const import (
     SENSOR_POLL_INTERVAL_SECONDS,
 )
 from .helpers import (
+    async_get_strings,
     entry_friendly_name,
     integration_device_info,
     merged_entry_data,
     summary_signal,
 )
+
+
+class _TranslationMixin:
+    """Small helper to provide translated fragments with English fallback."""
+
+    def __init__(self) -> None:
+        self._strings: dict[str, str] = {}
+
+    async def _load_strings(self, hass: HomeAssistant) -> None:
+        self._strings = await async_get_strings(hass)
+
+    def _t(self, key: str, default: str) -> str:
+        return str(self._strings.get(key, default))
 
 
 async def async_setup_entry(
@@ -193,7 +207,7 @@ def _snapshot_summary(
     }
 
 
-class PowerClimateThermalSummarySensor(SensorEntity):
+class PowerClimateThermalSummarySensor(_TranslationMixin, SensorEntity):
     """Sensor providing a human-readable thermal summary."""
 
     _attr_should_poll = False
@@ -202,6 +216,8 @@ class PowerClimateThermalSummarySensor(SensorEntity):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the thermal summary sensor."""
+        super().__init__()
+        _TranslationMixin.__init__(self)
         self.hass = hass
         self._entry = entry
         self._entry_id = entry.entry_id
@@ -224,6 +240,10 @@ class PowerClimateThermalSummarySensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        await self._load_strings(self.hass)
+        self._value = self._format_summary(
+            _snapshot_summary(self.hass, self._entry_id),
+        )
         self._unsub = async_dispatcher_connect(
             self.hass,
             self._signal,
@@ -254,17 +274,17 @@ class PowerClimateThermalSummarySensor(SensorEntity):
 
     def _format_summary(self, payload: dict | None) -> str:
         if not payload:
-            return "unavailable"
+            return self._t("unavailable", "unavailable")
 
         parts: list[str] = []
 
         room_text = self._format_temp_pair(
-            "Room",
+            self._t("label_room", "Room"),
             payload.get("room_temperature"),
             payload.get("target_temperature"),
         )
         room_derivative = self._format_derivative_fragment(
-            "dT",
+            self._t("label_derivative", "dT"),
             payload.get("derivative"),
         )
         room_eta = self._format_eta_fragment(payload.get("room_eta_hours"))
@@ -311,7 +331,8 @@ class PowerClimateThermalSummarySensor(SensorEntity):
                 total_power = round(total)
 
         if total_power is not None:
-            parts.append(f"Power {total_power} W")
+            power_label = self._t("label_power", "Power")
+            parts.append(f"{power_label} {total_power} W")
 
         return " | ".join(parts)
 
@@ -355,97 +376,109 @@ class PowerClimateThermalSummarySensor(SensorEntity):
         elif isinstance(target, (int, float)):
             base = f"{label} →{target:.1f}°C"
         else:
-            base = f"{label} none"
+            base = f"{label} {self._t('value_none', 'none')}"
 
         return base
 
-    @staticmethod
-    def _format_eta_fragment(eta_hours) -> str:
+    def _format_eta_fragment(self, eta_hours) -> str:
         if not isinstance(eta_hours, (int, float)):
-            return "ETA none"
+            return "{label} {value}".format(
+                label=self._t("label_eta", "ETA"),
+                value=self._t("value_none", "none"),
+            )
         if eta_hours <= 0:
-            return "ETA none"
+            return "{label} {value}".format(
+                label=self._t("label_eta", "ETA"),
+                value=self._t("value_none", "none"),
+            )
         if eta_hours >= 1:
-            return f"ETA {eta_hours:.1f}h"
+            return f"{self._t('label_eta', 'ETA')} {eta_hours:.1f}h"
         minutes = eta_hours * 60.0
         if minutes >= 1:
-            return f"ETA {minutes:.0f}m"
+            return f"{self._t('label_eta', 'ETA')} {minutes:.0f}m"
         seconds = minutes * 60.0
-        return f"ETA {seconds:.0f}s"
+        return f"{self._t('label_eta', 'ETA')} {seconds:.0f}s"
 
-    @staticmethod
-    def _format_derivative_fragment(label: str, value) -> str:
+    def _format_derivative_fragment(self, label: str, value) -> str:
         if isinstance(value, (int, float)):
             return f"{label} {value:.1f}°C/h"
-        return f"{label} none"
+        return f"{label} {self._t('value_none', 'none')}"
 
+class _AssistBehaviorFormatter(_TranslationMixin):
+    def __init__(self) -> None:
+        super().__init__()
 
-class _AssistBehaviorFormatter:
-    @staticmethod
-    def _format_temp_pair(current, target) -> str:
+    def _format_temp_pair(self, current, target) -> str:
+        temps_label = self._t("label_temps", "Temps")
+        none_text = self._t("value_none", "none")
         if (
             isinstance(current, (int, float))
             and isinstance(target, (int, float))
         ):
-            return f"Temps {current:.1f}°C→{target:.1f}°C"
+            return f"{temps_label} {current:.1f}°C→{target:.1f}°C"
         if isinstance(current, (int, float)):
-            return f"Temps {current:.1f}°C"
+            return f"{temps_label} {current:.1f}°C"
         if isinstance(target, (int, float)):
-            return f"Temps →{target:.1f}°C"
-        return "Temps none"
+            return f"{temps_label} →{target:.1f}°C"
+        return f"{temps_label} {none_text}"
 
-    @staticmethod
-    def _format_power(value) -> str | None:
+    def _format_power(self, value) -> str | None:
         if not isinstance(value, (int, float)):
             return None
-        return f"Power {round(value)} W"
+        power_label = self._t("label_power", "Power")
+        return f"{power_label} {round(value)} W"
 
-    @staticmethod
-    def _format_derivative(value) -> str:
+    def _format_derivative(self, value) -> str:
+        label = self._t("label_derivative", "dT")
         if isinstance(value, (int, float)):
-            return f"dT {value:.1f}°C/h"
-        return "dT none"
+            return f"{label} {value:.1f}°C/h"
+        return f"{label} {self._t('value_none', 'none')}"
 
-    @staticmethod
-    def _format_eta_fragment(value) -> str:
+    def _format_eta_fragment(self, value) -> str:
+        label = self._t("label_eta", "ETA")
         if not isinstance(value, (int, float)):
-            return "ETA none"
+            return f"{label} {self._t('value_none', 'none')}"
         if value <= 0:
-            return "ETA none"
+            return f"{label} {self._t('value_none', 'none')}"
         if value >= 1:
-            return f"ETA {value:.1f}h"
+            return f"{label} {value:.1f}h"
         minutes = value * 60.0
         if minutes >= 1:
-            return f"ETA {minutes:.0f}m"
+            return f"{label} {minutes:.0f}m"
         seconds = minutes * 60.0
-        return f"ETA {seconds:.0f}s"
+        return f"{label} {seconds:.0f}s"
 
-    @classmethod
-    def _format_hp_snapshot(cls, label: str, entry: dict | None) -> list[str]:
+    def _format_hp_snapshot(self, label: str, entry: dict | None) -> list[str]:
+        none_text = self._t("value_none", "none")
         if not entry:
-            return [f"{label} not configured"]
+            return [f"{label} {self._t('hp_not_configured', 'not configured')}"]
         parts: list[str] = []
+        state_active = self._t("state_active", "active")
+        state_idle = self._t("state_idle", "idle")
         parts.append(
-            f"{label} {'active' if entry.get('active') else 'idle'}"
+            f"{label} {state_active if entry.get('active') else state_idle}"
         )
-        hvac = (entry.get("hvac_mode") or "unknown").upper()
+        hvac = (entry.get("hvac_mode") or self._t("value_unknown", "unknown")).upper()
         parts.append(f"HVAC {hvac}")
         parts.append(
-            cls._format_temp_pair(
+            self._format_temp_pair(
                 entry.get("current_temperature"),
                 entry.get("target_temperature"),
             ),
         )
         parts.append(
-            cls._format_derivative(entry.get("temperature_derivative")),
+            self._format_derivative(entry.get("temperature_derivative")),
         )
-        parts.append(cls._format_eta_fragment(entry.get("eta_hours")))
+        parts.append(self._format_eta_fragment(entry.get("eta_hours")))
         water_temp = entry.get("water_temperature")
         if isinstance(water_temp, (int, float)):
-            parts.append(f"Water {water_temp:.1f}°C")
-        power_text = cls._format_power(entry.get("energy"))
+            water_label = self._t("label_water", "Water")
+            parts.append(f"{water_label} {water_temp:.1f}°C")
+        power_text = self._format_power(entry.get("energy"))
         if power_text:
             parts.append(power_text)
+        if not parts:
+            parts.append(none_text)
         return parts
 
 
@@ -466,6 +499,7 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         include_assist_line: bool = True,
     ) -> None:
         """Initialize the assist behavior sensor."""
+        super().__init__()
         self.hass = hass
         self._entry = entry
         self._entry_id = entry.entry_id
@@ -525,6 +559,10 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        await self._load_strings(self.hass)
+        self._value = self._format_payload(
+            _snapshot_summary(self.hass, self._entry_id),
+        )
         self._unsub = async_dispatcher_connect(
             self.hass,
             self._signal,
@@ -557,13 +595,16 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         if not payload:
             self._payload = None
             self._hp_entry = None
-            return "unavailable"
+            return self._t("unavailable", "unavailable")
 
         self._payload = payload
         hp_entry = self._find_hp_entry(payload, self._role)
         self._hp_entry = hp_entry
         if not hp_entry:
-            return f"{self._label} not configured"
+            return "{label} {status}".format(
+                label=self._label,
+                status=self._t("hp_not_configured", "not configured"),
+            )
 
         parts: list[str] = []
         label = self._label_from_hp(hp_entry, self._label, self._role)
@@ -582,8 +623,8 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
     def _format_assist_line(self, entry: dict) -> str:
         assist_mode = (entry.get("assist_mode") or "off").lower()
         if assist_mode in ("off", "none"):
-            return "Assist off"
-        return f"Assist {assist_mode}"
+            return f"{self._t('label_assist', 'Assist')} {self._t('assist_off', 'off')}"
+        return f"{self._t('label_assist', 'Assist')} {assist_mode}"
 
     @staticmethod
     def _find_hp_entry(payload: dict, role: str) -> dict | None:
@@ -677,13 +718,20 @@ class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
         parts: list[str] = []
         value = entry.get("water_derivative")
         if isinstance(value, (int, float)):
-            parts.append(f"Water dT {value:.1f}°C/h")
+            water_label = self._t("label_water", "Water")
+            d_label = self._t("label_derivative", "dT")
+            parts.append(f"{water_label} {d_label} {value:.1f}°C/h")
         else:
-            parts.append("Water dT none")
+            water_label = self._t("label_water", "Water")
+            d_label = self._t("label_derivative", "dT")
+            parts.append(
+                f"{water_label} {d_label} {self._t('value_none', 'none')}"
+            )
 
         energy = entry.get("energy")
         if isinstance(energy, (int, float)):
-            parts.append(f"Power {round(energy)} W")
+            power_label = self._t("label_power", "Power")
+            parts.append(f"{power_label} {round(energy)} W")
 
         return parts
 

@@ -100,5 +100,21 @@
       "invalid": "Select a valid value.",
       "invalid_offsets": "Lower offset must be less than or equal to upper offset."
     }
+  },
+  "strings": {
+    "unavailable": "unavailable",
+    "label_room": "Room",
+    "label_water": "Water",
+    "label_derivative": "dT",
+    "label_eta": "ETA",
+    "label_power": "Power",
+    "label_temps": "Temps",
+    "label_assist": "Assist",
+    "assist_off": "off",
+    "value_none": "none",
+    "value_unknown": "unknown",
+    "hp_not_configured": "not configured",
+    "state_active": "active",
+    "state_idle": "idle"
   }
 }

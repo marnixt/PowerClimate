@@ -16,6 +16,7 @@ All pumps are clamped between DEFAULT_MIN_SETPOINT and DEFAULT_MAX_SETPOINT.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Set
@@ -55,6 +56,7 @@ from .const import (
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
     MIN_SET_CALL_INTERVAL_SECONDS,
+    SERVICE_CALL_TIMEOUT_SECONDS,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DOMAIN,
@@ -627,17 +629,26 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             )
             return
         try:
-            await self.hass.services.async_call(
-                CLIMATE_DOMAIN,
-                SERVICE_SET_HVAC_MODE,
-                {
-                    ATTR_ENTITY_ID: entity_id,
-                    ATTR_HVAC_MODE: mode,
-                },
-                blocking=True,
+            await asyncio.wait_for(
+                self.hass.services.async_call(
+                    CLIMATE_DOMAIN,
+                    SERVICE_SET_HVAC_MODE,
+                    {
+                        ATTR_ENTITY_ID: entity_id,
+                        ATTR_HVAC_MODE: mode,
+                    },
+                    blocking=True,
+                ),
+                timeout=SERVICE_CALL_TIMEOUT_SECONDS,
             )
             self._device_modes[entity_id] = mode
             self._mark_call(self._last_mode_call, entity_id)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Setting HVAC mode for %s timed out after %ss",
+                entity_id,
+                SERVICE_CALL_TIMEOUT_SECONDS,
+            )
         except ServiceNotFound:
             _LOGGER.error(
                 "Service %s.%s not found for %s",
@@ -666,17 +677,26 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             )
             return
         try:
-            await self.hass.services.async_call(
-                CLIMATE_DOMAIN,
-                SERVICE_SET_TEMPERATURE,
-                {
-                    ATTR_ENTITY_ID: entity_id,
-                    ATTR_TEMPERATURE: temperature,
-                },
-                blocking=True,
+            await asyncio.wait_for(
+                self.hass.services.async_call(
+                    CLIMATE_DOMAIN,
+                    SERVICE_SET_TEMPERATURE,
+                    {
+                        ATTR_ENTITY_ID: entity_id,
+                        ATTR_TEMPERATURE: temperature,
+                    },
+                    blocking=True,
+                ),
+                timeout=SERVICE_CALL_TIMEOUT_SECONDS,
             )
             self._device_targets[entity_id] = temperature
             self._mark_call(self._last_temp_call, entity_id)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Setting temperature for %s timed out after %ss",
+                entity_id,
+                SERVICE_CALL_TIMEOUT_SECONDS,
+            )
         except ServiceNotFound:
             _LOGGER.error(
                 "Service %s.%s not found for %s",
