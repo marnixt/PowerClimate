@@ -19,6 +19,7 @@ De powerclimate integratie maakt het mogelijk 2 of meer warmtepompen met één t
 ## Functies
 - Multi-pomp aansturing: HP1 (water) plus ondersteunende warmtepompen (HP2 t/m HP5) met eigen offsets.
 - Handmatige controle: ondersteunende warmtepompen worden aangezet wanneer jij het wil. Wanneer ze aan staan past de integratie alleen hun setpoints aan.
+- Meerdere ruimtesensoren: kies meerdere ruimtetemperatuursensoren; de integratie gebruikt het gemiddelde van beschikbare waarden (onbeschikbare/ongeldige sensoren worden genegeerd).
 - Offset per apparaat: onder- en bovengrenzen per warmtepomp in te stellen
 - Absolute grenzen: setpoints worden standaard begrensd tussen 16°C en 30°C.
 - Diagnostische sensoren: ruimte- en watertemperatuur, delta T en totaalvermogen zijn makkelijk inzichtelijk. 
@@ -28,7 +29,7 @@ De powerclimate integratie maakt het mogelijk 2 of meer warmtepompen met één t
 ## Snelstart
 1. Plaats `custom_components/powerclimate` in je Home Assistant-installatie.
 2. Voeg de integratie toe via **Instellingen > Apparaten & Diensten > Integratie toevoegen > PowerClimate**.
-3. Kies de ruimtesensor en stel offsets in voor HP1 en eventuele assist-pompen.
+3. Kies één of meerdere ruimtesensoren (het gemiddelde wordt gebruikt) en stel offsets in voor HP1 en eventuele assist-pompen.
 4. Configureer je warmtepompen:
    - HP1 (water): climate-entity, vermogenssensor, optionele watersensor, offsets.
    - Assist (HP2 t/m HP5, optioneel): climate-entity, optionele vermogenssensor, offsets.

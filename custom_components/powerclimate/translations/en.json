@@ -3,10 +3,10 @@
     "step": {
       "user": {
         "title": "PowerClimate",
-        "description": "Start by naming the integration and selecting the room temperature sensor.",
+        "description": "Start by naming the integration and selecting one or more room temperature sensors.",
         "data": {
           "entry_name": "Integration name",
-          "room_sensor_entity_id": "Room temperature sensor"
+          "room_sensor_entity_ids": "Select one or more room temperature sensors"
         }
       },
       "primary": {
@@ -44,7 +44,7 @@
       }
     },
     "error": {
-      "room_sensor_required": "Select a room temperature sensor.",
+      "room_sensor_required": "Select one or more room temperature sensors.",
       "no_devices": "Add at least one device before finishing.",
       "required": "This field is required.",
       "duplicate": "Device ID already exists.",
@@ -56,10 +56,10 @@
     "step": {
       "init": {
         "title": "Update PowerClimate",
-        "description": "Rename the integration or change the room temperature sensor.",
+        "description": "Rename the integration or change the room temperature sensors.",
         "data": {
           "entry_name": "Integration name",
-          "room_sensor_entity_id": "Room temperature sensor"
+          "room_sensor_entity_ids": "Select one or more room temperature sensors"
         }
       },
       "primary": {
@@ -97,7 +97,7 @@
       }
     },
     "error": {
-      "room_sensor_required": "Select a room temperature sensor.",
+      "room_sensor_required": "Select one or more room temperature sensors.",
       "no_devices": "Add at least one device before finishing.",
       "required": "This field is required.",
       "duplicate": "Device ID already exists.",

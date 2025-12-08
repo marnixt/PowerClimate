@@ -8,7 +8,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import (
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
-    CONF_ROOM_SENSOR,
+    CONF_ROOM_SENSORS,
+    CONF_ROOM_SENSOR_VALUES,
+    CONF_ROOM_TEMPERATURE_KEY,
     CONF_WATER_SENSOR,
     DEFAULT_SCAN_INTERVAL,
     DERIVATIVE_WATER_WINDOW_SECONDS,
@@ -23,7 +25,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
     This coordinator is responsible for:
     - Polling configured sensors at regular intervals (default: 60s)
     - Reading room temp, device states, energy, and water temperature
-    - Computing temperature derivatives using oldest/newest slope
+    - Computing temperature derivatives using regression with outlier trimming
     - Maintaining temperature history for derivative calculations
 
     The derivative uses the oldest→newest slope over configurable time windows:
@@ -68,7 +70,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
 
         Returns:
             Dictionary containing:
-            - room_sensor_entity_id: Current room temperature
+            - room_temperature: Averaged room temperature from configured sensors
             - room_derivative: Room temperature change rate (°C/hour)
             - water_derivative: Water temperature change rate (°C/hour)
             - devices: List of device payloads with state and temps
@@ -78,13 +80,25 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         }
         entry_data = merged_entry_data(self.entry)
 
-        room_sensor = entry_data.get(CONF_ROOM_SENSOR)
+        room_sensors = entry_data.get(CONF_ROOM_SENSORS) or []
+        room_values: list[float] = []
+        for sensor_id in room_sensors:
+            value = self._read_float(sensor_id)
+            if value is not None:
+                room_values.append(value)
 
-        room_value = self._read_float(room_sensor)
-        data[CONF_ROOM_SENSOR] = room_value
+        room_average: float | None
+        if room_values:
+            room_average = round(sum(room_values) / len(room_values), 1)
+        else:
+            room_average = None
+
+        rounded_samples = [round(value, 1) for value in room_values]
+        data[CONF_ROOM_SENSOR_VALUES] = rounded_samples
+        data[CONF_ROOM_TEMPERATURE_KEY] = room_average
         derivative = self._compute_derivative(
             self._room_temp_history,
-            room_value,
+            room_average,
             DERIVATIVE_WINDOW_SECONDS,
         )
         if derivative is not None:
@@ -174,8 +188,12 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> float | None:
         """Compute temperature derivative using linear regression.
 
-        Computes slope using the oldest and newest samples in the sliding
-        window to approximate the rate of temperature change.
+        Uses a sliding window of recent samples and fits a least-squares line
+        over the timestamps to estimate the slope. A small median-absolute
+        deviation filter is applied when at least three samples exist to drop
+        obvious spikes before regression. History is pruned in-place to keep
+        only windowed samples (and any discarded outliers are removed from the
+        retained history).
 
         Args:
             history: List of (timestamp, temp) tuples. Modified in-place.
@@ -203,13 +221,47 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         if len(history) < 2:
             return None
 
-        # Match Home Assistant Derivative helper: use oldest and newest value
-        t0, temp0 = history[0]
-        t1, temp1 = history[-1]
-        dt = (t1 - t0).total_seconds()
-        if dt == 0:
+        # Drop single-sample spikes when we have enough data to estimate noise
+        if len(history) >= 3:
+            temps = [temp for _, temp in history]
+            temps_sorted = sorted(temps)
+            mid = len(temps_sorted) // 2
+            if len(temps_sorted) % 2 == 1:
+                median_temp = temps_sorted[mid]
+            else:
+                median_temp = (temps_sorted[mid - 1] + temps_sorted[mid]) / 2
+
+            deviations = [abs(temp - median_temp) for temp in temps]
+            deviations_sorted = sorted(deviations)
+            d_mid = len(deviations_sorted) // 2
+            if len(deviations_sorted) % 2 == 1:
+                mad = deviations_sorted[d_mid]
+            else:
+                mad = (deviations_sorted[d_mid - 1] + deviations_sorted[d_mid]) / 2
+
+            threshold = 0.5 if mad == 0 else 3 * mad
+            filtered_history = [
+                sample for sample in history if abs(sample[1] - median_temp) <= threshold
+            ]
+            if len(filtered_history) >= 2:
+                history[:] = filtered_history
+
+        n = len(history)
+        if n < 2:
             return None
 
-        # Slope in deg/sec, convert to deg/hour
-        slope = (temp1 - temp0) / dt
+        base_ts = history[0][0]
+        xs = [(ts - base_ts).total_seconds() for ts, _ in history]
+        ys = [temp for _, temp in history]
+
+        sum_x = sum(xs)
+        sum_y = sum(ys)
+        sum_xy = sum(x * y for x, y in zip(xs, ys))
+        sum_x2 = sum(x * x for x in xs)
+
+        denom = n * sum_x2 - sum_x * sum_x
+        if denom == 0:
+            return None
+
+        slope = (n * sum_xy - sum_x * sum_y) / denom
         return slope * 3600.0

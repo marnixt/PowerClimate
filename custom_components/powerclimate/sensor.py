@@ -198,6 +198,7 @@ def _snapshot_summary(
         "active_devices": attrs.get("active_devices"),
         "delta": attrs.get("delta"),
         "room_temperature": attrs.get("room_temperature"),
+        "room_sensor_values": attrs.get("room_sensor_values"),
         "derivative": derivative,
         "room_eta_hours": attrs.get("room_eta_hours"),
         "water_temperature": attrs.get("water_temperature"),
@@ -278,6 +279,13 @@ class PowerClimateThermalSummarySensor(_TranslationMixin, SensorEntity):
 
         parts: list[str] = []
 
+        avg_fragment = self._format_room_average(
+            payload.get("room_sensor_values"),
+            payload.get("room_temperature"),
+        )
+        if avg_fragment:
+            parts.append(avg_fragment)
+
         room_text = self._format_temp_pair(
             self._t("label_room", "Room"),
             payload.get("room_temperature"),
@@ -335,6 +343,32 @@ class PowerClimateThermalSummarySensor(_TranslationMixin, SensorEntity):
             parts.append(f"{power_label} {total_power} W")
 
         return " | ".join(parts)
+
+    def _format_room_average(
+        self,
+        readings,
+        average,
+    ) -> str | None:
+        if not readings and not isinstance(average, (int, float)):
+            return None
+
+        samples: list[str] = []
+        if isinstance(readings, list):
+            for value in readings:
+                if isinstance(value, (int, float)):
+                    samples.append(f"{value:.1f}°C")
+
+        avg_label = "Avg room"
+        if samples and isinstance(average, (int, float)):
+            inner = " ".join(samples)
+            return f"{avg_label} = avg({inner}) = {average:.1f}°C"
+        if samples:
+            inner = " ".join(samples)
+            none_text = self._t("value_none", "none")
+            return f"{avg_label} = avg({inner}) = {none_text}"
+        if isinstance(average, (int, float)):
+            return f"{avg_label} = {average:.1f}°C"
+        return f"{avg_label} = {self._t('value_none', 'none')}"
 
     def _format_hp_entry(self, entry: dict) -> str:
         raw_label = entry.get("name") or entry.get("role") or "HP"

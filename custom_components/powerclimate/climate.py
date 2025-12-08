@@ -50,7 +50,8 @@ from .const import (
     CONF_DEVICE_NAME,
     CONF_DEVICES,
     CONF_LOWER_SETPOINT_OFFSET,
-    CONF_ROOM_SENSOR,
+    CONF_ROOM_SENSOR_VALUES,
+    CONF_ROOM_TEMPERATURE_KEY,
     CONF_UPPER_SETPOINT_OFFSET,
     COORDINATOR,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
@@ -133,7 +134,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     @property
     def current_temperature(self) -> float | None:
-        return self.coordinator.data.get(CONF_ROOM_SENSOR)
+        return self.coordinator.data.get(CONF_ROOM_TEMPERATURE_KEY)
 
     @property
     def target_temperature(self) -> float | None:
@@ -188,6 +189,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "mode": self._mode_state,
             "delta": self._delta,
             "room_temperature": self.current_temperature,
+            "room_sensor_values": self.coordinator.data.get(
+                CONF_ROOM_SENSOR_VALUES
+            ),
             "derivative": self.coordinator.data.get("room_derivative"),
             "room_eta_hours": self._room_eta_hours,
             "water_temperature": self._water_temperature,
@@ -573,6 +577,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "active_devices": sorted(self._active_devices),
             "delta": self._delta,
             "room_temperature": self.current_temperature,
+            "room_sensor_values": self.coordinator.data.get(
+                CONF_ROOM_SENSOR_VALUES
+            ),
             "derivative": self.coordinator.data.get("room_derivative"),
             "room_eta_hours": self._room_eta_hours,
             "water_temperature": self._water_temperature,

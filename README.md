@@ -29,6 +29,10 @@ and coordinate their setpoints using per-device temperature offsets.
 - **Standard HA services**: No vendor-specific APIs—this integration
   orchestrates existing climate entities via Home Assistant services.
 
+- **Room sensor averaging**: Select multiple room temperature sensors; the
+  integration averages available readings (invalid/unavailable sensors are
+  ignored) to drive staging decisions.
+
 - **Per-device copy-to-PowerClimate (optional):** Each heatpump now has an optional checkbox in the config flow (`Copy manual setpoint changes to PowerClimate thermostat`) which, when enabled, forwards manual setpoint changes from that heatpump to the PowerClimate climate entity via `climate.set_temperature` (default: off). This lets a single heatpump act as a co-master for setpoints while keeping the integration's steering logic intact.
 
 ## Quick Start
@@ -36,8 +40,8 @@ and coordinate their setpoints using per-device temperature offsets.
 1. Install the `powerclimate` folder into `custom_components/`.
 2. In Home Assistant, go to **Settings → Devices & Services → Add Integration
   → PowerClimate**.
-3. Pick the room temperature sensor and provide the lower/upper setpoint
-   offsets that define the minimal/run targets.
+3. Pick one or more room temperature sensors (an average is used) and provide
+  the lower/upper setpoint offsets that define the minimal/run targets.
 4. Configure your heat pumps:
   - **Water-based heat pump** (required): Climate entity, power sensor, water
     temperature sensor, offsets for HP1

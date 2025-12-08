@@ -17,7 +17,9 @@ SERVICE_CALL_TIMEOUT_SECONDS = 5
 
 
 CONF_DEVICES = "devices"
-CONF_ROOM_SENSOR = "room_sensor_entity_id"
+CONF_ROOM_SENSORS = "room_sensor_entity_ids"
+CONF_ROOM_SENSOR_VALUES = "room_sensor_values"
+CONF_ROOM_TEMPERATURE_KEY = "room_temperature"
 CONF_CLIMATE_ENTITY = "climate_entity_id"
 CONF_ENERGY_SENSOR = "energy_sensor_entity_id"
 CONF_WATER_SENSOR = "water_sensor_entity_id"

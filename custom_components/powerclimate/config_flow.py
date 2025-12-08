@@ -17,7 +17,7 @@ from .const import (
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_LOWER_SETPOINT_OFFSET,
-    CONF_ROOM_SENSOR,
+    CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
     CONF_WATER_SENSOR,
     DEFAULT_ENTRY_NAME,
@@ -32,8 +32,8 @@ ADD_ANOTHER_DEVICE_FIELD = "add_another_device"
 ADD_MORE_DEVICES_FIELD = "add_more_devices"
 
 
-def _entity_selector(domain: str) -> Any:
-    return selector({"entity": {"domain": [domain]}})
+def _entity_selector(domain: str, multiple: bool = False) -> Any:
+    return selector({"entity": {"domain": [domain], "multiple": multiple}})
 
 
 def _text_selector() -> Any:
@@ -88,8 +88,8 @@ def _global_form_defaults(
     defaults: dict[str, Any] = {}
     base = base or {}
     defaults[CONF_ENTRY_NAME] = base.get(CONF_ENTRY_NAME, DEFAULT_ENTRY_NAME)
-    if base.get(CONF_ROOM_SENSOR) is not None:
-        defaults[CONF_ROOM_SENSOR] = base.get(CONF_ROOM_SENSOR)
+    if base.get(CONF_ROOM_SENSORS) is not None:
+        defaults[CONF_ROOM_SENSORS] = base.get(CONF_ROOM_SENSORS)
     if user_input:
         defaults.update(user_input)
     return defaults
@@ -104,10 +104,10 @@ def _build_global_schema(defaults: dict[str, Any]) -> vol.Schema:
         _text_selector(),
     )
     _required_field(
-        CONF_ROOM_SENSOR,
+        CONF_ROOM_SENSORS,
         defaults,
         schema_fields,
-        _entity_selector("sensor"),
+        _entity_selector("sensor", multiple=True),
     )
     return vol.Schema(schema_fields)
 
@@ -117,12 +117,23 @@ def _process_global_input(
     base: dict[str, Any] | None,
 ) -> tuple[str, dict[str, Any], dict[str, str]]:
     errors: dict[str, str] = {}
-    room_sensor = user_input.get(CONF_ROOM_SENSOR)
-    if not room_sensor:
+    room_sensors = user_input.get(CONF_ROOM_SENSORS)
+    if not isinstance(room_sensors, list) or len(room_sensors) == 0:
         errors["base"] = "room_sensor_required"
+        room_sensors = []
+    else:
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for entity_id in room_sensors:
+            if entity_id in seen:
+                continue
+            seen.add(entity_id)
+            deduped.append(entity_id)
+        room_sensors = deduped
     entry_name = _entry_name_from_input(user_input, base)
     data = {
-        CONF_ROOM_SENSOR: room_sensor,
+        CONF_ROOM_SENSORS: room_sensors,
     }
     return entry_name, data, errors
 
