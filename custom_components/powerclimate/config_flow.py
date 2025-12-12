@@ -40,6 +40,12 @@ def _text_selector() -> Any:
     return selector({"text": {}})
 
 
+def _offset_number_selector() -> Any:
+    # Use a numeric selector so defaults can be passed as floats and the UI
+    # provides a proper number input. Step and bounds are generous.
+    return selector({"number": {"min": -10, "max": 10, "step": 0.1}})
+
+
 def _required_field(
     key: str,
     defaults: dict[str, Any],
@@ -64,6 +70,25 @@ def _optional_field(
         schema_fields[vol.Optional(key)] = schema_value
     else:
         schema_fields[vol.Optional(key, default=default_value)] = schema_value
+
+
+def _parse_offset(raw: Any, default: float) -> tuple[float, bool]:
+    """Parse an offset while preserving a leading -0."""
+    raw_str = None
+    if isinstance(raw, str):
+        raw_str = raw.strip()
+    elif raw is not None:
+        raw_str = str(raw).strip()
+
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default, False
+
+    if raw_str and re.match(r"^-0(\.0+)?$", raw_str):
+        return -0.0, True
+
+    return value, True
 
 
 def _split_devices(
@@ -196,20 +221,18 @@ def _build_hp1_schema(defaults: dict[str, Any]) -> vol.Schema:
         schema_fields,
         _entity_selector("sensor"),
     )
-    schema_fields[vol.Optional(
+    _optional_field(
         CONF_LOWER_SETPOINT_OFFSET,
-        default=defaults.get(
-            CONF_LOWER_SETPOINT_OFFSET,
-            DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-        ),
-    )] = vol.Coerce(float)
-    schema_fields[vol.Optional(
+        defaults,
+        schema_fields,
+        _offset_number_selector(),
+    )
+    _optional_field(
         CONF_UPPER_SETPOINT_OFFSET,
-        default=defaults.get(
-            CONF_UPPER_SETPOINT_OFFSET,
-            DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
-        ),
-    )] = vol.Coerce(float)
+        defaults,
+        schema_fields,
+        _offset_number_selector(),
+    )
     schema_fields[vol.Optional(
         CONF_COPY_SETPOINT_TO_POWERCLIMATE,
         default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
@@ -240,29 +263,30 @@ def _process_hp1_input(
     if not water_sensor:
         errors[CONF_WATER_SENSOR] = "required"
 
-    lower_offset_raw = user_input.get(
-        CONF_LOWER_SETPOINT_OFFSET,
+    lower_offset, lower_valid = _parse_offset(
+        user_input.get(
+            CONF_LOWER_SETPOINT_OFFSET,
+            DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
+        ),
         DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     )
-    upper_offset_raw = user_input.get(
-        CONF_UPPER_SETPOINT_OFFSET,
+    if not lower_valid:
+        errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
+
+    upper_offset, upper_valid = _parse_offset(
+        user_input.get(
+            CONF_UPPER_SETPOINT_OFFSET,
+            DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
+        ),
         DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     )
-    try:
-        lower_offset = float(lower_offset_raw)
-    except (TypeError, ValueError):
-        errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
-        lower_offset = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
-    try:
-        upper_offset = float(upper_offset_raw)
-    except (TypeError, ValueError):
+    if not upper_valid:
         errors[CONF_UPPER_SETPOINT_OFFSET] = "invalid"
-        upper_offset = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
-    else:
-        if lower_offset > upper_offset:
-            errors["base"] = "invalid_offsets"
-            errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
-            errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
+
+    if lower_offset > upper_offset:
+        errors["base"] = "invalid_offsets"
+        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
+        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
 
     add_more = bool(user_input.get(ADD_MORE_DEVICES_FIELD))
 
@@ -327,20 +351,18 @@ def _build_additional_schema(
         schema_fields,
         _entity_selector("sensor"),
     )
-    schema_fields[vol.Optional(
+    _optional_field(
         CONF_LOWER_SETPOINT_OFFSET,
-        default=defaults.get(
-            CONF_LOWER_SETPOINT_OFFSET,
-            DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
-        ),
-    )] = vol.Coerce(float)
-    schema_fields[vol.Optional(
+        defaults,
+        schema_fields,
+        _offset_number_selector(),
+    )
+    _optional_field(
         CONF_UPPER_SETPOINT_OFFSET,
-        default=defaults.get(
-            CONF_UPPER_SETPOINT_OFFSET,
-            DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
-        ),
-    )] = vol.Coerce(float)
+        defaults,
+        schema_fields,
+        _offset_number_selector(),
+    )
     schema_fields[vol.Optional(
         CONF_COPY_SETPOINT_TO_POWERCLIMATE,
         default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
@@ -366,29 +388,30 @@ def _build_additional_device_data(
     if not energy_sensor:
         errors[CONF_ENERGY_SENSOR] = "required"
 
-    lower_offset_raw = user_input.get(
-        CONF_LOWER_SETPOINT_OFFSET,
+    lower_offset, lower_valid = _parse_offset(
+        user_input.get(
+            CONF_LOWER_SETPOINT_OFFSET,
+            DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
+        ),
         DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     )
-    upper_offset_raw = user_input.get(
-        CONF_UPPER_SETPOINT_OFFSET,
+    if not lower_valid:
+        errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
+
+    upper_offset, upper_valid = _parse_offset(
+        user_input.get(
+            CONF_UPPER_SETPOINT_OFFSET,
+            DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
+        ),
         DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     )
-    try:
-        lower_offset = float(lower_offset_raw)
-    except (TypeError, ValueError):
-        errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
-        lower_offset = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
-    try:
-        upper_offset = float(upper_offset_raw)
-    except (TypeError, ValueError):
+    if not upper_valid:
         errors[CONF_UPPER_SETPOINT_OFFSET] = "invalid"
-        upper_offset = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
-    else:
-        if lower_offset > upper_offset:
-            errors["base"] = "invalid_offsets"
-            errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
-            errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
+
+    if lower_offset > upper_offset:
+        errors["base"] = "invalid_offsets"
+        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
+        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
 
     if errors:
         return None, errors

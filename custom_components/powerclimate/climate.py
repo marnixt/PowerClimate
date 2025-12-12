@@ -84,6 +84,23 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _parse_device_offset(value: Any) -> float | None:
+    """Parse an offset while preserving a leading -0 string."""
+    if value is None:
+        return None
+
+    raw_str = str(value).strip()
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    if parsed == 0 and raw_str.startswith("-0"):
+        return -0.0
+
+    return parsed
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -171,8 +188,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if temperature is None:
             return
         self._target_temperature = float(temperature)
-        if self.hvac_mode == HVACMode.OFF:
-            self._attr_hvac_mode = HVACMode.HEAT
         await self._apply_staging()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
@@ -379,22 +394,30 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         device_payloads: dict[str, dict[str, Any]],
         desired_targets: dict[str, float],
     ) -> None:
+        # If PowerClimate is turned off, do not touch underlying devices.
+        if self.hvac_mode == HVACMode.OFF:
+            _LOGGER.debug("PowerClimate is OFF; skipping device sync")
+            return
         for index, device in enumerate(devices):
             entity_id = device.get(CONF_CLIMATE_ENTITY)
             if not entity_id:
                 continue
 
-            is_hp1 = index == 0
-
             if entity_id in desired_devices:
-                if is_hp1:
-                    await self._ensure_device_mode(entity_id, HVACMode.HEAT)
                 target = desired_targets.get(entity_id)
                 if target is not None:
-                    await self._ensure_device_temperature(entity_id, target)
-            else:
-                if is_hp1:
-                    await self._ensure_device_mode(entity_id, HVACMode.OFF)
+                    payload = device_payloads.get(entity_id, {}) or {}
+                    hvac_mode = str(payload.get("hvac_mode") or "").lower()
+                    if hvac_mode == HVACMode.HEAT.value:
+                        await self._ensure_device_temperature(entity_id, target)
+                    else:
+                        _LOGGER.debug(
+                            "Skip setpoint for %s because mode=%s (not heating)",
+                            entity_id,
+                            hvac_mode,
+                        )
+            # If PowerClimate is not driving a device, leave its HVAC mode
+            # untouched; only adjust temperatures when explicitly desired.
 
     def _minimal_mode_target(
         self,
@@ -448,11 +471,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         index: int,
     ) -> float:
         value = device.get(CONF_LOWER_SETPOINT_OFFSET)
-        if value is not None:
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                pass
+        parsed = _parse_device_offset(value)
+        if parsed is not None:
+            return parsed
         return (
             DEFAULT_LOWER_SETPOINT_OFFSET_HP1
             if index == 0
@@ -465,11 +486,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         index: int,
     ) -> float:
         value = device.get(CONF_UPPER_SETPOINT_OFFSET)
-        if value is not None:
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                pass
+        parsed = _parse_device_offset(value)
+        if parsed is not None:
+            return parsed
         return (
             DEFAULT_UPPER_SETPOINT_OFFSET_HP1
             if index == 0
@@ -730,6 +749,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         entity_id: str,
         mode: HVACMode,
     ) -> None:
+        # Do not change device modes while PowerClimate is OFF.
+        if self.hvac_mode == HVACMode.OFF:
+            _LOGGER.debug(
+                "PowerClimate is OFF; skipping mode change for %s to %s",
+                entity_id,
+                mode,
+            )
+            return
         if self._device_modes.get(entity_id) == mode:
             return
         if self._recent_call(self._last_mode_call, entity_id):
@@ -778,6 +805,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         entity_id: str,
         temperature: float,
     ) -> None:
+        # Do not change device temperatures while PowerClimate is OFF.
+        if self.hvac_mode == HVACMode.OFF:
+            _LOGGER.debug(
+                "PowerClimate is OFF; skipping temperature set for %s to %s",
+                entity_id,
+                temperature,
+            )
+            return
         previous = self._device_targets.get(entity_id)
         if previous is not None and abs(previous - temperature) < 0.1:
             return
