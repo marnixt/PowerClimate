@@ -153,6 +153,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._integration_context = Context()
 
     @property
+    def entity_picture(self) -> str:
+        return "/local/community/powerclimate/icon.png"
+
+    @property
     def current_temperature(self) -> float | None:
         return self.coordinator.data.get(CONF_ROOM_TEMPERATURE_KEY)
 
