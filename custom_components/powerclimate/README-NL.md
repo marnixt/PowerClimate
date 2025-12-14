@@ -53,14 +53,14 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 
 Voorbeeld van de Thermische samenvatting en behavior sensoren
 
-**Thermal summary:** Room 19.0°C→19.5°C | dT 0.4°C/h | ETA 1.3h | Power 1567 W
+**Thermal summary:** Room 19.0°C→19.5°C | ΔT 0.4°C/h | ETA 1.3h | Power 1567 W
 
-**HP1 Behavior:** Diyless (hp1) active | HVAC HEAT | Temps 18.9°C→19.5°C | dT 0.0°C/h | ETA none | Water 36.0°C | Water dT 10.8°C/h | Power 1243 W
+**HP1 Behavior:** Diyless (hp1) active | HVAC HEAT | Temps 18.9°C→19.5°C | ΔT 0.0°C/h | ETA none | Water 36.0°C | Water ΔT 10.8°C/h | Power 1243 W
 
-**HP 2 Behavior:** Senhus (hp2) idle | HVAC OFF | Temps 19.0°C→18.0°C | dT 0.0°C/h | ETA none | Power 1 W | Assist off
+**HP 2 Behavior:** Senhus (hp2) idle | HVAC OFF | Temps 19.0°C→18.0°C | ΔT 0.0°C/h | ETA none | Power 1 W | Assist off
 
 **HP 3 Behavior:**
-Living (hp3) active | HVAC HEAT | Temps 18.0°C→19.5°C | dT 0.0°C/h | ETA none | Power 324 W | Assist setpoint
+Living (hp3) active | HVAC HEAT | Temps 18.0°C→19.5°C | ΔT 0.0°C/h | ETA none | Power 324 W | Assist setpoint
 
 ## Tips voor warmtepompen
 Algemene best practices (samengevat uit gangbare community-adviezen; controleer altijd de handleiding van je toestel):

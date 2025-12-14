@@ -292,7 +292,7 @@ class PowerClimateThermalSummarySensor(_TranslationMixin, SensorEntity):
             payload.get("target_temperature"),
         )
         room_derivative = self._format_derivative_fragment(
-            self._t("label_derivative", "dT"),
+            self._t("label_derivative", "ΔT"),
             payload.get("derivative"),
         )
         room_eta = self._format_eta_fragment(payload.get("room_eta_hours"))
@@ -463,7 +463,7 @@ class _AssistBehaviorFormatter(_TranslationMixin):
         return f"{power_label} {round(value)} W"
 
     def _format_derivative(self, value) -> str:
-        label = self._t("label_derivative", "dT")
+        label = self._t("label_derivative", "ΔT")
         if isinstance(value, (int, float)):
             return f"{label} {value:.1f}°C/h"
         return f"{label} {self._t('value_none', 'none')}"
@@ -643,9 +643,9 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         parts: list[str] = []
         label = self._label_from_hp(hp_entry, self._label, self._role)
         parts.extend(self._format_hp_snapshot(label, hp_entry))
-        # For HP1 we want to show water dT before power. Remove any existing
+        # For HP1 we want to show water ΔT before power. Remove any existing
         # power fragment produced by the generic snapshot and then append
-        # sensor-specific parts which will include water dT and power (if any).
+        # sensor-specific parts which will include water ΔT and power (if any).
         if self._role == "hp1":
             parts = [p for p in parts if not p.startswith("Power ")]
 
@@ -753,11 +753,11 @@ class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
         value = entry.get("water_derivative")
         if isinstance(value, (int, float)):
             water_label = self._t("label_water", "Water")
-            d_label = self._t("label_derivative", "dT")
+            d_label = self._t("label_derivative", "ΔT")
             parts.append(f"{water_label} {d_label} {value:.1f}°C/h")
         else:
             water_label = self._t("label_water", "Water")
-            d_label = self._t("label_derivative", "dT")
+            d_label = self._t("label_derivative", "ΔT")
             parts.append(
                 f"{water_label} {d_label} {self._t('value_none', 'none')}"
             )
