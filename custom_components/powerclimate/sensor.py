@@ -279,6 +279,13 @@ class PowerClimateThermalSummarySensor(_TranslationMixin, SensorEntity):
 
         parts: list[str] = []
 
+        # Add preset mode at the beginning
+        preset_mode = payload.get("preset_mode", "none")
+        if preset_mode == "boost":
+            parts.append("Preset: Boost")
+        else:
+            parts.append("Preset: None")
+
         avg_fragment = self._format_room_average(
             payload.get("room_sensor_values"),
             payload.get("room_temperature"),
@@ -494,12 +501,16 @@ class _AssistBehaviorFormatter(_TranslationMixin):
         )
         hvac = (entry.get("hvac_mode") or self._t("value_unknown", "unknown")).upper()
         parts.append(f"HVAC {hvac}")
-        parts.append(
-            self._format_temp_pair(
-                entry.get("current_temperature"),
-                entry.get("target_temperature"),
-            ),
+        
+        # Format temperature with optional (Boost) indicator
+        temp_text = self._format_temp_pair(
+            entry.get("current_temperature"),
+            entry.get("target_temperature"),
         )
+        # Add (Boost) indicator if boost preset is active in payload
+        if hasattr(self, '_payload') and self._payload and self._payload.get('preset_mode') == 'boost':
+            temp_text = f"{temp_text} (Boost)"
+        parts.append(temp_text)
         parts.append(
             self._format_derivative(entry.get("temperature_derivative")),
         )

@@ -118,8 +118,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 10.0
     _attr_max_temp = 30.0
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_preset_modes = ["none", "boost"]
 
     def __init__(self, hass, entry, coordinator):
         super().__init__(coordinator)
@@ -130,6 +131,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._attr_device_info = integration_device_info(entry)
         self._attr_hvac_mode = HVACMode.HEAT
         self._target_temperature = DEFAULT_TARGET_TEMPERATURE
+        self._attr_preset_mode = "none"
+        self._previous_target: float | None = None
         self._active_devices: set[str] = set()
         self._device_modes: dict[str, HVACMode] = {}
         self._device_targets: dict[str, float] = {}
@@ -194,7 +197,33 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if hvac_mode not in self.hvac_modes:
             return
         self._attr_hvac_mode = hvac_mode
+        # Clear any active preset when user explicitly sets HVAC mode
+        if self._attr_preset_mode != "none":
+            self._attr_preset_mode = "none"
+            self._previous_target = None
         await self._apply_staging()
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set a preset mode. Supported: 'boost' and 'none'."""
+        if preset_mode not in self.preset_modes:
+            return
+        
+        # Enter boost: set all controllable heat pumps to HEAT with upper offset
+        if preset_mode == "boost":
+            if self._attr_preset_mode == "boost":
+                return
+            self._attr_preset_mode = "boost"
+            self._attr_hvac_mode = HVACMode.HEAT
+            await self._apply_boost_mode()
+            return
+
+        # Exit boost preset: keep running heat pumps running
+        if preset_mode == "none":
+            if self._attr_preset_mode == "none":
+                return
+            self._attr_preset_mode = "none"
+            # Don't turn off devices, just switch back to normal control
+            await self._apply_staging()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -212,7 +241,72 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "water_temperature": self._water_temperature,
             "water_derivative": self.coordinator.data.get("water_derivative"),
             "hp_status": self._hp_status_snapshot,
+            "preset_mode": self._attr_preset_mode,
         }
+
+    async def _apply_boost_mode(self) -> None:
+        """Apply boost preset: set controllable heat pumps to HEAT, then boost all HEAT pumps."""
+        config = merged_entry_data(self._entry)
+        devices = config.get(CONF_DEVICES, [])
+        device_payloads = self._coordinator_devices()
+
+        # Get controllable devices (those with "copy_setpoint_to_powerclimate" enabled)
+        controllable_devices = [
+            (index, device)
+            for index, device in enumerate(devices)
+            if device.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE)
+            and device.get(CONF_CLIMATE_ENTITY)
+        ]
+
+        # Step 1: Set all controllable devices to HEAT mode
+        for index, device in controllable_devices:
+            entity_id = device.get(CONF_CLIMATE_ENTITY)
+            if entity_id:
+                await self._ensure_device_mode(entity_id, HVACMode.HEAT)
+
+        # Refresh device payloads after mode changes
+        device_payloads = self._coordinator_devices()
+
+        # Step 2: Set boost target for ALL devices that are now in HEAT mode
+        for index, device in enumerate(devices):
+            entity_id = device.get(CONF_CLIMATE_ENTITY)
+            if not entity_id:
+                continue
+
+            payload = device_payloads.get(entity_id, {}) or {}
+            hvac_mode = str(payload.get("hvac_mode") or "").lower()
+            
+            # Only boost devices in HEAT mode
+            if hvac_mode != HVACMode.HEAT.value:
+                continue
+
+            current_temp = _safe_float(payload.get("current_temperature"))
+            
+            if current_temp is not None:
+                # Use upper offset to calculate boost target
+                upper_offset = self._device_upper_offset(device, index)
+                boost_target = current_temp + upper_offset
+                # Clamp to absolute limits
+                boost_target = max(DEFAULT_MIN_SETPOINT, min(boost_target, DEFAULT_MAX_SETPOINT))
+                
+                _LOGGER.debug(
+                    "Boost mode: Setting %s to %.1f°C (current=%.1f, offset=%.1f)",
+                    entity_id,
+                    boost_target,
+                    current_temp,
+                    upper_offset,
+                )
+                
+                await self._ensure_device_temperature(entity_id, boost_target)
+            else:
+                _LOGGER.warning("Boost mode: No current temperature for %s", entity_id)
+
+        # Update snapshot for sensors
+        self._devices_snapshot = [dict(device) for device in devices]
+        self._device_payload_cache = device_payloads
+        
+        self.async_write_ha_state()
+        self._emit_summary()
 
     async def _apply_staging(self) -> None:
         config = merged_entry_data(self._entry)
@@ -226,6 +320,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             if device.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE)
             and device.get(CONF_CLIMATE_ENTITY)
         }
+
+        # If in boost mode, use boost logic instead
+        if self._attr_preset_mode == "boost":
+            await self._apply_boost_mode()
+            return
 
         if not devices:
             await self._sync_devices([], set(), device_payloads, {})
@@ -605,6 +704,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "water_derivative": self.coordinator.data.get("water_derivative"),
             "hp_status": hp_status,
             "target_temperature": target_temp,
+            "preset_mode": self._attr_preset_mode,
         }
 
         entry_data = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id)

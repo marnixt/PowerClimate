@@ -119,6 +119,7 @@
     "value_unknown": "unknown",
     "hp_not_configured": "not configured",
     "state_active": "active",
-    "state_idle": "idle"
+    "state_idle": "idle",
+    "preset_boost": "Boost"
   }
 }
