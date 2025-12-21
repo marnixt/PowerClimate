@@ -113,7 +113,7 @@ General setup guidance (always double-check your device manual):
 
 ## Next Steps
 
-- Allow min/max clamp values to be configured from the UI
+- Use Advanced options to tune assist thresholds (ETA in minutes) and anti-short-cycle
 - Use energy sensors or COP data for economic decisions
 - Add unit tests for the assist logic
 

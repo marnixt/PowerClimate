@@ -38,6 +38,21 @@ De powerclimate integratie maakt het mogelijk 2 of meer warmtepompen met één t
   - Minimal-modus (kamer >= doel): setpoint = huidige temp + lower offset.
   - Setpoint-modus (kamer < doel): setpoint = doel, begrensd tussen huidige temp + lower/upper offset.
 
+## Geavanceerde opties (UI)
+Voor expert users zijn er extra instellingen via **Opties → Advanced options** (Home Assistant UI).
+
+Te vinden via: **Instellingen → Apparaten & Diensten → Integraties → PowerClimate → Opties → Advanced options**
+
+- **Assist timer duration (s)**: hoe lang een ON/OFF conditie waar moet blijven voordat er daadwerkelijk geschakeld wordt (default 300s).
+- **ETA drempels (minuten)**:
+  - **ON: ETA threshold (minutes)** default 60min
+  - **OFF: ETA threshold (minutes)** default 15min
+- **Anti-short-cycle (alleen als `allow_on_off_control` aan staat voor een assist-pomp)**:
+  - **Minimum ON time** default 20min (blokkeert vroegtijdig uitschakelen)
+  - **Minimum OFF time** default 10min (blokkeert te snel weer inschakelen)
+
+Let op: timers zijn in-memory en resetten bij een Home Assistant restart.
+
 ## Sensoren (config-gedreven)
 Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_entity_id`.
 
@@ -69,6 +84,6 @@ Algemene best practices (samengevat uit gangbare community-adviezen; controleer 
 - Water-/hybride warmtepompen (HP1): als het een hybride toestel is, voorkom inschakelen van de CV-ketel door de cv-aanvoertemperatuur (CH max) in te stellen op ~45°C 
 
 ## Volgende stappen
-- Offset- en min/max-waarden via de UI configureerbaar maken.
+- Anti-short-cycle en ETA-drempels finetunen via Advanced options.
 - Energie- of COP-data gebruiken voor economische keuzes.
 - Unit tests uitbreiden voor gedragssensoren en assist-logica.

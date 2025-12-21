@@ -79,6 +79,7 @@ async def async_setup_entry(
         entry,
     )
     thermal_summary_sensor = PowerClimateThermalSummarySensor(hass, entry)
+    assist_summary_sensor = PowerClimateAssistSummarySensor(hass, entry)
     total_power_sensor = PowerClimateTotalPowerSensor(
         hass,
         coordinator,
@@ -89,6 +90,7 @@ async def async_setup_entry(
         derivative_sensor,
         water_derivative_sensor,
         thermal_summary_sensor,
+        assist_summary_sensor,
         total_power_sensor,
     ]
 
@@ -230,7 +232,7 @@ class PowerClimateThermalSummarySensor(_TranslationMixin, SensorEntity):
             _snapshot_summary(hass, self._entry_id),
         )
         self._attr_unique_id = (
-            f"powerclimate_thermal_summary_{self._entry_id}"
+            f"powerclimate_text_thermal_summary_{self._entry_id}"
         )
         self._attr_device_info = integration_device_info(entry)
         self._poll_unsub = None
@@ -445,6 +447,210 @@ class PowerClimateThermalSummarySensor(_TranslationMixin, SensorEntity):
             return f"{label} {value:.1f}°C/h"
         return f"{label} {self._t('value_none', 'none')}"
 
+
+class PowerClimateAssistSummarySensor(_TranslationMixin, SensorEntity):
+    """Sensor providing human-readable assist pump control logic summary."""
+
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the assist summary sensor."""
+        super().__init__()
+        _TranslationMixin.__init__(self)
+        self.hass = hass
+        self._entry = entry
+        self._entry_id = entry.entry_id
+        self._signal = summary_signal(self._entry_id)
+        self._unsub = None
+        friendly = entry_friendly_name(entry)
+        self._attr_name = f"{friendly} Assist Summary"
+        self._value = self._format_assist_summary(
+            _snapshot_summary(hass, self._entry_id),
+        )
+        self._attr_unique_id = (
+            f"powerclimate_text_assist_summary_{self._entry_id}"
+        )
+        self._attr_device_info = integration_device_info(entry)
+        self._poll_unsub = None
+
+    @property
+    def native_value(self) -> str:
+        return self._value
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        await self._load_strings(self.hass)
+        self._value = self._format_assist_summary(
+            _snapshot_summary(self.hass, self._entry_id),
+        )
+        self._unsub = async_dispatcher_connect(
+            self.hass,
+            self._signal,
+            self._handle_summary,
+        )
+        self._poll_unsub = async_track_time_interval(
+            self.hass,
+            self._handle_poll,
+            timedelta(seconds=SENSOR_POLL_INTERVAL_SECONDS),
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+        if self._poll_unsub:
+            self._poll_unsub()
+            self._poll_unsub = None
+        await super().async_will_remove_from_hass()
+
+    def _handle_summary(self, payload: dict | None) -> None:
+        self._value = self._format_assist_summary(payload)
+        self.schedule_update_ha_state()
+
+    def _handle_poll(self, now) -> None:
+        payload = _snapshot_summary(self.hass, self._entry_id)
+        self._handle_summary(payload)
+
+    def _format_assist_summary(self, payload: dict | None) -> str:
+        """Format assist pump control logic into a human-readable summary."""
+        if not payload:
+            return "No data available"
+
+        parts: list[str] = []
+
+        # Room state overview
+        room_temp = payload.get("room_temperature")
+        target_temp = payload.get("target_temperature")
+        derivative = payload.get("derivative")
+        eta_hours = payload.get("room_eta_hours")
+
+        if isinstance(room_temp, (int, float)) and isinstance(target_temp, (int, float)):
+            delta = room_temp - target_temp
+            parts.append(f"Room: {room_temp:.1f}°C (target {target_temp:.1f}°C, Δ{delta:+.1f}°C)")
+
+        # Room derivative
+        if isinstance(derivative, (int, float)):
+            trend = "warming" if derivative > 0 else "cooling" if derivative < 0 else "stable"
+            parts.append(f"Trend: {trend} ({derivative:+.1f}°C/h)")
+
+        # ETA
+        if isinstance(eta_hours, (int, float)) and eta_hours > 0:
+            if eta_hours >= 1:
+                parts.append(f"ETA: {eta_hours:.1f}h")
+            else:
+                parts.append(f"ETA: {int(eta_hours * 60)}min")
+
+        assist_timer_seconds = payload.get("assist_timer_seconds")
+        eta_on_minutes = payload.get("assist_on_eta_threshold_minutes")
+        eta_off_minutes = payload.get("assist_off_eta_threshold_minutes")
+
+        # Assist pump status
+        hp_status = payload.get("hp_status", [])
+        assist_pumps = [hp for hp in hp_status if hp.get("role") not in ["hp1"]]
+
+        if not assist_pumps:
+            parts.append("No assist pumps configured")
+            return " | ".join(parts)
+
+        for hp in assist_pumps:
+            # Format HP name as "FirstWord (role)"
+            raw_label = hp.get("name") or hp.get("role", "HP")
+            text = str(raw_label).strip()
+            if not text:
+                base = "HP"
+            else:
+                base = text.split()[0][:10]
+            role = hp.get("role") or "hp?"
+            hp_name = f"{base} ({role})"
+
+            hvac_mode = (hp.get("hvac_mode") or "").lower()
+            is_on = hvac_mode != "off"
+            allow_control = hp.get("allow_on_off_control", False)
+
+            hp_parts: list[str] = [hp_name]
+
+            # State
+            if is_on:
+                hp_parts.append("ON")
+            else:
+                hp_parts.append("OFF")
+
+            # Timer information
+            if allow_control:
+                on_timer = hp.get("on_timer_seconds", 0.0)
+                off_timer = hp.get("off_timer_seconds", 0.0)
+                condition = hp.get("active_condition", "none")
+                blocked_by = str(hp.get("blocked_by") or "").strip()
+                target_hvac_mode = str(hp.get("target_hvac_mode") or "").strip().lower()
+                target_reason = str(hp.get("target_reason") or "").strip()
+
+                if condition != "none":
+                    condition_labels = {
+                        "eta_high": (
+                            f"ETA>{int(eta_on_minutes)}m"
+                            if isinstance(eta_on_minutes, (int, float))
+                            else "ETA high"
+                        ),
+                        "water_hot": "Water≥40°C",
+                        "stalled_below_target": "Stalled",
+                        "eta_low": (
+                            f"ETA<{int(eta_off_minutes)}m"
+                            if isinstance(eta_off_minutes, (int, float))
+                            else "ETA low"
+                        ),
+                        "stalled_at_target": "At target",
+                        "overshoot": "Overshoot",
+                    }
+                    condition_text = condition_labels.get(condition, condition)
+
+                    timer_total = (
+                        float(assist_timer_seconds)
+                        if isinstance(assist_timer_seconds, (int, float))
+                        else 300.0
+                    )
+                    total_min = int(timer_total // 60)
+                    total_sec = int(timer_total % 60)
+
+                    if on_timer > 0:
+                        timer_min = int(on_timer / 60)
+                        timer_sec = int(on_timer % 60)
+                        hp_parts.append(
+                            f"{condition_text} "
+                            f"ON:{timer_min}:{timer_sec:02d}/{total_min}:{total_sec:02d}"
+                        )
+                    elif off_timer > 0:
+                        timer_min = int(off_timer / 60)
+                        timer_sec = int(off_timer % 60)
+                        hp_parts.append(
+                            f"{condition_text} "
+                            f"OFF:{timer_min}:{timer_sec:02d}/{total_min}:{total_sec:02d}"
+                        )
+                else:
+                    hp_parts.append("No condition")
+
+                # Explicitly show when PowerClimate is about to toggle HVAC mode.
+                # This is separate from the timer direction above (which is a countdown).
+                if target_hvac_mode in {"heat", "off"}:
+                    reason_key = target_reason or condition
+                    reason_text = condition_labels.get(reason_key, reason_key) if reason_key else ""
+                    target_text = "TargetON" if target_hvac_mode == "heat" else "TargetOFF"
+                    if reason_text:
+                        hp_parts.append(f"{target_text}({reason_text})")
+                    else:
+                        hp_parts.append(target_text)
+
+                if blocked_by:
+                    hp_parts.append(f"Blocked({blocked_by})")
+            else:
+                hp_parts.append("Manual control")
+
+            parts.append(" ".join(hp_parts))
+
+        return " | ".join(parts)
+
+
 class _AssistBehaviorFormatter(_TranslationMixin):
     def __init__(self) -> None:
         super().__init__()
@@ -501,14 +707,15 @@ class _AssistBehaviorFormatter(_TranslationMixin):
         )
         hvac = (entry.get("hvac_mode") or self._t("value_unknown", "unknown")).upper()
         parts.append(f"HVAC {hvac}")
-        
+
         # Format temperature with optional (Boost) indicator
         temp_text = self._format_temp_pair(
             entry.get("current_temperature"),
             entry.get("target_temperature"),
         )
         # Add (Boost) indicator if boost preset is active in payload
-        if hasattr(self, '_payload') and self._payload and self._payload.get('preset_mode') == 'boost':
+        payload = getattr(self, "_payload", None)
+        if payload and payload.get("preset_mode") == "boost":
             temp_text = f"{temp_text} (Boost)"
         parts.append(temp_text)
         parts.append(
@@ -561,7 +768,7 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
             _snapshot_summary(hass, self._entry_id),
         )
         self._attr_unique_id = (
-            f"powerclimate_{prefix}_behavior_{self._entry_id}"
+            f"powerclimate_text_{prefix}_behavior_{self._entry_id}"
         )
         friendly = entry_friendly_name(entry)
         self._attr_name = f"{friendly} {label} Behavior"

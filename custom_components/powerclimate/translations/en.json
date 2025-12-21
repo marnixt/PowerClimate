@@ -35,11 +35,13 @@
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
           "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
+          "allow_on_off_control": "Allow PowerClimate to turn device on and off",
           "add_another_device": "Add another HP after this"
         },
         "data_description": {
           "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset.",
+          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this assist heat pump on or off based on system needs."
         }
       }
     },
@@ -55,6 +57,14 @@
   "options": {
     "step": {
       "init": {
+        "title": "PowerClimate options",
+        "description": "What would you like to change?",
+        "menu_options": {
+          "edit_setup": "Edit setup (name, room sensors, devices)",
+          "advanced": "Advanced options"
+        }
+      },
+      "edit_setup": {
         "title": "Update PowerClimate",
         "description": "Rename the integration or change the room temperature sensors.",
         "data": {
@@ -88,11 +98,39 @@
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
           "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
+          "allow_on_off_control": "Allow PowerClimate to turn device on and off",
           "add_another_device": "Add another HP after this"
         },
         "data_description": {
           "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset.",
+          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this assist heat pump on or off based on system needs."
+        }
+      },
+      "advanced": {
+        "title": "Advanced Options",
+        "description": "Fine-tune PowerClimate behavior. Leave fields empty to use defaults. Changes take effect immediately.",
+        "data": {
+          "min_setpoint_override": "Min setpoint override (°C)",
+          "max_setpoint_override": "Max setpoint override (°C)",
+          "assist_timer_seconds": "Assist timer duration (seconds)",
+          "assist_on_eta_threshold_minutes": "ON: ETA threshold (minutes)",
+          "assist_off_eta_threshold_minutes": "OFF: ETA threshold (minutes)",
+          "assist_min_on_minutes": "Anti-short-cycle: minimum ON time (minutes)",
+          "assist_min_off_minutes": "Anti-short-cycle: minimum OFF time (minutes)",
+          "assist_water_temp_threshold": "Water temperature threshold (°C)",
+          "assist_stall_temp_delta": "Stall temperature delta (°C)"
+        },
+        "data_description": {
+          "min_setpoint_override": "Absolute minimum temperature sent to any pump (default: 16°C)",
+          "max_setpoint_override": "Absolute maximum temperature sent to any pump (default: 30°C)",
+          "assist_timer_seconds": "Duration a condition must remain true before action is taken (default: 300s)",
+          "assist_on_eta_threshold_minutes": "Turn assist pumps ON if ETA exceeds this (default: 60min)",
+          "assist_off_eta_threshold_minutes": "Turn assist pumps OFF if ETA drops below this (default: 15min)",
+          "assist_min_on_minutes": "Block turning assist pumps OFF until they've been ON for at least this long (default: 20min)",
+          "assist_min_off_minutes": "Block turning assist pumps ON until they've been OFF for at least this long (default: 10min)",
+          "assist_water_temp_threshold": "Turn assist pumps ON when water reaches this temperature (default: 40°C)",
+          "assist_stall_temp_delta": "Temperature difference threshold for stall detection (default: 0.5°C)"
         }
       }
     },

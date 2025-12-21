@@ -9,6 +9,14 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
 from .const import (
+    CONF_ALLOW_ON_OFF_CONTROL,
+    CONF_ASSIST_MIN_OFF_MINUTES,
+    CONF_ASSIST_MIN_ON_MINUTES,
+    CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
+    CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
+    CONF_ASSIST_STALL_TEMP_DELTA,
+    CONF_ASSIST_TIMER_SECONDS,
+    CONF_ASSIST_WATER_TEMP_THRESHOLD,
     CONF_CLIMATE_ENTITY,
     CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_ID,
@@ -17,12 +25,21 @@ from .const import (
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_LOWER_SETPOINT_OFFSET,
+    CONF_MAX_SETPOINT_OVERRIDE,
+    CONF_MIN_SETPOINT_OVERRIDE,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
     CONF_WATER_SENSOR,
+    DEFAULT_ASSIST_MIN_OFF_MINUTES,
+    DEFAULT_ASSIST_MIN_ON_MINUTES,
+    DEFAULT_ASSIST_STALL_TEMP_DELTA,
+    DEFAULT_ASSIST_TIMER_SECONDS,
+    DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
     DEFAULT_ENTRY_NAME,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
+    DEFAULT_MAX_SETPOINT,
+    DEFAULT_MIN_SETPOINT,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DOMAIN,
@@ -40,10 +57,18 @@ def _text_selector() -> Any:
     return selector({"text": {}})
 
 
-def _offset_number_selector() -> Any:
+def _offset_number_selector(min_val: float = -10, max_val: float = 10) -> Any:
     # Use a numeric selector so defaults can be passed as floats and the UI
     # provides a proper number input. Step and bounds are generous.
-    return selector({"number": {"min": -10, "max": 10, "step": 0.1}})
+    return selector({"number": {"min": min_val, "max": max_val, "step": 0.1}})
+
+
+def _lower_offset_selector() -> Any:
+    return selector({"number": {"min": -5, "max": 0, "step": 0.1}})
+
+
+def _upper_offset_selector() -> Any:
+    return selector({"number": {"min": 0, "max": 5, "step": 0.1}})
 
 
 def _required_field(
@@ -225,13 +250,13 @@ def _build_hp1_schema(defaults: dict[str, Any]) -> vol.Schema:
         CONF_LOWER_SETPOINT_OFFSET,
         defaults,
         schema_fields,
-        _offset_number_selector(),
+        _lower_offset_selector(),
     )
     _optional_field(
         CONF_UPPER_SETPOINT_OFFSET,
         defaults,
         schema_fields,
-        _offset_number_selector(),
+        _upper_offset_selector(),
     )
     schema_fields[vol.Optional(
         CONF_COPY_SETPOINT_TO_POWERCLIMATE,
@@ -327,6 +352,7 @@ def _additional_form_defaults(
         DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     )
     defaults.setdefault(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
+    defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
     defaults.setdefault(ADD_ANOTHER_DEVICE_FIELD, has_pending_defaults)
     if user_input:
         defaults.update(user_input)
@@ -355,17 +381,21 @@ def _build_additional_schema(
         CONF_LOWER_SETPOINT_OFFSET,
         defaults,
         schema_fields,
-        _offset_number_selector(),
+        _lower_offset_selector(),
     )
     _optional_field(
         CONF_UPPER_SETPOINT_OFFSET,
         defaults,
         schema_fields,
-        _offset_number_selector(),
+        _upper_offset_selector(),
     )
     schema_fields[vol.Optional(
         CONF_COPY_SETPOINT_TO_POWERCLIMATE,
         default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
+    )] = bool
+    schema_fields[vol.Optional(
+        CONF_ALLOW_ON_OFF_CONTROL,
+        default=defaults.get(CONF_ALLOW_ON_OFF_CONTROL, False),
     )] = bool
     schema_fields[vol.Optional(
         ADD_ANOTHER_DEVICE_FIELD,
@@ -424,6 +454,9 @@ def _build_additional_device_data(
         CONF_ENERGY_SENSOR: energy_sensor,
         CONF_COPY_SETPOINT_TO_POWERCLIMATE: bool(
             user_input.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
+        ),
+        CONF_ALLOW_ON_OFF_CONTROL: bool(
+            user_input.get(CONF_ALLOW_ON_OFF_CONTROL, False)
         ),
         CONF_LOWER_SETPOINT_OFFSET: lower_offset,
         CONF_UPPER_SETPOINT_OFFSET: upper_offset,
@@ -643,19 +676,36 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
         self._used_ids: set[str] = set()
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        # Start with a simple menu so users can change advanced behavior
+        # without having to reconfigure all devices.
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=[
+                "edit_setup",
+                "advanced",
+            ],
+        )
+
+    async def async_step_edit_setup(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ):
+        """Edit the general setup (name + room sensors), then devices."""
         errors: dict[str, str] = {}
         if user_input is not None:
             entry_name, data, errors = _process_global_input(
-                user_input, self._base,
+                user_input,
+                self._base,
             )
             if not errors:
                 self._entry_name = entry_name or self._entry_name
                 self._entry_data = data
                 return await self.async_step_primary()
+
         defaults = _global_form_defaults(self._base, user_input)
         schema = _build_global_schema(defaults)
         return self.async_show_form(
-            step_id="init",
+            step_id="edit_setup",
             data_schema=schema,
             errors=errors,
         )
@@ -743,12 +793,53 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders=placeholders,
         )
 
+    async def async_step_advanced(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ):
+        """Handle advanced/expert configuration options."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            # Validate and store advanced options
+            advanced_data = _process_advanced_input(user_input)
+            self._entry_data.update(advanced_data)
+            return await self._create_options_entry()
+
+        defaults = _advanced_form_defaults(self._base, user_input)
+        schema = _build_advanced_schema(defaults)
+        return self.async_show_form(
+            step_id="advanced",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "timer_desc": (
+                    "Duration in seconds that a condition must remain true "
+                    "before action is taken"
+                ),
+                "eta_on_desc": "Turn assist pumps ON if ETA exceeds this many hours",
+                "eta_off_desc": (
+                    "Turn assist pumps OFF if ETA drops below this many hours "
+                    "(15min = 0.25)"
+                ),
+                "water_temp_desc": (
+                    "Turn assist pumps ON if water temperature reaches this threshold"
+                ),
+                "stall_delta_desc": "Temperature difference threshold for stall detection",
+            },
+        )
+
     async def _create_options_entry(self):
+        # If the user only edited Advanced options, keep existing devices.
+        if not self._primary_device and self._base_primary:
+            self._primary_device = dict(self._base_primary)
+
         if not self._primary_device:
             return await self.async_step_primary()
-        devices = [self._primary_device] + [
-            dict(device) for device in self._device_state.devices
-        ]
+
+        additional_devices = (
+            self._device_state.devices if self._device_state.devices else self._base_additional
+        )
+        devices = [self._primary_device] + [dict(device) for device in additional_devices]
         data = dict(self._entry_data)
         data[CONF_DEVICES] = devices
 
@@ -802,3 +893,173 @@ def _entry_name_from_input(
         return DEFAULT_ENTRY_NAME
     text = str(raw).strip()
     return text or DEFAULT_ENTRY_NAME
+
+
+def _build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build the schema for advanced/expert options."""
+    schema_fields: dict[Any, Any] = {}
+
+    _optional_field(
+        CONF_MIN_SETPOINT_OVERRIDE,
+        defaults,
+        schema_fields,
+        selector({"number": {"min": 10, "max": 25, "step": 0.5, "unit_of_measurement": "°C"}}),
+    )
+    _optional_field(
+        CONF_MAX_SETPOINT_OVERRIDE,
+        defaults,
+        schema_fields,
+        selector({"number": {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C"}}),
+    )
+    _optional_field(
+        CONF_ASSIST_TIMER_SECONDS,
+        defaults,
+        schema_fields,
+        selector({"number": {"min": 60, "max": 900, "step": 30, "unit_of_measurement": "s"}}),
+    )
+    _optional_field(
+        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
+        defaults,
+        schema_fields,
+        selector(
+            {
+                "number": {
+                    "min": 5,
+                    "max": 600,
+                    "step": 1,
+                    "unit_of_measurement": "min",
+                }
+            }
+        ),
+    )
+    _optional_field(
+        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
+        defaults,
+        schema_fields,
+        selector(
+            {
+                "number": {
+                    "min": 1,
+                    "max": 120,
+                    "step": 1,
+                    "unit_of_measurement": "min",
+                }
+            }
+        ),
+    )
+    _optional_field(
+        CONF_ASSIST_MIN_ON_MINUTES,
+        defaults,
+        schema_fields,
+        selector(
+            {
+                "number": {
+                    "min": 0,
+                    "max": 180,
+                    "step": 1,
+                    "unit_of_measurement": "min",
+                }
+            }
+        ),
+    )
+    _optional_field(
+        CONF_ASSIST_MIN_OFF_MINUTES,
+        defaults,
+        schema_fields,
+        selector(
+            {
+                "number": {
+                    "min": 0,
+                    "max": 180,
+                    "step": 1,
+                    "unit_of_measurement": "min",
+                }
+            }
+        ),
+    )
+    _optional_field(
+        CONF_ASSIST_WATER_TEMP_THRESHOLD,
+        defaults,
+        schema_fields,
+        selector({"number": {"min": 30, "max": 55, "step": 1, "unit_of_measurement": "°C"}}),
+    )
+    _optional_field(
+        CONF_ASSIST_STALL_TEMP_DELTA,
+        defaults,
+        schema_fields,
+        selector({"number": {"min": 0.1, "max": 2, "step": 0.1, "unit_of_measurement": "°C"}}),
+    )
+
+    return vol.Schema(schema_fields)
+
+
+def _advanced_form_defaults(
+    base: dict[str, Any],
+    user_input: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build defaults for advanced form."""
+    if user_input:
+        return dict(user_input)
+
+    defaults: dict[str, Any] = {}
+
+    # Pull from existing config or use defaults
+    defaults[CONF_MIN_SETPOINT_OVERRIDE] = base.get(
+        CONF_MIN_SETPOINT_OVERRIDE, DEFAULT_MIN_SETPOINT
+    )
+    defaults[CONF_MAX_SETPOINT_OVERRIDE] = base.get(
+        CONF_MAX_SETPOINT_OVERRIDE, DEFAULT_MAX_SETPOINT
+    )
+    defaults[CONF_ASSIST_TIMER_SECONDS] = base.get(
+        CONF_ASSIST_TIMER_SECONDS, DEFAULT_ASSIST_TIMER_SECONDS
+    )
+
+    # Use only minute-based thresholds (legacy hour-based support removed)
+    defaults[CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES] = base.get(
+        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
+        None,
+    )
+    defaults[CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES] = base.get(
+        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
+        None,
+    )
+
+    defaults[CONF_ASSIST_MIN_ON_MINUTES] = base.get(
+        CONF_ASSIST_MIN_ON_MINUTES,
+        DEFAULT_ASSIST_MIN_ON_MINUTES,
+    )
+    defaults[CONF_ASSIST_MIN_OFF_MINUTES] = base.get(
+        CONF_ASSIST_MIN_OFF_MINUTES,
+        DEFAULT_ASSIST_MIN_OFF_MINUTES,
+    )
+    defaults[CONF_ASSIST_WATER_TEMP_THRESHOLD] = base.get(
+        CONF_ASSIST_WATER_TEMP_THRESHOLD, DEFAULT_ASSIST_WATER_TEMP_THRESHOLD
+    )
+    defaults[CONF_ASSIST_STALL_TEMP_DELTA] = base.get(
+        CONF_ASSIST_STALL_TEMP_DELTA, DEFAULT_ASSIST_STALL_TEMP_DELTA
+    )
+
+    return defaults
+
+
+def _process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Process and validate advanced options input."""
+    result: dict[str, Any] = {}
+
+    # Store all advanced options
+    for key in [
+        CONF_MIN_SETPOINT_OVERRIDE,
+        CONF_MAX_SETPOINT_OVERRIDE,
+        CONF_ASSIST_TIMER_SECONDS,
+        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
+        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
+        CONF_ASSIST_MIN_ON_MINUTES,
+        CONF_ASSIST_MIN_OFF_MINUTES,
+        CONF_ASSIST_WATER_TEMP_THRESHOLD,
+        CONF_ASSIST_STALL_TEMP_DELTA,
+    ]:
+        if key in user_input:
+            result[key] = user_input[key]
+
+    return result
+
