@@ -8,8 +8,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import (
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
-    CONF_ROOM_SENSORS,
     CONF_ROOM_SENSOR_VALUES,
+    CONF_ROOM_SENSORS,
     CONF_ROOM_TEMPERATURE_KEY,
     CONF_WATER_SENSOR,
     DEFAULT_SCAN_INTERVAL,

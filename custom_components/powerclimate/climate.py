@@ -157,9 +157,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._delta: float | None = None
         self._summary_signal = summary_signal(entry.entry_id)
         self._water_temperature: float | None = None
-        self._devices_snapshot: list[dict[str, Any]] = []
-        self._device_payload_cache: dict[str, dict[str, Any]] = {}
-        self._hp_status_snapshot: list[dict[str, Any]] = []
+        self._summary_payload: dict[str, Any] | None = None
         self._room_eta_hours: float | None = None
         self._assist_modes: dict[str, str] = {}
         self._hp_state_unsubs: dict[str, Callable[[], None]] = {}
@@ -268,24 +266,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 datetime.now(timezone.utc) - self._eta_exceeded_since
             ).total_seconds() / 60.0  # in minutes
 
-        return {
-            "active_devices": sorted(self._active_devices),
-            "stage_count": len(self._active_devices),
-            "mode": self._mode_state,
-            "delta": self._delta,
-            "room_temperature": self.current_temperature,
-            "room_sensor_values": self.coordinator.data.get(
-                CONF_ROOM_SENSOR_VALUES
-            ),
-            "derivative": self.coordinator.data.get("room_derivative"),
-            "room_eta_hours": self._room_eta_hours,
-            "eta_exceeded_duration_minutes": eta_exceeded_duration,
-            "eta_threshold_met": eta_exceeded_duration is not None and eta_exceeded_duration >= 5.0,
-            "water_temperature": self._water_temperature,
-            "water_derivative": self.coordinator.data.get("water_derivative"),
-            "hp_status": self._hp_status_snapshot,
-            "preset_mode": self._attr_preset_mode,
-        }
+        base = dict(self._summary_payload or {})
+        base["eta_exceeded_duration_minutes"] = eta_exceeded_duration
+        base["eta_threshold_met"] = (
+            eta_exceeded_duration is not None and eta_exceeded_duration >= 5.0
+        )
+        return base
 
     async def _apply_boost_mode(self) -> None:
         """Apply boost preset: set controllable heat pumps to HEAT, then boost all HEAT pumps."""
@@ -344,19 +330,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             else:
                 _LOGGER.warning("Boost mode: No current temperature for %s", entity_id)
 
-        # Update snapshot for sensors
-        self._devices_snapshot = [dict(device) for device in devices]
-        self._device_payload_cache = device_payloads
-
         self.async_write_ha_state()
-        self._emit_summary()
+        self._emit_summary(devices, device_payloads)
 
     async def _apply_staging(self) -> None:
         config = merged_entry_data(self._entry)
         devices = config.get(CONF_DEVICES, [])
         device_payloads = self._coordinator_devices()
-        self._devices_snapshot = [dict(device) for device in devices]
-        self._device_payload_cache = device_payloads
         self._copy_enabled_entities = {
             device.get(CONF_CLIMATE_ENTITY)
             for device in devices
@@ -376,10 +356,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._update_mode("off")
             self._delta = None
             self._water_temperature = None
-            self._hp_status_snapshot = []
             self._assist_modes = {}
             self.async_write_ha_state()
-            self._emit_summary()
+            self._emit_summary([], device_payloads)
             return
 
         hvac_disabled = (
@@ -756,7 +735,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._water_temperature = water_temp
         self._update_mode(mode)
         self.async_write_ha_state()
-        self._emit_summary()
+        self._emit_summary(devices, device_payloads)
 
     async def _sync_devices(
         self,
@@ -902,14 +881,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if mode != self._mode_state:
             self._mode_state = mode
 
-    def _build_hp_status(self) -> list[dict[str, Any]]:
+    def _build_hp_status(
+        self,
+        devices: list[dict[str, Any]],
+        device_payloads: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         status: list[dict[str, Any]] = []
         coordinator_data = self.coordinator.data or {}
-        for index, device in enumerate(self._devices_snapshot):
+        for index, device in enumerate(devices):
             entity_id = device.get(CONF_CLIMATE_ENTITY)
             if not entity_id:
                 continue
-            payload = self._device_payload_cache.get(entity_id, {}) or {}
+            payload = device_payloads.get(entity_id, {}) or {}
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
             is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
 
@@ -974,11 +957,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             status.append(hp_info)
         return status
 
-    def _emit_summary(self) -> None:
+    def _emit_summary(
+        self,
+        devices: list[dict[str, Any]],
+        device_payloads: dict[str, dict[str, Any]],
+    ) -> None:
         config = merged_entry_data(self._entry)
         target_temp = self._current_target_temperature()
-        hp_status = self._build_hp_status()
-        self._hp_status_snapshot = hp_status
+        hp_status = self._build_hp_status(devices, device_payloads)
         payload = {
             "mode": self._mode_state,
             "stage_count": len(self._active_devices),
@@ -1019,6 +1005,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 DEFAULT_ASSIST_MIN_OFF_MINUTES,
             ),
         }
+
+        self._summary_payload = payload
 
         entry_data = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id)
         if entry_data is not None:

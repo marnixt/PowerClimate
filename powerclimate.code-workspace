@@ -7,5 +7,7 @@
 			"path": "Z:/"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"powershell.cwd": "powerclimate"
+	}
 }
