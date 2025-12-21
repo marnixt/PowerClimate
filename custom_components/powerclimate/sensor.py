@@ -62,10 +62,11 @@ class _TranslationMixin:
 
     def _format_temp_pair(self, label: str, current, target) -> str:
         none_text = self._t("value_none", "none")
-        if isinstance(current, (int, float)) and isinstance(target, (int, float)):
-            return f"{label} {current:.1f}°C→{target:.1f}°C"
         if isinstance(current, (int, float)):
-            return f"{label} {current:.1f}°C"
+            parts = [f"{label} {current:.1f}°C"]
+            if isinstance(target, (int, float)):
+                parts.append(f"→{target:.1f}°C")
+            return "".join(parts)
         if isinstance(target, (int, float)):
             return f"{label} →{target:.1f}°C"
         return f"{label} {none_text}"
@@ -78,22 +79,19 @@ class _TranslationMixin:
         if eta_hours >= 1:
             return f"{label} {eta_hours:.1f}h"
         minutes = eta_hours * 60.0
-        if minutes >= 1:
-            return f"{label} {minutes:.0f}m"
-        seconds = minutes * 60.0
-        return f"{label} {seconds:.0f}s"
+        return f"{label} {minutes:.0f}m" if minutes >= 1 else f"{label} {minutes * 60:.0f}s"
 
     def _format_derivative_fragment(self, label: str, value) -> str:
-        none_text = self._t("value_none", "none")
-        if isinstance(value, (int, float)):
-            return f"{label} {value:.1f}°C/h"
-        return f"{label} {none_text}"
+        return (
+            f"{label} {value:.1f}°C/h"
+            if isinstance(value, (int, float))
+            else f"{label} {self._t('value_none', 'none')}"
+        )
 
     def _format_power_w(self, value) -> str | None:
         if not isinstance(value, (int, float)):
             return None
-        power_label = self._t("label_power", "Power")
-        return f"{power_label} {round(value)} W"
+        return f"{self._t('label_power', 'Power')} {round(value)} W"
 
     @staticmethod
     def _short_hp_label(raw_label: object, role: str) -> str:
@@ -338,8 +336,18 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
         parts.append(room_derivative)
         parts.append(room_eta)
 
-        # Compute total power from configured energy sensors (if any), but use
-        # the numeric readings already present in the summary payload.
+        # Aggregate power from configured energy sensors
+        power_text = self._aggregate_power(payload)
+        if power_text:
+            parts.append(power_text)
+
+        return " | ".join(parts)
+
+    def _aggregate_power(self, payload: dict | None) -> str | None:
+        """Aggregate total power from all configured heat pumps."""
+        if not payload:
+            return None
+
         config = merged_entry_data(self._entry)
         devices = config.get(CONF_DEVICES, [])
         hp_status = payload.get("hp_status") or []
@@ -349,25 +357,20 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
             if hp.get("entity_id")
         }
 
-        configured_sources = 0
-        active_sources = 0
-        total = 0.0
+        configured_sources = sum(1 for d in devices if d.get(CONF_ENERGY_SENSOR))
+        if configured_sources == 0:
+            return None
 
-        for device in devices:
-            if not device.get(CONF_ENERGY_SENSOR):
-                continue
-            configured_sources += 1
-            entity_id = device.get(CONF_CLIMATE_ENTITY)
-            value = energy_by_entity.get(entity_id) if entity_id else None
-            if isinstance(value, (int, float)):
-                total += float(value)
-                active_sources += 1
+        total = sum(
+            float(energy_by_entity[d.get(CONF_CLIMATE_ENTITY)])
+            for d in devices
+            if d.get(CONF_ENERGY_SENSOR)
+            and d.get(CONF_CLIMATE_ENTITY)
+            and isinstance(energy_by_entity.get(d.get(CONF_CLIMATE_ENTITY)), (int, float))
+        )
 
-        if configured_sources > 0:
-            power_label = self._t("label_power", "Power")
-            parts.append(f"{power_label} {0 if active_sources == 0 else round(total)} W")
-
-        return " | ".join(parts)
+        power_label = self._t("label_power", "Power")
+        return f"{power_label} {round(total)} W"
 
     def _format_room_average(
         self,
@@ -377,24 +380,23 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
         if not readings and not isinstance(average, (int, float)):
             return None
 
-        samples: list[str] = []
-        if isinstance(readings, list):
-            for value in readings:
-                if isinstance(value, (int, float)):
-                    samples.append(f"{value:.1f}°C")
-
         avg_label = self._t("label_avg_room", "Avg room")
         avg_func = self._t("label_avg_func", "avg")
+        none_text = self._t("value_none", "none")
+
+        samples = [
+            f"{value:.1f}°C"
+            for value in (readings or [])
+            if isinstance(value, (int, float))
+        ]
+
         if samples and isinstance(average, (int, float)):
-            inner = " ".join(samples)
-            return f"{avg_label} = {avg_func}({inner}) = {average:.1f}°C"
+            return f"{avg_label} = {avg_func}({' '.join(samples)}) = {average:.1f}°C"
         if samples:
-            inner = " ".join(samples)
-            none_text = self._t("value_none", "none")
-            return f"{avg_label} = {avg_func}({inner}) = {none_text}"
+            return f"{avg_label} = {avg_func}({' '.join(samples)}) = {none_text}"
         if isinstance(average, (int, float)):
             return f"{avg_label} = {average:.1f}°C"
-        return f"{avg_label} = {self._t('value_none', 'none')}"
+        return f"{avg_label} = {none_text}"
 
 
 class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
@@ -414,14 +416,9 @@ class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
     def _format_payload(self, payload: dict | None) -> str:
         return self._format_assist_summary(payload)
 
-    def _format_assist_summary(self, payload: dict | None) -> str:
-        """Format assist pump control logic into a human-readable summary."""
-        if not payload:
-            return self._t("unavailable", "unavailable")
-
+    def _format_room_state_overview(self, payload: dict) -> list[str]:
+        """Format room temperature, derivative, and ETA information."""
         parts: list[str] = []
-
-        # Room state overview
         room_temp = payload.get("room_temperature")
         target_temp = payload.get("target_temperature")
         derivative = payload.get("derivative")
@@ -437,7 +434,6 @@ class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
                 f"({target_label} {target_temp:.1f}°C, {delta_label}{delta:+.1f}°C)"
             )
 
-        # Room derivative
         if isinstance(derivative, (int, float)):
             trend_label = self._t("label_trend", "Trend")
             if derivative > 0:
@@ -448,15 +444,25 @@ class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
                 trend = self._t("trend_stable", "stable")
             parts.append(f"{trend_label}: {trend} ({derivative:+.1f}°C/h)")
 
-        # ETA
         if isinstance(eta_hours, (int, float)) and eta_hours > 0:
             eta_label = self._t("label_eta", "ETA")
             hours_unit = self._t("unit_hours_short", "h")
             minutes_unit = self._t("unit_minutes_short", "min")
-            if eta_hours >= 1:
-                parts.append(f"{eta_label}: {eta_hours:.1f}{hours_unit}")
-            else:
-                parts.append(f"{eta_label}: {int(eta_hours * 60)}{minutes_unit}")
+            eta_text = (
+                f"{eta_hours:.1f}{hours_unit}"
+                if eta_hours >= 1
+                else f"{int(eta_hours * 60)}{minutes_unit}"
+            )
+            parts.append(f"{eta_label}: {eta_text}")
+
+        return parts
+
+    def _format_assist_summary(self, payload: dict | None) -> str:
+        """Format assist pump control logic into a human-readable summary."""
+        if not payload:
+            return self._t("unavailable", "unavailable")
+
+        parts = self._format_room_state_overview(payload)
 
         assist_timer_seconds = payload.get("assist_timer_seconds")
         eta_on_minutes = payload.get("assist_on_eta_threshold_minutes")

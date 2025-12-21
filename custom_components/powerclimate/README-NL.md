@@ -84,6 +84,6 @@ Algemene best practices (samengevat uit gangbare community-adviezen; controleer 
 - Water-/hybride warmtepompen (HP1): als het een hybride toestel is, voorkom inschakelen van de CV-ketel door de cv-aanvoertemperatuur (CH max) in te stellen op ~45°C 
 
 ## Volgende stappen
-- Anti-short-cycle en ETA-drempels finetunen via Advanced options.
 - Energie- of COP-data gebruiken voor economische keuzes.
-- Unit tests uitbreiden voor gedragssensoren en assist-logica.
+- boost HP1 voordat de assist heatpump uit gaat
+- combineer keep on 

@@ -899,96 +899,26 @@ def _build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for advanced/expert options."""
     schema_fields: dict[Any, Any] = {}
 
-    _optional_field(
-        CONF_MIN_SETPOINT_OVERRIDE,
-        defaults,
-        schema_fields,
-        selector({"number": {"min": 10, "max": 25, "step": 0.5, "unit_of_measurement": "°C"}}),
-    )
-    _optional_field(
-        CONF_MAX_SETPOINT_OVERRIDE,
-        defaults,
-        schema_fields,
-        selector({"number": {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C"}}),
-    )
-    _optional_field(
-        CONF_ASSIST_TIMER_SECONDS,
-        defaults,
-        schema_fields,
-        selector({"number": {"min": 60, "max": 900, "step": 30, "unit_of_measurement": "s"}}),
-    )
-    _optional_field(
-        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-        defaults,
-        schema_fields,
-        selector(
-            {
-                "number": {
-                    "min": 5,
-                    "max": 600,
-                    "step": 1,
-                    "unit_of_measurement": "min",
-                }
-            }
-        ),
-    )
-    _optional_field(
-        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-        defaults,
-        schema_fields,
-        selector(
-            {
-                "number": {
-                    "min": 1,
-                    "max": 120,
-                    "step": 1,
-                    "unit_of_measurement": "min",
-                }
-            }
-        ),
-    )
-    _optional_field(
-        CONF_ASSIST_MIN_ON_MINUTES,
-        defaults,
-        schema_fields,
-        selector(
-            {
-                "number": {
-                    "min": 0,
-                    "max": 180,
-                    "step": 1,
-                    "unit_of_measurement": "min",
-                }
-            }
-        ),
-    )
-    _optional_field(
-        CONF_ASSIST_MIN_OFF_MINUTES,
-        defaults,
-        schema_fields,
-        selector(
-            {
-                "number": {
-                    "min": 0,
-                    "max": 180,
-                    "step": 1,
-                    "unit_of_measurement": "min",
-                }
-            }
-        ),
-    )
-    _optional_field(
-        CONF_ASSIST_WATER_TEMP_THRESHOLD,
-        defaults,
-        schema_fields,
-        selector({"number": {"min": 30, "max": 55, "step": 1, "unit_of_measurement": "°C"}}),
-    )
-    _optional_field(
-        CONF_ASSIST_STALL_TEMP_DELTA,
-        defaults,
-        schema_fields,
-        selector({"number": {"min": 0.1, "max": 2, "step": 0.1, "unit_of_measurement": "°C"}}),
-    )
+    # Data-driven approach for advanced options
+    advanced_fields = [
+        (CONF_MIN_SETPOINT_OVERRIDE, {"min": 10, "max": 25, "step": 0.5, "unit_of_measurement": "°C"}),
+        (CONF_MAX_SETPOINT_OVERRIDE, {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C"}),
+        (CONF_ASSIST_TIMER_SECONDS, {"min": 60, "max": 900, "step": 30, "unit_of_measurement": "s"}),
+        (CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES, {"min": 5, "max": 600, "step": 1, "unit_of_measurement": "min"}),
+        (CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES, {"min": 1, "max": 120, "step": 1, "unit_of_measurement": "min"}),
+        (CONF_ASSIST_MIN_ON_MINUTES, {"min": 0, "max": 180, "step": 1, "unit_of_measurement": "min"}),
+        (CONF_ASSIST_MIN_OFF_MINUTES, {"min": 0, "max": 180, "step": 1, "unit_of_measurement": "min"}),
+        (CONF_ASSIST_WATER_TEMP_THRESHOLD, {"min": 30, "max": 55, "step": 1, "unit_of_measurement": "°C"}),
+        (CONF_ASSIST_STALL_TEMP_DELTA, {"min": 0.1, "max": 2, "step": 0.1, "unit_of_measurement": "°C"}),
+    ]
+
+    for field_name, selector_config in advanced_fields:
+        _optional_field(
+            field_name,
+            defaults,
+            schema_fields,
+            selector({"number": selector_config}),
+        )
 
     return vol.Schema(schema_fields)
 
@@ -1001,53 +931,26 @@ def _advanced_form_defaults(
     if user_input:
         return dict(user_input)
 
-    defaults: dict[str, Any] = {}
+    # Data-driven defaults mapping
+    default_map = {
+        CONF_MIN_SETPOINT_OVERRIDE: DEFAULT_MIN_SETPOINT,
+        CONF_MAX_SETPOINT_OVERRIDE: DEFAULT_MAX_SETPOINT,
+        CONF_ASSIST_TIMER_SECONDS: DEFAULT_ASSIST_TIMER_SECONDS,
+        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES: None,
+        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES: None,
+        CONF_ASSIST_MIN_ON_MINUTES: DEFAULT_ASSIST_MIN_ON_MINUTES,
+        CONF_ASSIST_MIN_OFF_MINUTES: DEFAULT_ASSIST_MIN_OFF_MINUTES,
+        CONF_ASSIST_WATER_TEMP_THRESHOLD: DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
+        CONF_ASSIST_STALL_TEMP_DELTA: DEFAULT_ASSIST_STALL_TEMP_DELTA,
+    }
 
-    # Pull from existing config or use defaults
-    defaults[CONF_MIN_SETPOINT_OVERRIDE] = base.get(
-        CONF_MIN_SETPOINT_OVERRIDE, DEFAULT_MIN_SETPOINT
-    )
-    defaults[CONF_MAX_SETPOINT_OVERRIDE] = base.get(
-        CONF_MAX_SETPOINT_OVERRIDE, DEFAULT_MAX_SETPOINT
-    )
-    defaults[CONF_ASSIST_TIMER_SECONDS] = base.get(
-        CONF_ASSIST_TIMER_SECONDS, DEFAULT_ASSIST_TIMER_SECONDS
-    )
-
-    # Use only minute-based thresholds (legacy hour-based support removed)
-    defaults[CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES] = base.get(
-        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-        None,
-    )
-    defaults[CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES] = base.get(
-        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-        None,
-    )
-
-    defaults[CONF_ASSIST_MIN_ON_MINUTES] = base.get(
-        CONF_ASSIST_MIN_ON_MINUTES,
-        DEFAULT_ASSIST_MIN_ON_MINUTES,
-    )
-    defaults[CONF_ASSIST_MIN_OFF_MINUTES] = base.get(
-        CONF_ASSIST_MIN_OFF_MINUTES,
-        DEFAULT_ASSIST_MIN_OFF_MINUTES,
-    )
-    defaults[CONF_ASSIST_WATER_TEMP_THRESHOLD] = base.get(
-        CONF_ASSIST_WATER_TEMP_THRESHOLD, DEFAULT_ASSIST_WATER_TEMP_THRESHOLD
-    )
-    defaults[CONF_ASSIST_STALL_TEMP_DELTA] = base.get(
-        CONF_ASSIST_STALL_TEMP_DELTA, DEFAULT_ASSIST_STALL_TEMP_DELTA
-    )
-
-    return defaults
+    return {key: base.get(key, default_val) for key, default_val in default_map.items()}
 
 
 def _process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
     """Process and validate advanced options input."""
-    result: dict[str, Any] = {}
-
-    # Store all advanced options
-    for key in [
+    # All advanced option keys
+    advanced_keys = {
         CONF_MIN_SETPOINT_OVERRIDE,
         CONF_MAX_SETPOINT_OVERRIDE,
         CONF_ASSIST_TIMER_SECONDS,
@@ -1057,9 +960,8 @@ def _process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_ASSIST_MIN_OFF_MINUTES,
         CONF_ASSIST_WATER_TEMP_THRESHOLD,
         CONF_ASSIST_STALL_TEMP_DELTA,
-    ]:
-        if key in user_input:
-            result[key] = user_input[key]
+    }
+    
+    return {key: user_input[key] for key in advanced_keys if key in user_input}
 
-    return result
 

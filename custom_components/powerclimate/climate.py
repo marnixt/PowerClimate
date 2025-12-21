@@ -333,6 +333,73 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self.async_write_ha_state()
         self._emit_summary(devices, device_payloads)
 
+    def _check_assist_on_conditions(
+        self,
+        room_temp: float | None,
+        room_eta_minutes: float | None,
+        water_temp: float | None,
+        room_derivative: float | None,
+        eta_on_threshold: float,
+        water_temp_threshold: float,
+        stall_temp_delta: float,
+    ) -> tuple[bool, str]:
+        """Check if any assist pump ON condition is met."""
+        if (
+            room_eta_minutes is not None
+            and room_eta_minutes > eta_on_threshold
+            and room_temp is not None
+            and self._target_temperature is not None
+            and room_temp < self._target_temperature
+        ):
+            return True, "eta_high"
+
+        if water_temp is not None and water_temp >= water_temp_threshold:
+            return True, "water_hot"
+
+        if (
+            room_derivative is not None
+            and room_derivative <= 0.0
+            and room_temp is not None
+            and self._target_temperature is not None
+            and room_temp < (self._target_temperature - stall_temp_delta)
+        ):
+            return True, "stalled_below_target"
+
+        return False, ""
+
+    def _check_assist_off_conditions(
+        self,
+        room_temp: float | None,
+        room_eta_minutes: float | None,
+        room_derivative: float | None,
+        eta_off_threshold: float,
+        stall_temp_delta: float,
+    ) -> tuple[bool, str]:
+        """Check if any assist pump OFF condition is met."""
+        if (
+            room_eta_minutes is not None
+            and room_eta_minutes < eta_off_threshold
+        ):
+            return True, "eta_low"
+
+        if (
+            room_temp is not None
+            and self._target_temperature is not None
+            and room_temp >= self._target_temperature
+        ):
+            return True, "overshoot"
+
+        if (
+            room_derivative is not None
+            and room_derivative <= 0.0
+            and room_temp is not None
+            and self._target_temperature is not None
+            and (self._target_temperature - room_temp) <= stall_temp_delta
+        ):
+            return True, "stalled_at_target"
+
+        return False, ""
+
     async def _apply_staging(self) -> None:
         config = merged_entry_data(self._entry)
         devices = config.get(CONF_DEVICES, [])
@@ -503,65 +570,29 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                             self._assist_off_timers[entity] = 0.0
 
                         # Check mutually exclusive ON/OFF conditions
-                        # ON conditions use configurable thresholds
-                        on_condition_met = False
-                        on_condition_name = ""
-
                         room_eta_minutes = (
                             self._room_eta_hours * 60.0
                             if self._room_eta_hours is not None
                             else None
                         )
 
-                        if (
-                            room_eta_minutes is not None
-                            and room_eta_minutes > eta_on_threshold_minutes
-                            and room_temp is not None
-                            and self._target_temperature is not None
-                            and room_temp < self._target_temperature
-                        ):
-                            on_condition_met = True
-                            on_condition_name = "eta_high"
-                        elif water_temp is not None and water_temp >= water_temp_threshold:
-                            on_condition_met = True
-                            on_condition_name = "water_hot"
-                        elif (
-                            room_derivative is not None
-                            and room_derivative <= 0.0
-                            and room_temp is not None
-                            and self._target_temperature is not None
-                            and room_temp < (self._target_temperature - stall_temp_delta)
-                        ):
-                            on_condition_met = True
-                            on_condition_name = "stalled_below_target"
+                        on_condition_met, on_condition_name = self._check_assist_on_conditions(
+                            room_temp,
+                            room_eta_minutes,
+                            water_temp,
+                            room_derivative,
+                            eta_on_threshold_minutes,
+                            water_temp_threshold,
+                            stall_temp_delta,
+                        )
 
-                        # OFF conditions use configurable thresholds
-                        off_condition_met = False
-                        off_condition_name = ""
-
-                        if (
-                            room_eta_minutes is not None
-                            and room_eta_minutes < eta_off_threshold_minutes
-                        ):
-                            off_condition_met = True
-                            off_condition_name = "eta_low"
-                        elif (
-                            room_temp is not None
-                            and self._target_temperature is not None
-                            and room_temp >= self._target_temperature
-                        ):
-                            # Overshoot: start turning OFF irrespective of derivative.
-                            off_condition_met = True
-                            off_condition_name = "overshoot"
-                        elif (
-                            room_derivative is not None
-                            and room_derivative <= 0.0
-                            and room_temp is not None
-                            and self._target_temperature is not None
-                            and (self._target_temperature - room_temp) <= stall_temp_delta
-                        ):
-                            off_condition_met = True
-                            off_condition_name = "stalled_at_target"
+                        off_condition_met, off_condition_name = self._check_assist_off_conditions(
+                            room_temp,
+                            room_eta_minutes,
+                            room_derivative,
+                            eta_off_threshold_minutes,
+                            stall_temp_delta,
+                        )
 
                         # Mutually exclusive timer logic
                         if on_condition_met:
@@ -822,35 +853,32 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         return clamped
 
-    def _device_lower_offset(
+    def _calculate_device_offset(
         self,
         device: dict[str, Any],
         index: int,
+        offset_type: str,
     ) -> float:
-        value = device.get(CONF_LOWER_SETPOINT_OFFSET)
-        parsed = _parse_device_offset(value)
-        if parsed is not None:
-            return parsed
-        return (
-            DEFAULT_LOWER_SETPOINT_OFFSET_HP1
-            if index == 0
-            else DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
-        )
+        """Calculate device offset (lower or upper) with defaults based on role."""
+        if offset_type == "lower":
+            value = device.get(CONF_LOWER_SETPOINT_OFFSET)
+            default_hp1 = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
+            default_assist = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
+        else:  # upper
+            value = device.get(CONF_UPPER_SETPOINT_OFFSET)
+            default_hp1 = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
+            default_assist = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
 
-    def _device_upper_offset(
-        self,
-        device: dict[str, Any],
-        index: int,
-    ) -> float:
-        value = device.get(CONF_UPPER_SETPOINT_OFFSET)
         parsed = _parse_device_offset(value)
         if parsed is not None:
             return parsed
-        return (
-            DEFAULT_UPPER_SETPOINT_OFFSET_HP1
-            if index == 0
-            else DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
-        )
+        return default_hp1 if index == 0 else default_assist
+
+    def _device_lower_offset(self, device: dict[str, Any], index: int) -> float:
+        return self._calculate_device_offset(device, index, "lower")
+
+    def _device_upper_offset(self, device: dict[str, Any], index: int) -> float:
+        return self._calculate_device_offset(device, index, "upper")
 
     def _coordinator_devices(self) -> dict[str, dict[str, Any]]:
         payloads: dict[str, dict[str, Any]] = {}
@@ -1046,13 +1074,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         self._pending_state_refresh = True
 
-        async def _refresh() -> None:
+        async def async_refresh_coordinator() -> None:
             try:
                 await self.coordinator.async_request_refresh()
             finally:
                 self._pending_state_refresh = False
 
-        self.hass.async_create_task(_refresh())
+        self.hass.async_create_task(async_refresh_coordinator())
 
     def _state_context_is_integration(self, state) -> bool:
         if not state or not state.context:
@@ -1145,45 +1173,37 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 return float(value)
         return self._target_temperature
 
-    async def _ensure_device_mode(
+    async def _call_climate_service(
         self,
         entity_id: str,
-        mode: HVACMode,
+        service_name: str,
+        service_data: dict[str, Any],
+        action_description: str,
     ) -> None:
-        # Do not change device modes while PowerClimate is OFF.
+        """Common helper for calling climate services with error handling."""
         if self.hvac_mode == HVACMode.OFF:
             _LOGGER.debug(
-                "PowerClimate is OFF; skipping mode change for %s to %s",
+                "PowerClimate is OFF; skipping %s for %s",
+                action_description,
                 entity_id,
-                mode,
             )
             return
-        if self._device_modes.get(entity_id) == mode:
-            return
-        if self._recent_call(self._last_mode_call, entity_id):
-            _LOGGER.debug(
-                "Skipping HVAC mode set for %s due to cooldown", entity_id
-            )
-            return
+
         try:
             await asyncio.wait_for(
                 self.hass.services.async_call(
                     CLIMATE_DOMAIN,
-                    SERVICE_SET_HVAC_MODE,
-                    {
-                        ATTR_ENTITY_ID: entity_id,
-                        ATTR_HVAC_MODE: mode,
-                    },
+                    service_name,
+                    service_data,
                     blocking=True,
                     context=self._integration_context,
                 ),
                 timeout=SERVICE_CALL_TIMEOUT_SECONDS,
             )
-            self._device_modes[entity_id] = mode
-            self._mark_call(self._last_mode_call, entity_id)
         except asyncio.TimeoutError:
             _LOGGER.warning(
-                "Setting HVAC mode for %s timed out after %ss",
+                "%s for %s timed out after %ss",
+                action_description.capitalize(),
                 entity_id,
                 SERVICE_CALL_TIMEOUT_SECONDS,
             )
@@ -1191,29 +1211,44 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             _LOGGER.error(
                 "Service %s.%s not found for %s",
                 CLIMATE_DOMAIN,
-                SERVICE_SET_HVAC_MODE,
+                service_name,
                 entity_id,
             )
         except HomeAssistantError as err:
             _LOGGER.warning(
-                "Failed to set HVAC mode for %s: %s",
+                "Failed %s for %s: %s",
+                action_description,
                 entity_id,
                 err,
             )
+
+    async def _ensure_device_mode(
+        self,
+        entity_id: str,
+        mode: HVACMode,
+    ) -> None:
+        if self._device_modes.get(entity_id) == mode:
+            return
+        if self._recent_call(self._last_mode_call, entity_id):
+            _LOGGER.debug(
+                "Skipping HVAC mode set for %s due to cooldown", entity_id
+            )
+            return
+
+        await self._call_climate_service(
+            entity_id,
+            SERVICE_SET_HVAC_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_HVAC_MODE: mode},
+            "mode change",
+        )
+        self._device_modes[entity_id] = mode
+        self._mark_call(self._last_mode_call, entity_id)
 
     async def _ensure_device_temperature(
         self,
         entity_id: str,
         temperature: float,
     ) -> None:
-        # Do not change device temperatures while PowerClimate is OFF.
-        if self.hvac_mode == HVACMode.OFF:
-            _LOGGER.debug(
-                "PowerClimate is OFF; skipping temperature set for %s to %s",
-                entity_id,
-                temperature,
-            )
-            return
         previous = self._device_targets.get(entity_id)
         if previous is not None and abs(previous - temperature) < 0.1:
             return
@@ -1222,41 +1257,15 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 "Skipping temperature set for %s due to cooldown", entity_id
             )
             return
-        try:
-            await asyncio.wait_for(
-                self.hass.services.async_call(
-                    CLIMATE_DOMAIN,
-                    SERVICE_SET_TEMPERATURE,
-                    {
-                        ATTR_ENTITY_ID: entity_id,
-                        ATTR_TEMPERATURE: temperature,
-                    },
-                    blocking=True,
-                    context=self._integration_context,
-                ),
-                timeout=SERVICE_CALL_TIMEOUT_SECONDS,
-            )
-            self._device_targets[entity_id] = temperature
-            self._mark_call(self._last_temp_call, entity_id)
-        except asyncio.TimeoutError:
-            _LOGGER.warning(
-                "Setting temperature for %s timed out after %ss",
-                entity_id,
-                SERVICE_CALL_TIMEOUT_SECONDS,
-            )
-        except ServiceNotFound:
-            _LOGGER.error(
-                "Service %s.%s not found for %s",
-                CLIMATE_DOMAIN,
-                SERVICE_SET_TEMPERATURE,
-                entity_id,
-            )
-        except HomeAssistantError as err:
-            _LOGGER.warning(
-                "Failed to set temperature for %s: %s",
-                entity_id,
-                err,
-            )
+
+        await self._call_climate_service(
+            entity_id,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: temperature},
+            "temperature set",
+        )
+        self._device_targets[entity_id] = temperature
+        self._mark_call(self._last_temp_call, entity_id)
 
     def _recent_call(
         self,
