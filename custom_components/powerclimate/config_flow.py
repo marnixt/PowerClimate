@@ -27,6 +27,7 @@ from .const import (
     CONF_LOWER_SETPOINT_OFFSET,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MIN_SETPOINT_OVERRIDE,
+    CONF_HOUSE_POWER_SENSOR,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
     CONF_WATER_SENSOR,
@@ -920,6 +921,14 @@ def _build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
             selector({"number": selector_config}),
         )
 
+    # Net active power sensor for the Solar preset (signed; negative when exporting)
+    _optional_field(
+        CONF_HOUSE_POWER_SENSOR,
+        defaults,
+        schema_fields,
+        _entity_selector("sensor"),
+    )
+
     return vol.Schema(schema_fields)
 
 
@@ -960,6 +969,7 @@ def _process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_ASSIST_MIN_OFF_MINUTES,
         CONF_ASSIST_WATER_TEMP_THRESHOLD,
         CONF_ASSIST_STALL_TEMP_DELTA,
+        CONF_HOUSE_POWER_SENSOR,
     }
     
     return {key: user_input[key] for key in advanced_keys if key in user_input}

@@ -18,7 +18,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -121,6 +125,7 @@ async def async_setup_entry(
         coordinator,
         entry,
     )
+    power_budget_sensor = PowerClimatePowerBudgetSensor(hass, entry)
 
     sensors: list[SensorEntity] = [
         derivative_sensor,
@@ -128,6 +133,7 @@ async def async_setup_entry(
         thermal_summary_sensor,
         assist_summary_sensor,
         total_power_sensor,
+        power_budget_sensor,
     ]
 
     sensors.extend(_build_behavior_sensors(hass, entry))
@@ -283,6 +289,70 @@ class _SummaryPayloadTextSensor(_TranslationMixin, SensorEntity):
         raise NotImplementedError
 
 
+class PowerClimatePowerBudgetSensor(_TranslationMixin, SensorEntity):
+    """Diagnostic sensor exposing current Solar preset budgets."""
+
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = "W"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:flash"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__()
+        _TranslationMixin.__init__(self)
+        self.hass = hass
+        self._entry = entry
+        self._entry_id = entry.entry_id
+        self._signal = summary_signal(self._entry_id)
+        self._unsub = None
+        friendly = entry_friendly_name(entry)
+        self._attr_name = f"{friendly} Power Budget"
+        self._attr_unique_id = f"powerclimate_power_budget_{self._entry_id}"
+        self._attr_device_info = integration_device_info(entry)
+        self._payload: dict[str, Any] | None = _snapshot_summary(hass, self._entry_id)
+
+    @property
+    def native_value(self) -> float | None:
+        payload = self._payload
+        if not payload:
+            return None
+        value = payload.get("power_budget_total_w")
+        return float(value) if isinstance(value, (int, float)) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        payload = self._payload or {}
+        return {
+            "preset_mode": payload.get("preset_mode"),
+            "house_net_power_w": payload.get("house_net_power_w"),
+            "power_available_w": payload.get("power_available_w"),
+            "power_budget_remaining_w": payload.get("power_budget_remaining_w"),
+            "power_budget_by_entity_w": payload.get("power_budget_by_entity_w") or {},
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        await self._load_strings(self.hass)
+        self._payload = _snapshot_summary(self.hass, self._entry_id)
+        self._unsub = async_dispatcher_connect(
+            self.hass,
+            self._signal,
+            self._handle_summary,
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+        await super().async_will_remove_from_hass()
+
+    def _handle_summary(self, payload: dict | None) -> None:
+        self._payload = payload
+        self.schedule_update_ha_state()
+
+
 class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
     """Sensor providing a human-readable thermal summary."""
 
@@ -311,6 +381,8 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
         preset_label = self._t("label_preset", "Preset")
         if preset_mode == "boost":
             preset_value = self._t("preset_boost", "Boost")
+        elif preset_mode == "Solar":
+            preset_value = self._t("preset_solar", "Solar")
         else:
             preset_value = self._t("preset_none", "None")
         parts.append(f"{preset_label}: {preset_value}")
@@ -662,7 +734,6 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         role: str,
         prefix: str,
         label: str,
-        include_assist_line: bool = True,
     ) -> None:
         """Initialize the assist behavior sensor."""
         super().__init__()
@@ -672,7 +743,6 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         self._role = role
         self._label = label
         self._prefix = prefix
-        self._include_assist_line = include_assist_line
         self._signal = summary_signal(self._entry_id)
         self._unsub = None
         self._payload: dict | None = None
@@ -697,6 +767,7 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         attrs: dict[str, Any] = {
             f"{self._prefix}_assist_mode": entry.get("assist_mode"),
             f"{self._prefix}_hvac_mode": entry.get("hvac_mode"),
+            f"{self._prefix}_powerclimate_mode": entry.get("powerclimate_mode"),
             f"{self._prefix}_active": entry.get("active"),
             f"{self._prefix}_current_temperature": entry.get(
                 "current_temperature",
@@ -770,15 +841,7 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
             parts = [p for p in parts if not p.startswith(power_prefix)]
 
         parts.extend(self._sensor_specific_parts(hp_entry))
-        if self._include_assist_line:
-            parts.append(self._format_assist_line(hp_entry))
         return " | ".join(parts)
-
-    def _format_assist_line(self, entry: dict) -> str:
-        assist_mode = (entry.get("assist_mode") or "off").lower()
-        if assist_mode in ("off", "none"):
-            return f"{self._t('label_assist', 'Assist')} {self._t('assist_off', 'off')}"
-        return f"{self._t('label_assist', 'Assist')} {assist_mode}"
 
     @staticmethod
     def _find_hp_entry(payload: dict, role: str) -> dict | None:
@@ -793,7 +856,13 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         return _TranslationMixin._short_hp_label(raw_label, role)
 
     def _sensor_specific_parts(self, entry: dict) -> list[str]:
-        return []
+        parts: list[str] = []
+        # Add PowerClimate mode if present
+        mode = entry.get("powerclimate_mode")
+        if mode:
+            mode_label = self._t("label_mode", "Mode")
+            parts.append(f"{mode_label}: {mode}")
+        return parts
 
 
 class PowerClimateHPBehaviorSensor(_AssistBehaviorSensor):
@@ -827,11 +896,16 @@ class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
             role="hp1",
             prefix="hp1",
             label="HP1",
-            include_assist_line=False,
         )
 
     def _sensor_specific_parts(self, entry: dict) -> list[str]:
         parts: list[str] = []
+        # Add PowerClimate mode if present
+        mode = entry.get("powerclimate_mode")
+        if mode:
+            mode_label = self._t("label_mode", "Mode")
+            parts.append(f"{mode_label}: {mode}")
+
         water_label = self._t("label_water", "Water")
         d_label = self._t("label_derivative", "ΔT")
         parts.append(

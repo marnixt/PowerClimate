@@ -28,6 +28,33 @@ CONF_DEVICE_NAME = "name"
 CONF_COPY_SETPOINT_TO_POWERCLIMATE = "copy_setpoint_to_powerclimate"
 CONF_ALLOW_ON_OFF_CONTROL = "allow_on_off_control"
 
+# Heat pump operating modes
+MODE_BOOST = "boost"
+MODE_SETPOINT = "setpoint"
+MODE_MINIMAL = "minimal"
+MODE_POWER = "power"
+MODE_OFF = "off"
+
+# Power mode configuration
+# Interval between setpoint adjustments in power mode (prevents oscillation)
+DEFAULT_POWER_MODE_ADJUSTMENT_INTERVAL_SECONDS = 90.0
+# Deadband as fraction of target power (no adjustment if within this range)
+DEFAULT_POWER_MODE_DEADBAND_PERCENT = 0.15
+# Setpoint step size per adjustment
+DEFAULT_POWER_MODE_STEP_SIZE = 0.3
+
+# Power preset (orchestrator-level) configuration
+# House net active power sensor (negative when exporting/surplus).
+CONF_HOUSE_POWER_SENSOR = "house_power_sensor_entity_id"
+# Keep some headroom to avoid oscillation due to household noise.
+DEFAULT_POWER_SURPLUS_RESERVE_W = 300.0
+# Update interval for recomputing per-HP budgets from the house power sensor.
+DEFAULT_POWER_BUDGET_UPDATE_INTERVAL_SECONDS = 30.0
+# Do not allocate tiny budgets that only cause churn.
+DEFAULT_POWER_MIN_BUDGET_W = 200.0
+# Cap per-device budget so we don't slam a single HP.
+DEFAULT_POWER_MAX_BUDGET_PER_DEVICE_W = 1200.0
+
 # Setpoint offset configuration (replaces keep-on threshold)
 # Floor = current_temp + lower_offset (lower is typically negative or zero)
 # Ceiling = current_temp + upper_offset

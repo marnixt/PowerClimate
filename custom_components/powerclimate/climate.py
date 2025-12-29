@@ -40,6 +40,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ALLOW_ON_OFF_CONTROL,
@@ -54,6 +55,7 @@ from .const import (
     CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_NAME,
     CONF_DEVICES,
+    CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MIN_SETPOINT_OVERRIDE,
@@ -72,10 +74,22 @@ from .const import (
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
+    DEFAULT_POWER_BUDGET_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_POWER_MAX_BUDGET_PER_DEVICE_W,
+    DEFAULT_POWER_MIN_BUDGET_W,
+    DEFAULT_POWER_MODE_ADJUSTMENT_INTERVAL_SECONDS,
+    DEFAULT_POWER_MODE_DEADBAND_PERCENT,
+    DEFAULT_POWER_MODE_STEP_SIZE,
+    DEFAULT_POWER_SURPLUS_RESERVE_W,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DOMAIN,
     MIN_SET_CALL_INTERVAL_SECONDS,
+    MODE_BOOST,
+    MODE_MINIMAL,
+    MODE_OFF,
+    MODE_POWER,
+    MODE_SETPOINT,
     SERVICE_CALL_TIMEOUT_SECONDS,
 )
 from .helpers import (
@@ -137,7 +151,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.PRESET_MODE
     )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_preset_modes = ["none", "boost"]
+    _attr_preset_modes = ["none", "boost", "Solar"]
 
     def __init__(self, hass, entry, coordinator):
         super().__init__(coordinator)
@@ -160,6 +174,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._summary_payload: dict[str, Any] | None = None
         self._room_eta_hours: float | None = None
         self._assist_modes: dict[str, str] = {}
+        # Heat pump mode tracking: explicit modes for each device
+        self._hp_modes: dict[str, str] = {}  # entity_id -> MODE_*
         self._hp_state_unsubs: dict[str, Callable[[], None]] = {}
         self._pending_state_refresh = False
         self._last_mode_call: dict[str, datetime] = {}
@@ -180,6 +196,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._assist_last_on: dict[str, datetime] = {}
         self._assist_last_off: dict[str, datetime] = {}
         self._assist_block_reason: dict[str, str] = {}
+        # Power mode tracking: power budget per device and last adjustment time
+        self._power_budget: dict[str, float] = {}  # entity_id -> target watts
+        self._power_mode_last_adjustment: dict[str, datetime] = {}
+        self._power_mode_current_setpoint: dict[str, float] = {}  # persisted setpoint
+        self._power_budget_last_update: datetime | None = None
+        self._house_net_power_w: float | None = None
+        self._power_available_w: float | None = None
+        self._power_budget_remaining_w: float | None = None
 
     @property
     def entity_picture(self) -> str:
@@ -237,7 +261,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         await self._apply_staging()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Set a preset mode. Supported: 'boost' and 'none'."""
+        """Set a preset mode. Supported: 'boost', 'Solar' and 'none'."""
         if preset_mode not in self.preset_modes:
             return
 
@@ -255,8 +279,104 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             if self._attr_preset_mode == "none":
                 return
             self._attr_preset_mode = "none"
+            # Clear budgets when leaving Solar preset.
+            self._clear_all_power_budgets()
             # Don't turn off devices, just switch back to normal control
             await self._apply_staging()
+
+        # Enter Solar preset: enable system, then apply normal staging with budgets
+        if preset_mode == "Solar":
+            if self._attr_preset_mode == "Solar":
+                return
+            self._attr_preset_mode = "Solar"
+            self._attr_hvac_mode = HVACMode.HEAT
+            await self._apply_staging()
+
+    def _clear_all_power_budgets(self) -> None:
+        # Clear budgets and local power-mode state.
+        self._power_budget.clear()
+        self._power_mode_current_setpoint.clear()
+        self._power_mode_last_adjustment.clear()
+        self._power_budget_last_update = None
+        self._house_net_power_w = None
+        self._power_available_w = None
+        self._power_budget_remaining_w = None
+
+    def _read_house_net_power_w(self) -> float | None:
+        """Read signed house net active power in W.
+
+        Expected convention for this integration: negative means exporting
+        (solar surplus). This is common in HA ecosystems, but depends on the
+        meter/integration.
+        """
+        config = merged_entry_data(self._entry)
+        sensor_entity_id = str(config.get(CONF_HOUSE_POWER_SENSOR) or "").strip()
+        if not sensor_entity_id:
+            return None
+
+        state = self.hass.states.get(sensor_entity_id)
+        if state is None:
+            return None
+
+        value = _safe_float(state.state)
+        if value is None:
+            return None
+
+        unit = str(state.attributes.get("unit_of_measurement") or "").strip()
+        if unit.lower() == "kw":
+            return value * 1000.0
+
+        return value
+
+    def _update_power_budgets(self, devices: list[dict[str, Any]]) -> None:
+        """Update per-device power budgets (HP1, HP2, ...) from house net power."""
+        now = dt_util.utcnow()
+        if self._power_budget_last_update is not None:
+            elapsed = (now - self._power_budget_last_update).total_seconds()
+            if elapsed < DEFAULT_POWER_BUDGET_UPDATE_INTERVAL_SECONDS:
+                return
+
+        self._power_budget_last_update = now
+
+        net_power_w = self._read_house_net_power_w()
+        if net_power_w is None:
+            # No sensor configured or invalid value: don't steer via power.
+            self._clear_all_power_budgets()
+            return
+
+        self._house_net_power_w = float(net_power_w)
+
+        reserve_w = DEFAULT_POWER_SURPLUS_RESERVE_W
+        # Surplus/export is negative (e.g. -800W means 800W export).
+        available_w = max(0.0, -net_power_w - reserve_w)
+        self._power_available_w = float(available_w)
+
+        remaining_w = available_w
+        new_budgets: dict[str, float] = {}
+
+        for device in devices:
+            entity_id = str(device.get(CONF_CLIMATE_ENTITY) or "").strip()
+            if not entity_id:
+                continue
+
+            budget = min(DEFAULT_POWER_MAX_BUDGET_PER_DEVICE_W, remaining_w)
+            if budget >= DEFAULT_POWER_MIN_BUDGET_W:
+                new_budgets[entity_id] = float(budget)
+                remaining_w -= budget
+            else:
+                # Stop allocating further (priority order HP1->HP2...)
+                break
+
+        # Apply new budgets.
+        # Clear any budgets for devices no longer allocated.
+        for entity_id in list(self._power_budget.keys()):
+            if entity_id not in new_budgets:
+                self.clear_power_budget(entity_id)
+
+        for entity_id, budget in new_budgets.items():
+            self.set_power_budget(entity_id, budget)
+
+        self._power_budget_remaining_w = float(max(0.0, remaining_w))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -296,7 +416,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         # Refresh device payloads after mode changes
         device_payloads = self._coordinator_devices()
 
-        # Step 2: Set boost target for ALL devices that are now in HEAT mode
+        # Step 2: Set boost mode for ALL devices that are now in HEAT mode
         for index, device in enumerate(devices):
             entity_id = device.get(CONF_CLIMATE_ENTITY)
             if not entity_id:
@@ -307,28 +427,31 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
             # Only boost devices in HEAT mode
             if hvac_mode != HVACMode.HEAT.value:
+                self._hp_modes[entity_id] = MODE_OFF
                 continue
 
             current_temp = _safe_float(payload.get("current_temperature"))
 
             if current_temp is not None:
-                # Use upper offset to calculate boost target
-                upper_offset = self._device_upper_offset(device, index)
-                boost_target = current_temp + upper_offset
-                # Clamp to absolute limits
-                boost_target = max(DEFAULT_MIN_SETPOINT, min(boost_target, DEFAULT_MAX_SETPOINT))
+                # Set mode to BOOST
+                self._hp_modes[entity_id] = MODE_BOOST
+                boost_target = self._calculate_mode_target(
+                    MODE_BOOST,
+                    current_temp,
+                    device,
+                    index,
+                )
 
                 _LOGGER.debug(
-                    "Boost mode: Setting %s to %.1f°C (current=%.1f, offset=%.1f)",
+                    "Boost preset: Setting %s to mode=%s, target=%.1f°C",
                     entity_id,
+                    MODE_BOOST,
                     boost_target,
-                    current_temp,
-                    upper_offset,
                 )
 
                 await self._ensure_device_temperature(entity_id, boost_target)
             else:
-                _LOGGER.warning("Boost mode: No current temperature for %s", entity_id)
+                _LOGGER.warning("Boost preset: No current temperature for %s", entity_id)
 
         self.async_write_ha_state()
         self._emit_summary(devices, device_payloads)
@@ -422,6 +545,15 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._apply_boost_mode()
             return
 
+        # Solar preset: compute budgets (HP1 -> HP2 -> ...). This does not
+        # change which devices are allowed to run; it only steers setpoints
+        # via MODE_POWER when a positive budget is allocated.
+        if self._attr_preset_mode == "Solar":
+            self._update_power_budgets(devices)
+        else:
+            # If not in Solar preset, ensure we are not steering.
+            self._clear_all_power_budgets()
+
         if not devices:
             await self._sync_devices([], set(), device_payloads, {})
             self._sync_state_listeners(set())
@@ -462,6 +594,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._assist_target_reason = {}
 
         if not hvac_disabled:
+            # Calculate room_at_target for mode determination
+            room_at_target = (
+                room_temp is not None
+                and self._target_temperature is not None
+                and room_temp >= self._target_temperature
+            )
+
             hp1_device = devices[0]
             hp1_entity = hp1_device.get(CONF_CLIMATE_ENTITY)
             if hp1_entity:
@@ -470,18 +609,29 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 hp1_current = _safe_float(
                     hp1_payload.get("current_temperature"),
                 )
+                hp1_power = _safe_float(hp1_payload.get("energy"))
                 water_temp = _safe_float(hp1_payload.get("water_temperature"))
 
-                hp1_target = self._clamp_setpoint(
-                    self._target_temperature,
+                # Determine HP1 mode based on preset and power budget
+                hp1_mode = self._determine_hp1_mode(
+                    room_at_target,
+                    self._attr_preset_mode,
+                    hp1_entity,
+                )
+                self._hp_modes[hp1_entity] = hp1_mode
+
+                hp1_target = self._calculate_mode_target(
+                    hp1_mode,
                     hp1_current,
                     hp1_device,
                     index=0,
+                    current_power=hp1_power,
                 )
                 desired_targets[hp1_entity] = hp1_target
 
                 _LOGGER.debug(
-                    "HP1 target computed: setpoint=%.1f, current=%s -> %.1f",
+                    "HP1: mode=%s, setpoint=%.1f, current=%s -> %.1f",
+                    hp1_mode,
                     self._target_temperature or 0.0,
                     hp1_current,
                     hp1_target,
@@ -531,11 +681,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                         delta_seconds = (now - self._last_timer_update).total_seconds()
                     self._last_timer_update = now
 
-                    room_at_target = (
-                        room_temp is not None
-                        and self._target_temperature is not None
-                        and room_temp >= self._target_temperature
-                    )
                     room_derivative = self.coordinator.data.get("room_derivative")
 
                     managed_any = False
@@ -702,27 +847,32 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
                         # Only manage setpoint if device is running
                         if not is_running:
-                            self._assist_modes[entity] = "off"
+                            self._assist_modes[entity] = MODE_OFF
+                            self._hp_modes[entity] = MODE_OFF
                             continue
 
                         current_temp = _safe_float(
                             payload.get("current_temperature"),
                         )
-                        if room_at_target:
-                            assist_mode = "minimal"
-                            target_for_device = self._minimal_mode_target(
-                                current_temp,
-                                device,
-                                assist_index,
-                            )
-                        else:
-                            assist_mode = "setpoint"
-                            target_for_device = self._clamp_setpoint(
-                                self._target_temperature,
-                                current_temp,
-                                device,
-                                assist_index,
-                            )
+                        current_power = _safe_float(payload.get("energy"))
+
+                        # Determine mode based on conditions, preset, and power budget
+                        off_timer = self._assist_off_timers.get(entity, 0.0)
+                        assist_mode = self._determine_assist_mode(
+                            room_at_target,
+                            off_timer,
+                            self._attr_preset_mode,
+                            entity,
+                        )
+                        self._hp_modes[entity] = assist_mode
+
+                        target_for_device = self._calculate_mode_target(
+                            assist_mode,
+                            current_temp,
+                            device,
+                            assist_index,
+                            current_power=current_power,
+                        )
 
                         desired_devices.add(entity)
                         desired_targets[entity] = target_for_device
@@ -886,6 +1036,181 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def _device_upper_offset(self, device: dict[str, Any], index: int) -> float:
         return self._calculate_device_offset(device, index, "upper")
 
+    def _calculate_mode_target(
+        self,
+        mode: str,
+        current_temp: float | None,
+        device: dict[str, Any],
+        index: int,
+        current_power: float | None = None,
+    ) -> float:
+        """Calculate target temperature for a given mode."""
+        config = merged_entry_data(self._entry)
+        min_setpoint = config.get(CONF_MIN_SETPOINT_OVERRIDE, DEFAULT_MIN_SETPOINT)
+        max_setpoint = config.get(CONF_MAX_SETPOINT_OVERRIDE, DEFAULT_MAX_SETPOINT)
+        entity_id = device.get(CONF_CLIMATE_ENTITY, "")
+
+        if current_temp is None:
+            return min_setpoint
+
+        if mode == MODE_BOOST:
+            # Boost: current + upper offset
+            upper_offset = self._device_upper_offset(device, index)
+            target = current_temp + upper_offset
+            return max(min_setpoint, min(target, max_setpoint))
+
+        elif mode == MODE_MINIMAL:
+            # Minimal: current + lower offset
+            lower_offset = self._device_lower_offset(device, index)
+            target = current_temp + lower_offset
+            return self._clamp_setpoint(target, current_temp, device, index)
+
+        elif mode == MODE_SETPOINT:
+            # Setpoint: PowerClimate target, clamped to offsets
+            return self._clamp_setpoint(
+                self._target_temperature,
+                current_temp,
+                device,
+                index,
+            )
+
+        elif mode == MODE_POWER:
+            # Power mode: adjust setpoint to match power budget
+            return self._calculate_power_mode_setpoint(
+                entity_id,
+                current_power,
+                min_setpoint,
+                max_setpoint,
+            )
+
+        else:
+            # Unknown mode or OFF
+            return min_setpoint
+
+    def _calculate_power_mode_setpoint(
+        self,
+        entity_id: str,
+        current_power: float | None,
+        min_setpoint: float,
+        max_setpoint: float,
+    ) -> float:
+        """Calculate setpoint to match power budget using simple step algorithm.
+
+        Algorithm:
+        1. Only adjust every ADJUSTMENT_INTERVAL seconds (prevents oscillation)
+        2. Use deadband - no adjustment if within ±DEADBAND_PERCENT of target
+        3. Small fixed step size per adjustment
+        4. Direction: power too low → raise setpoint, too high → lower setpoint
+        """
+        target_power = self._power_budget.get(entity_id, 0.0)
+        now = dt_util.utcnow()
+
+        # Get current setpoint or initialize to midpoint
+        current_setpoint = self._power_mode_current_setpoint.get(entity_id)
+        if current_setpoint is None:
+            current_setpoint = (min_setpoint + max_setpoint) / 2.0
+            self._power_mode_current_setpoint[entity_id] = current_setpoint
+
+        # If no power budget set or no current reading, return current setpoint
+        if target_power <= 0 or current_power is None:
+            return current_setpoint
+
+        # Check if enough time has passed since last adjustment
+        last_adjustment = self._power_mode_last_adjustment.get(entity_id)
+        if last_adjustment is not None:
+            elapsed = (now - last_adjustment).total_seconds()
+            if elapsed < DEFAULT_POWER_MODE_ADJUSTMENT_INTERVAL_SECONDS:
+                return current_setpoint
+
+        # Calculate error
+        power_error = target_power - current_power
+        power_error_percent = abs(power_error) / target_power
+
+        # Within deadband - no adjustment needed
+        if power_error_percent < DEFAULT_POWER_MODE_DEADBAND_PERCENT:
+            return current_setpoint
+
+        # Determine adjustment direction and apply step
+        if power_error > 0:
+            # Need more power - raise setpoint
+            new_setpoint = current_setpoint + DEFAULT_POWER_MODE_STEP_SIZE
+        else:
+            # Need less power - lower setpoint
+            new_setpoint = current_setpoint - DEFAULT_POWER_MODE_STEP_SIZE
+
+        # Clamp to bounds
+        new_setpoint = max(min_setpoint, min(new_setpoint, max_setpoint))
+
+        # Store new setpoint and update timestamp
+        self._power_mode_current_setpoint[entity_id] = new_setpoint
+        self._power_mode_last_adjustment[entity_id] = now
+
+        _LOGGER.debug(
+            "Power mode %s: target=%dW current=%dW error=%.0f%% setpoint %.1f→%.1f",
+            entity_id,
+            target_power,
+            current_power,
+            power_error_percent * 100,
+            current_setpoint,
+            new_setpoint,
+        )
+
+        return new_setpoint
+
+    def set_power_budget(self, entity_id: str, power_watts: float) -> None:
+        """Set the power budget for a device in power mode."""
+        self._power_budget[entity_id] = power_watts
+        _LOGGER.info("Power budget set for %s: %d W", entity_id, power_watts)
+
+    def clear_power_budget(self, entity_id: str) -> None:
+        """Clear the power budget for a device, exiting power mode."""
+        self._power_budget.pop(entity_id, None)
+        self._power_mode_current_setpoint.pop(entity_id, None)
+        self._power_mode_last_adjustment.pop(entity_id, None)
+        _LOGGER.info("Power budget cleared for %s", entity_id)
+
+    def _determine_hp1_mode(
+        self,
+        room_at_target: bool,
+        preset_mode: str,
+        entity_id: str = "",
+    ) -> str:
+        """Determine the operating mode for HP1 (water-based heat pump)."""
+        if preset_mode == "boost":
+            return MODE_BOOST
+
+        # Check if power budget is set for this device
+        if entity_id and self._power_budget.get(entity_id, 0.0) > 0:
+            return MODE_POWER
+
+        # Normal operation: use setpoint mode
+        return MODE_SETPOINT
+
+    def _determine_assist_mode(
+        self,
+        room_at_target: bool,
+        off_timer: float,
+        preset_mode: str,
+        entity_id: str = "",
+    ) -> str:
+        """Determine the operating mode for an assist heat pump."""
+        if preset_mode == "boost":
+            return MODE_BOOST
+
+        # Check if power budget is set for this device
+        if entity_id and self._power_budget.get(entity_id, 0.0) > 0:
+            return MODE_POWER
+
+        # If OFF condition active (off_timer > 0), switch to minimal
+        if off_timer > 0:
+            return MODE_MINIMAL
+
+        # Normal operation based on room temperature
+        if room_at_target:
+            return MODE_MINIMAL
+        else:
+            return MODE_SETPOINT
+
     def _coordinator_devices(self) -> dict[str, dict[str, Any]]:
         payloads: dict[str, dict[str, Any]] = {}
         coordinator_data = self.coordinator.data or {}
@@ -950,6 +1275,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 "active": entity_id in self._active_devices or is_running,
                 "hvac_mode": payload.get("hvac_mode"),
                 "assist_mode": assist_mode,
+                "powerclimate_mode": self._hp_modes.get(entity_id, MODE_OFF),
                 "current_temperature": _safe_float(
                     payload.get("current_temperature"),
                 ),
@@ -1038,6 +1364,16 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 CONF_ASSIST_MIN_OFF_MINUTES,
                 DEFAULT_ASSIST_MIN_OFF_MINUTES,
             ),
+            # Solar preset / budget diagnostics
+            "house_net_power_w": self._house_net_power_w,
+            "power_available_w": self._power_available_w,
+            "power_budget_remaining_w": self._power_budget_remaining_w,
+            "power_budget_total_w": (
+                sum(float(v) for v in self._power_budget.values())
+                if self._power_budget
+                else 0.0
+            ),
+            "power_budget_by_entity_w": dict(self._power_budget),
         }
 
         self._summary_payload = payload

@@ -1,0 +1,36 @@
+set_power_budget:
+  name: Set Power Budget
+  description: Set a power budget for a heat pump. The heat pump will adjust its setpoint to try to match this power consumption.
+  fields:
+    entity_id:
+      name: Heat Pump Entity
+      description: The climate entity ID of the heat pump to control.
+      required: true
+      example: "climate.quatt_cic"
+      selector:
+        entity:
+          domain: climate
+    power_watts:
+      name: Power Budget (Watts)
+      description: Target power consumption in watts. The heat pump will try to match this by adjusting its setpoint.
+      required: true
+      example: 1000
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 50
+          unit_of_measurement: W
+
+clear_power_budget:
+  name: Clear Power Budget
+  description: Clear the power budget for a heat pump, returning it to normal temperature-based control.
+  fields:
+    entity_id:
+      name: Heat Pump Entity
+      description: The climate entity ID of the heat pump to return to normal control.
+      required: true
+      example: "climate.quatt_cic"
+      selector:
+        entity:
+          domain: climate
