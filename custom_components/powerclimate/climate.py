@@ -353,7 +353,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         ):
             return True, "eta_high"
 
-        if water_temp is not None and water_temp >= water_temp_threshold:
+        if (
+            water_temp is not None
+            and water_temp >= water_temp_threshold
+            and room_temp is not None
+            and self._target_temperature is not None
+            and room_temp < self._target_temperature
+        ):
             return True, "water_hot"
 
         if (
