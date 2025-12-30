@@ -102,6 +102,11 @@ from .helpers import (
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_TARGET_TEMPERATURE = 21.0
 
+PRESET_NONE = "none"
+PRESET_BOOST = "boost"
+PRESET_SOLAR = "Solar"
+PRESET_AWAY = "Away"
+
 
 def _safe_float(value: Any) -> float | None:
     try:
@@ -151,7 +156,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.PRESET_MODE
     )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_preset_modes = ["none", "boost", "Solar"]
+    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_SOLAR]
 
     def __init__(self, hass, entry, coordinator):
         super().__init__(coordinator)
@@ -162,7 +167,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._attr_device_info = integration_device_info(entry)
         self._attr_hvac_mode = HVACMode.HEAT
         self._target_temperature = DEFAULT_TARGET_TEMPERATURE
-        self._attr_preset_mode = "none"
+        self._attr_preset_mode = PRESET_NONE
         self._previous_target: float | None = None
         self._active_devices: set[str] = set()
         self._device_modes: dict[str, HVACMode] = {}
@@ -216,9 +221,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     @property
     def preset_modes(self) -> list[str] | None:
-        modes = ["none", "boost"]
+        modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY]
         if self._solar_enabled():
-            modes.append("Solar")
+            modes.append(PRESET_SOLAR)
         return modes
 
     @property
@@ -271,42 +276,103 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return
         self._attr_hvac_mode = hvac_mode
         # Clear any active preset when user explicitly sets HVAC mode
-        if self._attr_preset_mode != "none":
-            self._attr_preset_mode = "none"
+        if self._attr_preset_mode != PRESET_NONE:
+            self._attr_preset_mode = PRESET_NONE
             self._previous_target = None
         await self._apply_staging()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Set a preset mode. Supported: 'boost', 'Solar' and 'none'."""
+        """Set a preset mode."""
         if preset_mode not in self.preset_modes:
             return
 
         # Enter boost: set all controllable heat pumps to HEAT with upper offset
-        if preset_mode == "boost":
-            if self._attr_preset_mode == "boost":
+        if preset_mode == PRESET_BOOST:
+            if self._attr_preset_mode == PRESET_BOOST:
                 return
-            self._attr_preset_mode = "boost"
+            self._attr_preset_mode = PRESET_BOOST
             self._attr_hvac_mode = HVACMode.HEAT
             await self._apply_boost_mode()
             return
 
-        # Exit boost preset: keep running heat pumps running
-        if preset_mode == "none":
-            if self._attr_preset_mode == "none":
+        # Enter Away preset: set HP1 to minimal targeting min setpoint,
+        # and turn assist pumps off when allowed.
+        if preset_mode == PRESET_AWAY:
+            if self._attr_preset_mode == PRESET_AWAY:
                 return
-            self._attr_preset_mode = "none"
+
+            # Save current target temperature so we can restore on exit.
+            self._previous_target = self._target_temperature
+
+            config = merged_entry_data(self._entry)
+            min_setpoint = float(
+                config.get(CONF_MIN_SETPOINT_OVERRIDE, DEFAULT_MIN_SETPOINT)
+            )
+            self._target_temperature = min_setpoint
+            self._attr_preset_mode = PRESET_AWAY
+            self._attr_hvac_mode = HVACMode.HEAT
+            self._clear_all_power_budgets()
+
+            await self._apply_away_mode()
+            return
+
+        # Exit boost preset: keep running heat pumps running
+        if preset_mode == PRESET_NONE:
+            if self._attr_preset_mode == PRESET_NONE:
+                return
+            # Restore target after leaving Away.
+            if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
+                self._target_temperature = self._previous_target
+            self._previous_target = None
+
+            self._attr_preset_mode = PRESET_NONE
             # Clear budgets when leaving Solar preset.
             self._clear_all_power_budgets()
             # Don't turn off devices, just switch back to normal control
             await self._apply_staging()
 
         # Enter Solar preset: enable system, then apply normal staging with budgets
-        if preset_mode == "Solar":
-            if self._attr_preset_mode == "Solar":
+        if preset_mode == PRESET_SOLAR:
+            if self._attr_preset_mode == PRESET_SOLAR:
                 return
-            self._attr_preset_mode = "Solar"
+            # Restore target after leaving Away.
+            if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
+                self._target_temperature = self._previous_target
+            self._previous_target = None
+
+            self._attr_preset_mode = PRESET_SOLAR
             self._attr_hvac_mode = HVACMode.HEAT
             await self._apply_staging()
+
+    async def _apply_away_mode(self) -> None:
+        """Apply Away preset behavior.
+
+        - HP1 is handled via MODE_MINIMAL in normal staging, but with a special
+          target (min setpoint).
+        - Assist heat pumps are turned OFF immediately when allowed by config.
+          Existing assist logic can still turn them back on if needed.
+        """
+        config = merged_entry_data(self._entry)
+        devices = config.get(CONF_DEVICES, []) or []
+
+        now = datetime.now(timezone.utc)
+
+        # Turn off assist pumps (HP2+) when on/off control is allowed.
+        for index, device in enumerate(devices[1:], start=1):
+            if not device.get(CONF_ALLOW_ON_OFF_CONTROL):
+                continue
+            entity_id = str(device.get(CONF_CLIMATE_ENTITY) or "").strip()
+            if not entity_id:
+                continue
+
+            await self._ensure_device_mode(entity_id, HVACMode.OFF)
+            self._assist_on_timers[entity_id] = 0.0
+            self._assist_off_timers[entity_id] = 0.0
+            self._assist_active_condition[entity_id] = "none"
+            self._assist_last_off[entity_id] = now
+            self._assist_running_state[entity_id] = False
+
+        await self._apply_staging()
 
     def _clear_all_power_budgets(self) -> None:
         # Clear budgets and local power-mode state.
@@ -557,17 +623,17 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         }
 
         # If in boost mode, use boost logic instead
-        if self._attr_preset_mode == "boost":
+        if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
             return
 
         # Solar preset: compute budgets (HP1 -> HP2 -> ...). This does not
         # change which devices are allowed to run; it only steers setpoints
         # via MODE_POWER when a positive budget is allocated.
-        if self._attr_preset_mode == "Solar":
+        if self._attr_preset_mode == PRESET_SOLAR:
             if not self._solar_enabled():
                 # Sensor was removed/cleared from config; exit Solar.
-                self._attr_preset_mode = "none"
+                self._attr_preset_mode = PRESET_NONE
                 self._clear_all_power_budgets()
             else:
                 self._update_power_budgets(devices)
@@ -1197,8 +1263,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         entity_id: str = "",
     ) -> str:
         """Determine the operating mode for HP1 (water-based heat pump)."""
-        if preset_mode == "boost":
+        if preset_mode == PRESET_BOOST:
             return MODE_BOOST
+
+        if preset_mode == PRESET_AWAY:
+            return MODE_MINIMAL
 
         # Check if power budget is set for this device
         if entity_id and self._power_budget.get(entity_id, 0.0) > 0:
@@ -1215,7 +1284,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         entity_id: str = "",
     ) -> str:
         """Determine the operating mode for an assist heat pump."""
-        if preset_mode == "boost":
+        if preset_mode == PRESET_BOOST:
             return MODE_BOOST
 
         # Check if power budget is set for this device

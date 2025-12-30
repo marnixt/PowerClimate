@@ -197,6 +197,7 @@
     "assist_condition_stalled_at_target": "At target",
     "assist_condition_overshoot": "Overshoot",
     "preset_boost": "Boost",
+    "preset_away": "Away",
     "preset_solar": "Solar",
     "preset_none": "None"
   }

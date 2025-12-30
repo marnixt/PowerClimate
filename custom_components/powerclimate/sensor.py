@@ -381,6 +381,8 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
         preset_label = self._t("label_preset", "Preset")
         if preset_mode == "boost":
             preset_value = self._t("preset_boost", "Boost")
+        elif preset_mode == "Away":
+            preset_value = self._t("preset_away", "Away")
         elif preset_mode == "Solar":
             preset_value = self._t("preset_solar", "Solar")
         else:

@@ -62,7 +62,7 @@ CONF_LOWER_SETPOINT_OFFSET = "lower_setpoint_offset"
 CONF_UPPER_SETPOINT_OFFSET = "upper_setpoint_offset"
 
 # HP1 (water-based heat pump) defaults
-DEFAULT_LOWER_SETPOINT_OFFSET_HP1 = 0.0
+DEFAULT_LOWER_SETPOINT_OFFSET_HP1 = -0.3
 DEFAULT_UPPER_SETPOINT_OFFSET_HP1 = 1.5
 
 # Assist heat pumps (HP2, HP3, etc.) defaults
