@@ -205,6 +205,22 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._power_available_w: float | None = None
         self._power_budget_remaining_w: float | None = None
 
+    def _solar_enabled(self) -> bool:
+        """Return True if Solar preset can be used.
+
+        Solar requires a configured house net power sensor; the sensor may be
+        temporarily unavailable, but the entity_id must be set.
+        """
+        config = merged_entry_data(self._entry)
+        return bool(str(config.get(CONF_HOUSE_POWER_SENSOR) or "").strip())
+
+    @property
+    def preset_modes(self) -> list[str] | None:
+        modes = ["none", "boost"]
+        if self._solar_enabled():
+            modes.append("Solar")
+        return modes
+
     @property
     def entity_picture(self) -> str:
         return "/local/community/powerclimate/icon.png"
@@ -549,7 +565,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         # change which devices are allowed to run; it only steers setpoints
         # via MODE_POWER when a positive budget is allocated.
         if self._attr_preset_mode == "Solar":
-            self._update_power_budgets(devices)
+            if not self._solar_enabled():
+                # Sensor was removed/cleared from config; exit Solar.
+                self._attr_preset_mode = "none"
+                self._clear_all_power_budgets()
+            else:
+                self._update_power_budgets(devices)
         else:
             # If not in Solar preset, ensure we are not steering.
             self._clear_all_power_budgets()

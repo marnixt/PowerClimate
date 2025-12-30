@@ -5,29 +5,12 @@ and coordinate their setpoints using temperature offsets.
 
 ## Features
 
-- **Multi-pump orchestration**: Configure the primary water-based heat pump
-  and any number of assist pumps. PowerClimate controls HP1 directly while
-  supervising assist setpoints whenever the user turns them on.
-
-- **Manual assists**: Assist pumps stay under user HVAC control (HEAT/OFF).
-  When they are on, the integration only adjusts their temperature to follow
-  the configured offsets; when they are off, PowerClimate does nothing.
-
-- **Per-device offsets**: Each pump exposes lower/upper setpoint offsets.
-  These offsets clamp the requested room setpoint and define the "minimal"
-  temperature target used when the room is already satisfied.
-
-- **Absolute setpoint guardrails**: All commands are bounded between
-  16 °C and 30 °C by default to keep thermostats within sane ranges.
-
-- **Diagnostic sensors**: Built-in sensors expose room/water temperature
-  derivatives (°C/hour), a thermal summary, simplified assist behavior, and
-  total power consumption.
-
-- **Event-driven reactions**: Subscribes to Home Assistant state changes for all configured heat pumps, so setpoints and stages update immediately when a thermostat changes temperature or HVAC mode.
-
-- **Standard HA services**: No vendor-specific APIs—this integration
-  orchestrates existing climate entities via Home Assistant services.
+- **Multi-heatpump orchestration**: One virtual thermostat coordinates HP1 + assist pumps.
+- **Offsets + guardrails**: Lower/upper offsets per device and global min/max setpoints.
+- **Assists: manual or automatic ON/OFF**: Optional timers + anti-short-cycle protections.
+- **Power-aware `Solar` preset (optional)**: Allocate per-device power budgets from a signed house net power sensor.
+- **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
+- **Standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
 ## Quick Start
 
@@ -107,6 +90,14 @@ To access: **Settings → Devices & Services → Integrations → PowerClimate �
 | Water Temperature Threshold | 40.0 °C | 30–55 °C | Turn assist ON when water reaches this temperature |
 | Stall Temperature Delta | 0.5 °C | 0.1–2 °C | Temperature difference for stall detection |
 
+## Experimental Options
+
+Some features are intentionally marked experimental and live under **Options → Experimental**.
+
+To access: **Settings → Devices & Services → Integrations → PowerClimate → Options → Experimental**
+
+- **House net power sensor (signed)**: Configure a sensor that reports net active power in W (negative = export/surplus). This is required to enable/select the `Solar` preset.
+
 **Notes:**
 - Changes take effect immediately (no restart required)
 - Existing entries without advanced options use defaults for backwards compatibility
@@ -140,11 +131,12 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | **Thermal Summary** | `sensor.powerclimate_text_thermal_summary_*` | Human-readable system state with all pump temps and ETAs |
 | **Assist Summary** | `sensor.powerclimate_text_assist_summary_*` | Room state, trend, and per-pump timer/condition status |
 | **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, water temperature when available |
-| **HP2 Behavior** | `sensor.powerclimate_text_hp2_behavior_*` | HVAC status, temps, assist mode, and timer info |
+| **HP2 Behavior** | `sensor.powerclimate_text_hp2_behavior_*` | HVAC status, temps, and PowerClimate mode |
 | **HP3 Behavior** | `sensor.powerclimate_text_hp3_behavior_*` | Same as HP2 when a third pump is configured |
 | **HP4 Behavior** | `sensor.powerclimate_text_hp4_behavior_*` | Same as HP2 when a fourth pump is configured |
 | **HP5 Behavior** | `sensor.powerclimate_text_hp5_behavior_*` | Same as HP2 when a fifth pump is configured |
 | Total Power | `sensor.powerclimate_total_power_*` | Aggregated power consumption from all configured pumps |
+| Power Budget | `sensor.powerclimate_power_budget_*` | Total + per-device budgets (used by `Solar` preset) |
 
 **Text Sensor Details:**
 - All text sensors (prefixed `powerclimate_text_*`) can be excluded from recorder:
@@ -175,16 +167,3 @@ General setup guidance (always double-check your device manual):
 - Use energy sensors or COP data for economic decisions
 - Add unit tests for the assist logic and advanced configuration
 - Consider adding persistent timer state (currently in-memory only)
-
-## Assets
-
-- **logo.png**: Recommended primary image for the integration (use a square PNG, `256×256`, transparent background). Place this file in the integration folder as `custom_components/powerclimate/logo.png` — HACS and many frontends use a `logo.png` or `logo.svg` as the canonical asset.
-- **icon.png**: Legacy/fallback icon. Keep `icon.png` for compatibility with older setups and for any UI or tooling that expects that filename. It is not strictly required if `logo.png`/`logo.svg` exist, but keeping it avoids surprises.
-- **logo.svg** (recommended): An SVG is preferred where possible because it scales cleanly and can be recolored. If you have an SVG source, include `logo.svg` alongside `logo.png`.
-
-PowerShell quick commands to create or copy these assets locally and to a Home Assistant install on `Z:`:
-
-```
-Copy-Item -Path .\custom_components\powerclimate\icon.png -Destination .\custom_components\powerclimate\logo.png -Force
-Copy-Item -Path .\custom_components\powerclimate\logo.png -Destination Z:\custom_components\powerclimate\logo.png -Force
-```

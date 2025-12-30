@@ -17,12 +17,12 @@ Bij koude buitentemperaturen, bijvoorbeeld richting het vriespunt, zal het vermo
 De powerclimate integratie maakt het mogelijk 2 of meer warmtepompen met één thermostaat te bedienen. 
 
 ## Functies
-- Multi-pomp aansturing: HP1 (water) plus ondersteunende warmtepompen (HP2 t/m HP5) met eigen offsets.
-- Handmatige controle: ondersteunende warmtepompen worden aangezet wanneer jij het wil. Wanneer ze aan staan past de integratie alleen hun setpoints aan.
-- Offset per apparaat: onder- en bovengrenzen per warmtepomp in te stellen
-- Absolute grenzen: setpoints worden standaard begrensd tussen 16°C en 30°C.
-- Diagnostische sensoren: ruimte- en watertemperatuur, delta T en totaalvermogen zijn makkelijk inzichtelijk. 
-- Event-gedreven reacties: zodra een gekoppelde thermostaat van status verandert worden de PowerClimate-setpoints onmiddellijk herberekend.
+- Multi-warmtepomp aansturing: één virtuele thermostaat stuurt HP1 en coördineert meerdere assists.
+- Offsets + guardrails: per apparaat lower/upper offsets en globale min/max setpoint grenzen.
+- Assists: handmatig (default) of optioneel automatisch aan/uit (timers + anti-short-cycle).
+- Zon/surplus (optioneel): preset `Solar` kan vermogensbudgetten verdelen op basis van een “net power” sensor.
+- Diagnostiek: thermische samenvatting, per-HP gedrag, afgeleides, totaal vermogen en budgetdiagnostiek.
+- Event-gedreven reacties: bij statuswijzigingen worden setpoints direct herberekend.
 
 ## Snelstart
 1. Plaats `custom_components/powerclimate` in je Home Assistant-installatie.
@@ -53,6 +53,14 @@ Te vinden via: **Instellingen → Apparaten & Diensten → Integraties → Power
 
 Let op: timers zijn in-memory en resetten bij een Home Assistant restart.
 
+## Experimentele opties (UI)
+
+Sommige features zijn bewust experimenteel en staan onder **Opties → Experimental**.
+
+Te vinden via: **Instellingen → Apparaten & Diensten → Integraties → PowerClimate → Opties → Experimental**
+
+- **House net power sensor (signed)**: kies een sensor met net active power in W (negatief = export/surplus). Dit is nodig om de preset `Solar` te kunnen selecteren.
+
 ## Sensoren (config-gedreven)
 Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_entity_id`.
 
@@ -72,18 +80,11 @@ Voorbeeld van de Thermische samenvatting en behavior sensoren
 
 **HP1 Behavior:** Diyless (hp1) active | HVAC HEAT | Temps 18.9°C→19.5°C | ΔT 0.0°C/h | ETA none | Water 36.0°C | Water ΔT 10.8°C/h | Power 1243 W
 
-**HP 2 Behavior:** Senhus (hp2) idle | HVAC OFF | Temps 19.0°C→18.0°C | ΔT 0.0°C/h | ETA none | Power 1 W | Assist off
+**HP 2 Behavior:** Senhus (hp2) idle | HVAC OFF | Temps 19.0°C→18.0°C | ΔT 0.0°C/h | ETA none | Power 1 W | Mode off
 
 **HP 3 Behavior:**
-Living (hp3) active | HVAC HEAT | Temps 18.0°C→19.5°C | ΔT 0.0°C/h | ETA none | Power 324 W | Assist setpoint
+Living (hp3) active | HVAC HEAT | Temps 18.0°C→19.5°C | ΔT 0.0°C/h | ETA none | Power 324 W | Mode setpoint
 
 ## Tips voor warmtepompen
-Algemene best practices (samengevat uit gangbare community-adviezen; controleer altijd de handleiding van je toestel):
-
 - Assist-pompen (HP2 t/m HP5): gebruik waar mogelijk de "heat shift" of °C-offsetfunctie van de fabrikant om een stabiele minimal-modus te krijgen; stem de `lower_setpoint_offset` hierop af zodat de assist netjes in minimale stand blijft wanneer de ruimte op temperatuur is.
 - Water-/hybride warmtepompen (HP1): als het een hybride toestel is, voorkom inschakelen van de CV-ketel door de cv-aanvoertemperatuur (CH max) in te stellen op ~45°C 
-
-## Volgende stappen
-- Energie- of COP-data gebruiken voor economische keuzes.
-- boost HP1 voordat de assist heatpump uit gaat
-- combineer keep on 

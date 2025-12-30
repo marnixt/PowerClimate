@@ -3,49 +3,45 @@
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using per-device temperature offsets.
 
+Not affiliated with Home Assistant.
+
 ## Features
 
-- **Multi-pump orchestration**: Configure the primary water-based heat pump
-  and any number of assist pumps. PowerClimate controls HP1 directly while
-  supervising assist setpoints whenever the user turns them on.
+- **Multi-heatpump orchestration**: One virtual thermostat controls HP1 and coordinates any number of assist heat pumps.
+- **Per-device offsets + guardrails**: Lower/upper offsets per device, plus global min/max setpoint limits.
+- **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
+- **Power-aware control (optional)**: `Solar` preset can allocate per-device power budgets from a signed house net power sensor.
+- **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
+- **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
-- **Manual assists**: Assist pumps stay under user HVAC control (HEAT/OFF).
-  When they are on, the integration only adjusts their temperature to follow
-  the configured offsets; when they are off, PowerClimate does nothing.
+## Documentation
 
-- **Per-device offsets**: Each pump exposes lower/upper setpoint offsets.
-  These offsets clamp the requested room setpoint and define the "minimal"
-  temperature target used when the room is already satisfied.
+- Detailed documentation (EN): [custom_components/powerclimate/README.md](custom_components/powerclimate/README.md)
+- Gedetailleerde documentatie (NL): [custom_components/powerclimate/README-NL.md](custom_components/powerclimate/README-NL.md)
 
-- **Absolute setpoint guardrails**: All commands are bounded between
-  16 °C and 30 °C by default to keep thermostats within sane ranges.
+## Installation
 
-- **Diagnostic sensors**: Built-in sensors expose room/water temperature
-  derivatives (°C/hour), a thermal summary, simplified assist behavior, and
-  total power consumption.
+### Install with HACS (recommended)
 
-- **Event-driven reactions**: Subscribes to Home Assistant state changes for all configured heat pumps, so setpoints and stages update immediately when a thermostat changes temperature or HVAC mode.
+1. HACS → **Integrations**.
+2. Menu (⋮) → **Custom repositories**.
+3. Add this repository URL and select category **Integration**.
+4. Install **PowerClimate** and restart Home Assistant.
 
-- **Standard HA services**: No vendor-specific APIs—this integration
-  orchestrates existing climate entities via Home Assistant services.
+### Manual install
 
-- **Room sensor averaging**: Select multiple room temperature sensors; the
-  integration averages available readings (invalid/unavailable sensors are
-  ignored) to drive staging decisions.
+1. Copy `custom_components/powerclimate/` into your Home Assistant `config/custom_components/`.
+2. Restart Home Assistant.
 
-- **Per-device copy-to-PowerClimate (optional):** Each heatpump now has an optional checkbox in the config flow (`Copy manual setpoint changes to PowerClimate thermostat`) which, when enabled, forwards manual setpoint changes from that heatpump to the PowerClimate climate entity via `climate.set_temperature` (default: off). This lets a single heatpump act as a co-master for setpoints while keeping the integration's steering logic intact.
+## Setup
 
-## Quick Start
+1. Home Assistant → **Settings → Devices & Services → Add Integration → PowerClimate**.
+2. Select one or more room temperature sensors (PowerClimate uses an average of available values).
+3. Configure HP1 (water-based heat pump) and any assist heat pumps (HP2/HP3/…).
 
-1. Install the `powerclimate` folder into `custom_components/`.
-2. In Home Assistant, go to **Settings → Devices & Services → Add Integration
-  → PowerClimate**.
-3. Pick one or more room temperature sensors (an average is used) and provide
-  the lower/upper setpoint offsets that define the minimal/run targets.
-4. Configure your heat pumps:
-  - **Water-based heat pump** (required): Climate entity, power sensor, water
-    temperature sensor, offsets for HP1
-  - **Assist pumps** (optional): Climate entity, power sensor, offsets per HP
+## Support
+
+- Issues and feature requests: use the GitHub issue tracker linked in the integration manifest.
 
 ## Control Algorithm
 
@@ -92,11 +88,12 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | Water Derivative | Water temperature change rate (°C/hour) |
 | Thermal Summary | Human-readable system state |
 | HP1 Behavior | HVAC status, temps, water temperature when available |
-| HP2 Behavior | HVAC status, temps, and assist mode (minimal/setpoint/off) |
+| HP2 Behavior | HVAC status, temps, and PowerClimate mode (off/minimal/setpoint/power/boost) |
 | HP3 Behavior | Same as above when a third pump is configured |
 | HP4 Behavior | Same logic as HP2 when a fourth pump is configured |
 | HP5 Behavior | Same logic as HP2 when a fifth pump is configured |
 | Total Power | Aggregated power from all configured pumps |
+| Power Budget | Allocated budget totals + per-device budgets (when enabled) |
 
 Derivatives use the slope between the oldest and newest sample within the
 window (room: 15 minutes, water: 10 minutes), matching Home Assistant's
@@ -123,14 +120,9 @@ General setup guidance (always double-check your device manual):
 - **icon.png**: Legacy/fallback icon. Keep `icon.png` for compatibility with older setups and for any UI or tooling that expects that filename. It is not strictly required if `logo.png`/`logo.svg` exist, but keeping it avoids surprises.
 - **logo.svg** (recommended): An SVG is preferred where possible because it scales cleanly and can be recolored. If you have an SVG source, include `logo.svg` alongside `logo.png`.
 
-PowerShell quick commands to create or copy these assets locally and to a Home Assistant install on `Z:`:
+PowerShell quick command to create a logo from the existing icon:
 
 ```
 Copy-Item -Path .\custom_components\powerclimate\icon.png -Destination .\custom_components\powerclimate\logo.png -Force
-Copy-Item -Path .\custom_components\powerclimate\logo.png -Destination Z:\custom_components\powerclimate\logo.png -Force
 ```
-## Changelog
-
-- Feature: per-device copy-to-PowerClimate option added (see config flow). Implemented on branch `Co-master`.
-- **What it does:** When enabled for a heatpump, manual temperature setpoint changes made on that heatpump are forwarded to the PowerClimate climate entity via a Home Assistant service call (`climate.set_temperature`). This allows an individual heatpump to act as a co-master for setpoints without changing the global steering logic.
 

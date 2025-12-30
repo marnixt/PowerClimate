@@ -61,7 +61,8 @@
         "description": "What would you like to change?",
         "menu_options": {
           "edit_setup": "Edit setup (name, room sensors, devices)",
-          "advanced": "Advanced options"
+          "advanced": "Advanced options",
+          "experimental": "Experimental"
         }
       },
       "edit_setup": {
@@ -119,8 +120,7 @@
           "assist_min_on_minutes": "Anti-short-cycle: minimum ON time (minutes)",
           "assist_min_off_minutes": "Anti-short-cycle: minimum OFF time (minutes)",
           "assist_water_temp_threshold": "Water temperature threshold (°C)",
-          "assist_stall_temp_delta": "Stall temperature delta (°C)",
-          "house_power_sensor_entity_id": "House net power sensor (W, negative = export)"
+          "assist_stall_temp_delta": "Stall temperature delta (°C)"
         },
         "data_description": {
           "min_setpoint_override": "Absolute minimum temperature sent to any pump (default: 16°C)",
@@ -131,7 +131,16 @@
           "assist_min_on_minutes": "Block turning assist pumps OFF until they've been ON for at least this long (default: 20min)",
           "assist_min_off_minutes": "Block turning assist pumps ON until they've been OFF for at least this long (default: 10min)",
           "assist_water_temp_threshold": "Turn assist pumps ON when water reaches this temperature (default: 40°C)",
-          "assist_stall_temp_delta": "Temperature difference threshold for stall detection (default: 0.5°C)",
+          "assist_stall_temp_delta": "Temperature difference threshold for stall detection (default: 0.5°C)"
+        }
+      },
+      "experimental": {
+        "title": "Experimental",
+        "description": "Experimental features. These settings may change without notice.",
+        "data": {
+          "house_power_sensor_entity_id": "House net power sensor (W, negative = export)"
+        },
+        "data_description": {
           "house_power_sensor_entity_id": "Signed net active power. If negative, PowerClimate treats it as export/surplus and will allocate budgets in the Solar preset."
         }
       }

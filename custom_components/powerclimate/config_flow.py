@@ -667,7 +667,8 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
             config_entry.title or DEFAULT_ENTRY_NAME,
         )
         self._entry_name = self._base.get(CONF_ENTRY_NAME, DEFAULT_ENTRY_NAME)
-        self._entry_data: dict[str, Any] = {}
+        # Start from existing options so editing one section doesn't clear others.
+        self._entry_data: dict[str, Any] = dict(config_entry.options)
         self._primary_device: dict[str, Any] | None = None
         self._base_primary, self._base_additional = _split_devices(self._base)
         if self._base_primary:
@@ -684,6 +685,7 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
             menu_options=[
                 "edit_setup",
                 "advanced",
+                "experimental",
             ],
         )
 
@@ -829,6 +831,25 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
             },
         )
 
+    async def async_step_experimental(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ):
+        """Handle experimental configuration options."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            experimental_data = _process_experimental_input(user_input)
+            self._entry_data.update(experimental_data)
+            return await self._create_options_entry()
+
+        defaults = _experimental_form_defaults(self._base, user_input)
+        schema = _build_experimental_schema(defaults)
+        return self.async_show_form(
+            step_id="experimental",
+            data_schema=schema,
+            errors=errors,
+        )
+
     async def _create_options_entry(self):
         # If the user only edited Advanced options, keep existing devices.
         if not self._primary_device and self._base_primary:
@@ -921,14 +942,6 @@ def _build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
             selector({"number": selector_config}),
         )
 
-    # Net active power sensor for the Solar preset (signed; negative when exporting)
-    _optional_field(
-        CONF_HOUSE_POWER_SENSOR,
-        defaults,
-        schema_fields,
-        _entity_selector("sensor"),
-    )
-
     return vol.Schema(schema_fields)
 
 
@@ -969,9 +982,45 @@ def _process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_ASSIST_MIN_OFF_MINUTES,
         CONF_ASSIST_WATER_TEMP_THRESHOLD,
         CONF_ASSIST_STALL_TEMP_DELTA,
-        CONF_HOUSE_POWER_SENSOR,
     }
     
     return {key: user_input[key] for key in advanced_keys if key in user_input}
+
+
+def _build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build the schema for experimental options."""
+    schema_fields: dict[Any, Any] = {}
+
+    # Net active power sensor for the Solar preset (signed; negative when exporting)
+    _optional_field(
+        CONF_HOUSE_POWER_SENSOR,
+        defaults,
+        schema_fields,
+        _entity_selector("sensor"),
+    )
+
+    return vol.Schema(schema_fields)
+
+
+def _experimental_form_defaults(
+    base: dict[str, Any],
+    user_input: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build defaults for experimental form."""
+    if user_input:
+        return dict(user_input)
+
+    return {
+        CONF_HOUSE_POWER_SENSOR: base.get(CONF_HOUSE_POWER_SENSOR),
+    }
+
+
+def _process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Process and validate experimental options input."""
+    data: dict[str, Any] = {}
+    if CONF_HOUSE_POWER_SENSOR in user_input:
+        sensor_entity_id = str(user_input.get(CONF_HOUSE_POWER_SENSOR) or "").strip()
+        data[CONF_HOUSE_POWER_SENSOR] = sensor_entity_id or None
+    return data
 
 

@@ -20,6 +20,13 @@ ENV/
 # Pytest cache
 .pytest_cache/
 
+# Type checker / linter caches
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
 # VS Code
 .vscode/
 
@@ -34,4 +41,9 @@ ENV/
 
 # Home Assistant custom components specifics
 *.storage
+.storage/
+.cloud/
+home-assistant.log*
+*.db
+*.sqlite*
 secrets.yaml

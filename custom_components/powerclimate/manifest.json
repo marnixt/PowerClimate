@@ -7,7 +7,7 @@
   "homeassistant": "2024.11.0",
   "requirements": [],
   "dependencies": [],
-  "codeowners": ["@openspec"],
+  "codeowners": ["@marnixt"],
   "config_flow": true,
   "iot_class": "local_polling"
 }
