@@ -256,7 +256,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
 
         sum_x = sum(xs)
         sum_y = sum(ys)
-        sum_xy = sum(x * y for x, y in zip(xs, ys))
+        sum_xy = sum(x * y for x, y in zip(xs, ys, strict=False))
         sum_x2 = sum(x * x for x in xs)
 
         denom = n * sum_x2 - sum_x * sum_x
