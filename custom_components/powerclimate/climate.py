@@ -400,7 +400,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         now = datetime.now(timezone.utc)
 
         # Turn off assist pumps (HP2+) when on/off control is allowed.
-        for index, device in enumerate(devices[1:], start=1):
+        for _index, device in enumerate(devices[1:], start=1):
             if not device.get(CONF_ALLOW_ON_OFF_CONTROL):
                 continue
             entity_id = str(device.get(CONF_CLIMATE_ENTITY) or "").strip()

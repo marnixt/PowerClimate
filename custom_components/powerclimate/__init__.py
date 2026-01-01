@@ -92,7 +92,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         power_watts = call.data["power_watts"]
 
         # Find the PowerClimate climate entity and call set_power_budget
-        for entry_id, data in hass.data.get(DOMAIN, {}).items():
+        for _entry_id, data in hass.data.get(DOMAIN, {}).items():
             climate_entity = data.get("climate_entity")
             if climate_entity is not None:
                 climate_entity.set_power_budget(entity_id, power_watts)
@@ -110,7 +110,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         entity_id = call.data["entity_id"]
 
         # Find the PowerClimate climate entity and call clear_power_budget
-        for entry_id, data in hass.data.get(DOMAIN, {}).items():
+        for _entry_id, data in hass.data.get(DOMAIN, {}).items():
             climate_entity = data.get("climate_entity")
             if climate_entity is not None:
                 climate_entity.clear_power_budget(entity_id)
