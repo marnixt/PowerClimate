@@ -1,6 +1,6 @@
 # PowerClimate (NL)
 
-Home Assistant custom integration om meerdere warmtepomp climate devices samen te laten werken.
+Home Assistant custom integratie om meerdere warmtepomp climate devices samen te laten werken.
 
 ## Functies
 
@@ -10,6 +10,8 @@ Home Assistant custom integration om meerdere warmtepomp climate devices samen t
 - **Vermogensbewuste `Solar` preset (optioneel)**: verdeel per-apparaat vermogensbudgetten op basis van een signed house net power sensor.
 - **Diagnostiek**: thermische samenvatting, per-HP behavior, afgeleides, totaal vermogen en budgetdiagnostiek.
 - **Standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
+
+![PowerClimate-dashboard: Home Assistant UI met de virtuele PowerClimate-thermostaat (huidige temperatuur, setpoint en modusbediening).](custom_components/powerclimate/images/Dashboard%20Climate%20device.png)
 
 ## Snelstart
 
@@ -22,6 +24,8 @@ Home Assistant custom integration om meerdere warmtepomp climate devices samen t
     temperatuursensor, en offsets
   - **Lucht- (assist) warmtepompen** (optioneel, 0..n): climate entity, optionele vermogenssensor, offsets per apparaat,
     en optioneel automatische AAN/UIT controle
+
+![Configuratievoorbeeld: selectie van warmtepompen in de PowerClimate-configuratiepagina.](custom_components/powerclimate/images/Config_select_heat_pumps.png)
 
 ## Configuratie
 

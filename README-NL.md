@@ -39,6 +39,9 @@ Kopieer `custom_components/powerclimate/` naar je Home Assistant `config/custom_
 1. Home Assistant -> **Instellingen -> Apparaten & Diensten -> Integratie toevoegen -> PowerClimate**.
 2. Kies een of meerdere ruimtesensoren (PowerClimate gebruikt het gemiddelde van beschikbare waarden).
 3. Selecteer een optionele waterwarmtepomp (0 of 1) en nul of meer lucht- (assist) warmtepompen.
+
+![Select heat pumps configuration](custom_components/powerclimate/images/Config_select_heat_pumps.png)
+
 4. Configureer elk geselecteerd apparaat op een eigen pagina (rol, sensoren, offsets en optioneel aan/uit controle voor assists).
 
 Let op: stel de lower setpoint offset zo in dat de warmtepomp net niet uit gaat. In dit voorbeeld zal setpoint op 17 graden ingesteld worden als de warmtepomp zelf 20 graden meet. 

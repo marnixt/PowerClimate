@@ -14,11 +14,16 @@ Not affiliated with Home Assistant.
 ## Features
 
 - **Multi-heatpump orchestration**: One virtual thermostat coordinates one optional water-based heat pump and any number of air-based assist heat pumps.
+
+![PowerClimate dashboard climate device: Home Assistant UI showing the PowerClimate virtual thermostat with current temperature, setpoint, and mode controls.](custom_components/powerclimate/images/Dashboard%20Climate%20device.png)
 - **Per-device offsets + guardrails**: Lower/upper offsets per device, plus global min/max setpoint limits.
 - **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
 - **Power-aware control (optional)**: `Solar` preset can allocate per-device power budgets from a signed house net power sensor.
 - **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
 - **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
+
+![Config air warmtepomp](custom_components/powerclimate/images/Dashboard%20example%201.png)
+
 
 ## Documentation
 
@@ -34,9 +39,11 @@ Copy `custom_components/powerclimate/` into your Home Assistant `config/custom_c
 1. Home Assistant → **Settings → Devices & Services → Add Integration → PowerClimate**.
 2. Select one or more room temperature sensors (PowerClimate uses an average of available values).
 3. Select an optional water-based heat pump (0 or 1) and zero or more air-based assist heat pumps.
+![Select heat pumps configuration](custom_components/powerclimate/images/Config_select_heat_pumps.png)
+
 4. Configure each selected device on its own page (role, sensors, offsets, and optional on/off control for assists).
 
-Note: Set the lower setpoint offset so that the heat pump almost, but not completely, switches off. In this example, the setpoint will be 17 °C when the heat pump itself measures 20 °C.
+Note: Set the lower setpoint offset so that the heat pump almost, but not completely, switches off. In this example, the setpoint will be a minimum of 17 °C when the heat pump itself measures 20 °C.
 
 ![Config air warmtepomp](custom_components/powerclimate/images/Config%20air%20heatpump%201.png)
 
