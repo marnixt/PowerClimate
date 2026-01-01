@@ -25,8 +25,13 @@ CONF_ENERGY_SENSOR = "energy_sensor_entity_id"
 CONF_WATER_SENSOR = "water_sensor_entity_id"
 CONF_DEVICE_ID = "id"
 CONF_DEVICE_NAME = "name"
+CONF_DEVICE_ROLE = "device_role"
 CONF_COPY_SETPOINT_TO_POWERCLIMATE = "copy_setpoint_to_powerclimate"
 CONF_ALLOW_ON_OFF_CONTROL = "allow_on_off_control"
+
+# Device role values
+DEVICE_ROLE_WATER = "water"
+DEVICE_ROLE_AIR = "air"
 
 # Heat pump operating modes
 MODE_BOOST = "boost"

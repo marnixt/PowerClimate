@@ -9,47 +9,55 @@
           "room_sensor_entity_ids": "Select one or more room temperature sensors"
         }
       },
-      "primary": {
-        "title": "Water-based heat pump",
-        "description": "Configure the water-based heat pump along with its sensors and setpoint offsets.",
+      "select_devices": {
+        "title": "Select heat pumps",
+        "description": "Select which heat pumps to configure. You can configure one optional water-based heat pump and any number of air heat pumps.",
         "data": {
-          "climate_entity_id": "Water-based heat pump thermostat",
-          "energy_sensor_entity_id": "Water-based heat pump power sensor",
-          "water_sensor_entity_id": "Water-based heat pump water temperature sensor",
-          "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
-          "add_more_devices": "Configure Additional heat pumps"
+          "water_climate_entity_id": "💧 Water-based heat pump (optional)",
+          "air_climate_entity_ids": "🌬️ Air heat pumps (optional)"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+          "water_climate_entity_id": "Select a water/hydronic heat pump if you have one. This device controls flow temperature.",
+          "air_climate_entity_ids": "Select one or more air-to-air heat pumps. These act as assist devices."
         }
       },
-      "devices": {
-        "title": "{hp_label}",
-        "description": "Configure {hp_label}. Configured HPs: {device_list}.",
+      "water_device": {
+        "title": "💧 Water heat pump configuration",
+        "description": "Configure the water-based heat pump sensors and offsets.",
         "data": {
-          "climate_entity_id": "HP thermostat",
-          "energy_sensor_entity_id": "HP power sensor",
+          "energy_sensor_entity_id": "Power sensor",
+          "water_sensor_entity_id": "Water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
-          "allow_on_off_control": "Allow PowerClimate to turn device on and off",
-          "add_another_device": "Add another HP after this"
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset.",
-          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this assist heat pump on or off based on system needs."
+          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset."
+        }
+      },
+      "air_device": {
+        "title": "🌬️ {hp_label}: {device_name}",
+        "description": "Configure air heat pump {device_index} of {total_air_devices}.",
+        "data": {
+          "energy_sensor_entity_id": "Power sensor",
+          "lower_setpoint_offset": "Lower setpoint offset (°C)",
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate",
+          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
+        },
+        "data_description": {
+          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       }
     },
     "error": {
       "room_sensor_required": "Select one or more room temperature sensors.",
-      "no_devices": "Add at least one device before finishing.",
+      "no_devices": "Select at least one heat pump to configure.",
       "required": "This field is required.",
-      "duplicate": "Device ID already exists.",
+      "duplicate": "A device cannot be both water and air type.",
       "invalid": "Select a valid value.",
       "invalid_offsets": "Lower offset must be less than or equal to upper offset."
     }
@@ -73,39 +81,47 @@
           "room_sensor_entity_ids": "Select one or more room temperature sensors"
         }
       },
-      "primary": {
-        "title": "Water-based heat pump",
-        "description": "Adjust the water-based heat pump along with its sensors and setpoint offsets. Toggle \"Configure additional heat pump\" to edit the remaining HPs.",
+      "select_devices": {
+        "title": "Select heat pumps",
+        "description": "Select which heat pumps to configure. You can configure one optional water-based heat pump and any number of air heat pumps.",
         "data": {
-          "climate_entity_id": "Water-based heat pump thermostat",
-          "energy_sensor_entity_id": "Water-based heat pump power sensor",
-          "water_sensor_entity_id": "Water-based heat pump water temperature sensor",
-          "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
-          "add_more_devices": "Configure additional heat pump"
+          "water_climate_entity_id": "💧 Water-based heat pump (optional)",
+          "air_climate_entity_ids": "🌬️ Air heat pumps (optional)"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset."
+          "water_climate_entity_id": "Select a water/hydronic heat pump if you have one. This device controls flow temperature.",
+          "air_climate_entity_ids": "Select one or more air-to-air heat pumps. These act as assist devices."
         }
       },
-      "devices": {
-        "title": "{hp_label}",
-        "description": "Edit {hp_label}. Configured HPs: {device_list}. Leave \"Add another HP after this\" unchecked to finish after this device.",
+      "water_device": {
+        "title": "💧 Water heat pump configuration",
+        "description": "Configure the water-based heat pump sensors and offsets.",
         "data": {
-          "climate_entity_id": "HP thermostat",
-          "energy_sensor_entity_id": "HP power sensor",
+          "energy_sensor_entity_id": "Power sensor",
+          "water_sensor_entity_id": "Water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate thermostat",
-          "allow_on_off_control": "Allow PowerClimate to turn device on and off",
-          "add_another_device": "Add another HP after this"
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = thermostat setpoint + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode target = thermostat setpoint + upper offset.",
-          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this assist heat pump on or off based on system needs."
+          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset."
+        }
+      },
+      "air_device": {
+        "title": "🌬️ {hp_label}: {device_name}",
+        "description": "Configure air heat pump {device_index} of {total_air_devices}.",
+        "data": {
+          "energy_sensor_entity_id": "Power sensor",
+          "lower_setpoint_offset": "Lower setpoint offset (°C)",
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate",
+          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
+        },
+        "data_description": {
+          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
+          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       },
       "advanced": {
@@ -147,9 +163,9 @@
     },
     "error": {
       "room_sensor_required": "Select one or more room temperature sensors.",
-      "no_devices": "Add at least one device before finishing.",
+      "no_devices": "Select at least one heat pump to configure.",
       "required": "This field is required.",
-      "duplicate": "Device ID already exists.",
+      "duplicate": "A device cannot be both water and air type.",
       "invalid": "Select a valid value.",
       "invalid_offsets": "Lower offset must be less than or equal to upper offset."
     }

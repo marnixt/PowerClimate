@@ -1,13 +1,14 @@
 {
   "domain": "powerclimate",
   "name": "PowerClimate",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "documentation": "https://github.com/marnixt/PowerClimate",
   "issue_tracker": "https://github.com/marnixt/PowerClimate/issues",
   "homeassistant": "2024.11.0",
+  "integration_type": "helper",
   "requirements": [],
   "dependencies": [],
   "codeowners": ["@marnixt"],
   "config_flow": true,
-  "iot_class": "local_polling"
+  "iot_class": "calculated"
 }

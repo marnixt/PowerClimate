@@ -5,7 +5,7 @@ and coordinate their setpoints using temperature offsets.
 
 ## Features
 
-- **Multi-heatpump orchestration**: One virtual thermostat coordinates HP1 + assist pumps.
+- **Multi-heatpump orchestration**: One virtual thermostat coordinates an optional water-based device and any number of air-based assist heat pumps.
 - **Offsets + guardrails**: Lower/upper offsets per device and global min/max setpoints.
 - **Assists: manual or automatic ON/OFF**: Optional timers + anti-short-cycle protections.
 - **Power-aware `Solar` preset (optional)**: Allocate per-device power budgets from a signed house net power sensor.
@@ -20,21 +20,28 @@ and coordinate their setpoints using temperature offsets.
 3. Pick the room temperature sensor and provide the lower/upper setpoint
    offsets that define the minimal/run targets.
 4. Configure your heat pumps:
-  - **Water-based heat pump** (required): Climate entity, power sensor, water
-    temperature sensor, offsets for HP1
-  - **Assist pumps** (optional): Climate entity, power sensor, offsets per HP,
+  - **Water-based heat pump** (optional): Climate entity, optional power sensor, optional water
+    temperature sensor, and offsets
+  - **Air-based assist pumps** (optional, 0..n): Climate entity, optional power sensor, offsets per device,
     and optionally enable automatic on/off control
+
+## Configuration Flow
+
+The setup flow is role-based: you may configure one optional water-based heat
+pump (0 or 1) and zero or more air-based assist heat pumps. The UI presents a
+device selection page and then separate configuration pages per device where
+you choose device role (`water` or `air`) and advanced options.
 
 ## Control Algorithm
 
-### Water-based heat pump (Primary Pump)
-- PowerClimate owns the HVAC mode: HP1 is forced to HEAT when the virtual
+### Water-based heat pump (optional)
+- If configured, PowerClimate can own the HVAC mode: the water-based device is forced to HEAT when the virtual
   climate entity is on and turned off otherwise.
-- The PowerClimate target temperature is clamped between the lower/upper
-  offsets (and the global 16–30 °C limits) before being sent to HP1.
-- HP1 water temperature is tracked and exposed via diagnostics
+- The PowerClimate target temperature is clamped between the lower/upper offsets (and the global 16–30 °C limits)
+  before being sent to the water-based device.
+- Water temperature is tracked and exposed via diagnostics when a water sensor is configured.
 
-### Assist pumps (HP2, HP3, ...)
+### Air-based assist heat pumps (0..n)
 
 #### Manual Control (default)
 - By default, the user controls each assist pump's HVAC mode. When an assist 
@@ -68,9 +75,23 @@ and coordinate their setpoints using temperature offsets.
 - All temperatures are clamped between the global min/max before sending
   commands, ensuring thermostats stay in a safe operating window.
 
+## Preset Behavior
+
+PowerClimate presets control how heat pumps operate in different scenarios:
+
+| Preset | 💧 Water Heat Pump | 🌬️ Air Heat Pump(s) |
+|--------|-------------------|---------------------|
+| **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF |
+| **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) |
+| **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
+| **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) |
+
+**Note:** Solar preset requires a configured house net power sensor. Budgets are allocated in device order, prioritizing the water-based device when configured.
+Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
+
 **Configuration Ranges:**
-- Lower setpoint offset: -5.0 to 0.0 °C
-- Upper setpoint offset: 0.0 to 5.0 °C
+- Lower setpoint offset: -5.0–0.0 °C
+- Upper setpoint offset: 0.0–5.0 °C
 
 ## Advanced Configuration Options
 
@@ -112,7 +133,7 @@ All control parameters are defined in `const.py` and can be adjusted:
 |----------|---------|-------------|
 | `DEFAULT_MIN_SETPOINT` | 16.0 | Absolute minimum temperature that will ever be sent to a pump. |
 | `DEFAULT_MAX_SETPOINT` | 30.0 | Absolute maximum temperature sent to any pump. |
-| `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | 0.0 | HP1 minimal-mode offset relative to its own sensed temperature. |
+| `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | -0.3 | HP1 minimal-mode offset relative to its own sensed temperature. |
 | `DEFAULT_UPPER_SETPOINT_OFFSET_HP1` | 1.5 | HP1 ceiling offset relative to its sensed temperature. |
 | `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Assist minimal-mode offset (room satisfied). |
 | `DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST` | 4.0 | Assist ceiling offset when chasing the room setpoint. |

@@ -21,13 +21,14 @@ from .const import (
     CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
+    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
+    CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MIN_SETPOINT_OVERRIDE,
-    CONF_HOUSE_POWER_SENSOR,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
     CONF_WATER_SENSOR,
@@ -43,11 +44,14 @@ from .const import (
     DEFAULT_MIN_SETPOINT,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
+    DEVICE_ROLE_AIR,
+    DEVICE_ROLE_WATER,
     DOMAIN,
 )
 
-ADD_ANOTHER_DEVICE_FIELD = "add_another_device"
-ADD_MORE_DEVICES_FIELD = "add_more_devices"
+# Field names for UI toggles (not stored in data)
+FIELD_WATER_CLIMATE = "water_climate_entity_id"
+FIELD_AIR_CLIMATES = "air_climate_entity_ids"
 
 
 def _entity_selector(domain: str, multiple: bool = False) -> Any:
@@ -59,8 +63,6 @@ def _text_selector() -> Any:
 
 
 def _offset_number_selector(min_val: float = -10, max_val: float = 10) -> Any:
-    # Use a numeric selector so defaults can be passed as floats and the UI
-    # provides a proper number input. Step and bounds are generous.
     return selector({"number": {"min": min_val, "max": max_val, "step": 0.1}})
 
 
@@ -117,9 +119,15 @@ def _parse_offset(raw: Any, default: float) -> tuple[float, bool]:
     return value, True
 
 
-def _split_devices(
+def _split_devices_by_role(
     base: dict[str, Any] | None,
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Split devices into water device and air devices based on role.
+    
+    For backward compatibility, if no role is set:
+    - First device is assumed to be water
+    - Remaining devices are assumed to be air
+    """
     devices = [
         dict(device)
         for device in (base or {}).get(CONF_DEVICES, [])
@@ -127,9 +135,24 @@ def _split_devices(
     ]
     if not devices:
         return None, []
-    first = devices[0]
-    rest = devices[1:]
-    return first, rest
+    
+    water_device = None
+    air_devices = []
+    
+    for i, device in enumerate(devices):
+        role = device.get(CONF_DEVICE_ROLE)
+        if role == DEVICE_ROLE_WATER:
+            water_device = device
+        elif role == DEVICE_ROLE_AIR:
+            air_devices.append(device)
+        else:
+            # Backward compatibility: first device without role is water
+            if i == 0 and water_device is None:
+                water_device = device
+            else:
+                air_devices.append(device)
+    
+    return water_device, air_devices
 
 
 def _global_form_defaults(
@@ -173,7 +196,6 @@ def _process_global_input(
         errors["base"] = "room_sensor_required"
         room_sensors = []
     else:
-        # Deduplicate while preserving order
         seen: set[str] = set()
         deduped: list[str] = []
         for entity_id in room_sensors:
@@ -189,52 +211,128 @@ def _process_global_input(
     return entry_name, data, errors
 
 
-def _hp1_form_defaults(
-    base: dict[str, Any] | None,
-    primary_device: dict[str, Any] | None,
+# --- Device Selection Step ---
+
+def _select_devices_defaults(
+    water_device: dict[str, Any] | None,
+    air_devices: list[dict[str, Any]],
     user_input: dict[str, Any] | None,
-    has_additional_defaults: bool,
 ) -> dict[str, Any]:
+    """Build defaults for the device selection step."""
     defaults: dict[str, Any] = {}
-    base = base or {}
-    if primary_device:
-        defaults[CONF_CLIMATE_ENTITY] = primary_device.get(CONF_CLIMATE_ENTITY)
-        defaults[CONF_ENERGY_SENSOR] = primary_device.get(CONF_ENERGY_SENSOR)
-        defaults[CONF_WATER_SENSOR] = primary_device.get(CONF_WATER_SENSOR)
-        defaults[CONF_COPY_SETPOINT_TO_POWERCLIMATE] = primary_device.get(
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE,
-            False,
-        )
-        defaults[CONF_LOWER_SETPOINT_OFFSET] = primary_device.get(
-            CONF_LOWER_SETPOINT_OFFSET,
-            DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-        )
-        defaults[CONF_UPPER_SETPOINT_OFFSET] = primary_device.get(
-            CONF_UPPER_SETPOINT_OFFSET,
-            DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
-        )
-    defaults.setdefault(
-        CONF_LOWER_SETPOINT_OFFSET,
-        DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-    )
-    defaults.setdefault(
-        CONF_UPPER_SETPOINT_OFFSET,
-        DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
-    )
-    defaults.setdefault(ADD_MORE_DEVICES_FIELD, has_additional_defaults)
+    
+    if water_device:
+        defaults[FIELD_WATER_CLIMATE] = water_device.get(CONF_CLIMATE_ENTITY)
+    
+    if air_devices:
+        defaults[FIELD_AIR_CLIMATES] = [
+            d.get(CONF_CLIMATE_ENTITY) for d in air_devices if d.get(CONF_CLIMATE_ENTITY)
+        ]
+    
     if user_input:
         defaults.update(user_input)
+    
     return defaults
 
 
-def _build_hp1_schema(defaults: dict[str, Any]) -> vol.Schema:
+def _build_select_devices_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build schema for selecting which devices to configure."""
     schema_fields: dict[Any, Any] = {}
-    _required_field(
-        CONF_CLIMATE_ENTITY,
+    
+    # Optional water-based heat pump (single select)
+    _optional_field(
+        FIELD_WATER_CLIMATE,
         defaults,
         schema_fields,
         _entity_selector("climate"),
     )
+    
+    # Optional air heat pumps (multi-select)
+    _optional_field(
+        FIELD_AIR_CLIMATES,
+        defaults,
+        schema_fields,
+        _entity_selector("climate", multiple=True),
+    )
+    
+    return vol.Schema(schema_fields)
+
+
+def _process_select_devices_input(
+    user_input: dict[str, Any],
+) -> tuple[str | None, list[str], dict[str, str]]:
+    """Process device selection input.
+    
+    Returns:
+        - water_entity: climate entity ID for water HP or None
+        - air_entities: list of climate entity IDs for air HPs
+        - errors: validation errors
+    """
+    errors: dict[str, str] = {}
+    
+    water_entity = user_input.get(FIELD_WATER_CLIMATE)
+    if water_entity:
+        water_entity = str(water_entity).strip() or None
+    
+    air_entities_raw = user_input.get(FIELD_AIR_CLIMATES) or []
+    air_entities: list[str] = []
+    seen: set[str] = set()
+    
+    # Deduplicate air entities
+    for entity_id in air_entities_raw:
+        entity_id = str(entity_id).strip()
+        if not entity_id or entity_id in seen:
+            continue
+        seen.add(entity_id)
+        air_entities.append(entity_id)
+    
+    # Validate: at least one device must be selected
+    if not water_entity and not air_entities:
+        errors["base"] = "no_devices"
+    
+    # Validate: water entity cannot also be an air entity
+    if water_entity and water_entity in air_entities:
+        errors["base"] = "duplicate"
+    
+    return water_entity, air_entities, errors
+
+
+# --- Water Device Configuration Step ---
+
+def _water_device_defaults(
+    existing_device: dict[str, Any] | None,
+    user_input: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build defaults for water device configuration."""
+    defaults: dict[str, Any] = {}
+    
+    if existing_device:
+        defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
+        defaults[CONF_WATER_SENSOR] = existing_device.get(CONF_WATER_SENSOR)
+        defaults[CONF_COPY_SETPOINT_TO_POWERCLIMATE] = existing_device.get(
+            CONF_COPY_SETPOINT_TO_POWERCLIMATE, False
+        )
+        defaults[CONF_LOWER_SETPOINT_OFFSET] = existing_device.get(
+            CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1
+        )
+        defaults[CONF_UPPER_SETPOINT_OFFSET] = existing_device.get(
+            CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1
+        )
+    
+    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
+    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
+    defaults.setdefault(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
+    
+    if user_input:
+        defaults.update(user_input)
+    
+    return defaults
+
+
+def _build_water_device_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build schema for water device configuration."""
+    schema_fields: dict[Any, Any] = {}
+    
     _required_field(
         CONF_ENERGY_SENSOR,
         defaults,
@@ -263,66 +361,53 @@ def _build_hp1_schema(defaults: dict[str, Any]) -> vol.Schema:
         CONF_COPY_SETPOINT_TO_POWERCLIMATE,
         default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
     )] = bool
-    schema_fields[vol.Optional(
-        ADD_MORE_DEVICES_FIELD,
-        default=defaults.get(ADD_MORE_DEVICES_FIELD, False),
-    )] = bool
+    
     return vol.Schema(schema_fields)
 
 
-def _process_hp1_input(
+def _process_water_device_input(
     user_input: dict[str, Any],
+    climate_entity: str,
     used_ids: set[str],
-) -> tuple[
-    dict[str, Any] | None,
-    bool,
-    dict[str, str],
-]:
+) -> tuple[dict[str, Any] | None, dict[str, str]]:
+    """Process water device configuration input."""
     errors: dict[str, str] = {}
-    climate_entity = user_input.get(CONF_CLIMATE_ENTITY)
-    if not climate_entity:
-        errors[CONF_CLIMATE_ENTITY] = "required"
+    
     energy_sensor = user_input.get(CONF_ENERGY_SENSOR)
     if not energy_sensor:
         errors[CONF_ENERGY_SENSOR] = "required"
+    
     water_sensor = user_input.get(CONF_WATER_SENSOR)
     if not water_sensor:
         errors[CONF_WATER_SENSOR] = "required"
-
+    
     lower_offset, lower_valid = _parse_offset(
-        user_input.get(
-            CONF_LOWER_SETPOINT_OFFSET,
-            DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-        ),
+        user_input.get(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1),
         DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     )
     if not lower_valid:
         errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
-
+    
     upper_offset, upper_valid = _parse_offset(
-        user_input.get(
-            CONF_UPPER_SETPOINT_OFFSET,
-            DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
-        ),
+        user_input.get(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1),
         DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     )
     if not upper_valid:
         errors[CONF_UPPER_SETPOINT_OFFSET] = "invalid"
-
+    
     if lower_offset > upper_offset:
         errors["base"] = "invalid_offsets"
         errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
         errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
-
-    add_more = bool(user_input.get(ADD_MORE_DEVICES_FIELD))
-
+    
     if errors:
-        return None, add_more, errors
-
+        return None, errors
+    
     device_id = _generate_device_id(climate_entity, used_ids)
     device = {
         CONF_DEVICE_ID: device_id,
         CONF_DEVICE_NAME: _generate_device_name(climate_entity),
+        CONF_DEVICE_ROLE: DEVICE_ROLE_WATER,
         CONF_CLIMATE_ENTITY: climate_entity,
         CONF_ENERGY_SENSOR: energy_sensor,
         CONF_WATER_SENSOR: water_sensor,
@@ -332,46 +417,49 @@ def _process_hp1_input(
         CONF_LOWER_SETPOINT_OFFSET: lower_offset,
         CONF_UPPER_SETPOINT_OFFSET: upper_offset,
     }
+    
+    return device, {}
 
-    return device, add_more, {}
 
+# --- Air Device Configuration Step ---
 
-def _additional_form_defaults(
-    _device_index: int,
-    base_defaults: dict[str, Any],
+def _air_device_defaults(
+    existing_device: dict[str, Any] | None,
     user_input: dict[str, Any] | None,
-    has_pending_defaults: bool,
 ) -> dict[str, Any]:
+    """Build defaults for air device configuration."""
     defaults: dict[str, Any] = {}
-    defaults.update(base_defaults)
-    defaults.setdefault(
-        CONF_LOWER_SETPOINT_OFFSET,
-        DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
-    )
-    defaults.setdefault(
-        CONF_UPPER_SETPOINT_OFFSET,
-        DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
-    )
+    
+    if existing_device:
+        defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
+        defaults[CONF_COPY_SETPOINT_TO_POWERCLIMATE] = existing_device.get(
+            CONF_COPY_SETPOINT_TO_POWERCLIMATE, False
+        )
+        defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
+            CONF_ALLOW_ON_OFF_CONTROL, False
+        )
+        defaults[CONF_LOWER_SETPOINT_OFFSET] = existing_device.get(
+            CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
+        )
+        defaults[CONF_UPPER_SETPOINT_OFFSET] = existing_device.get(
+            CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
+        )
+    
+    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST)
+    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST)
     defaults.setdefault(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
     defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
-    defaults.setdefault(ADD_ANOTHER_DEVICE_FIELD, has_pending_defaults)
+    
     if user_input:
         defaults.update(user_input)
-    defaults.setdefault(ADD_ANOTHER_DEVICE_FIELD, False)
+    
     return defaults
 
 
-def _build_additional_schema(
-    device_index: int,
-    defaults: dict[str, Any],
-) -> vol.Schema:
+def _build_air_device_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build schema for air device configuration."""
     schema_fields: dict[Any, Any] = {}
-    _required_field(
-        CONF_CLIMATE_ENTITY,
-        defaults,
-        schema_fields,
-        _entity_selector("climate"),
-    )
+    
     _required_field(
         CONF_ENERGY_SENSOR,
         defaults,
@@ -398,59 +486,49 @@ def _build_additional_schema(
         CONF_ALLOW_ON_OFF_CONTROL,
         default=defaults.get(CONF_ALLOW_ON_OFF_CONTROL, False),
     )] = bool
-    schema_fields[vol.Optional(
-        ADD_ANOTHER_DEVICE_FIELD,
-        default=defaults.get(ADD_ANOTHER_DEVICE_FIELD, False),
-    )] = bool
+    
     return vol.Schema(schema_fields)
 
 
-def _build_additional_device_data(
+def _process_air_device_input(
     user_input: dict[str, Any],
-    _device_index: int,
+    climate_entity: str,
     used_ids: set[str],
-    inherited_water_sensor: Any,
 ) -> tuple[dict[str, Any] | None, dict[str, str]]:
+    """Process air device configuration input."""
     errors: dict[str, str] = {}
-    climate_entity = user_input.get(CONF_CLIMATE_ENTITY)
-    if not climate_entity:
-        errors[CONF_CLIMATE_ENTITY] = "required"
+    
     energy_sensor = user_input.get(CONF_ENERGY_SENSOR)
     if not energy_sensor:
         errors[CONF_ENERGY_SENSOR] = "required"
-
+    
     lower_offset, lower_valid = _parse_offset(
-        user_input.get(
-            CONF_LOWER_SETPOINT_OFFSET,
-            DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
-        ),
+        user_input.get(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST),
         DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     )
     if not lower_valid:
         errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
-
+    
     upper_offset, upper_valid = _parse_offset(
-        user_input.get(
-            CONF_UPPER_SETPOINT_OFFSET,
-            DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
-        ),
+        user_input.get(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST),
         DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     )
     if not upper_valid:
         errors[CONF_UPPER_SETPOINT_OFFSET] = "invalid"
-
+    
     if lower_offset > upper_offset:
         errors["base"] = "invalid_offsets"
         errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
         errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
-
+    
     if errors:
         return None, errors
-
+    
     device_id = _generate_device_id(climate_entity, used_ids)
     device = {
         CONF_DEVICE_ID: device_id,
         CONF_DEVICE_NAME: _generate_device_name(climate_entity),
+        CONF_DEVICE_ROLE: DEVICE_ROLE_AIR,
         CONF_CLIMATE_ENTITY: climate_entity,
         CONF_ENERGY_SENSOR: energy_sensor,
         CONF_COPY_SETPOINT_TO_POWERCLIMATE: bool(
@@ -462,57 +540,8 @@ def _build_additional_device_data(
         CONF_LOWER_SETPOINT_OFFSET: lower_offset,
         CONF_UPPER_SETPOINT_OFFSET: upper_offset,
     }
-    if inherited_water_sensor:
-        device[CONF_WATER_SENSOR] = inherited_water_sensor
+    
     return device, {}
-
-
-class _DeviceWizardState:
-    def __init__(self, base_devices: list[dict[str, Any]] | None = None):
-        self.reset(base_devices)
-
-    def reset(self, base_devices: list[dict[str, Any]] | None = None) -> None:
-        self._devices: list[dict[str, Any]] = []
-        self._defaults_queue: list[dict[str, Any]] = [
-            dict(device) for device in (base_devices or [])
-        ]
-        self._current_defaults: dict[str, Any] | None = None
-
-    @property
-    def devices(self) -> list[dict[str, Any]]:
-        return self._devices
-
-    def next_index(self) -> int:
-        return len(self._devices)
-
-    def has_pending_prefills(self) -> bool:
-        return bool(self._defaults_queue)
-
-    def acquire_defaults(self) -> dict[str, Any]:
-        if self._current_defaults is None:
-            if self._defaults_queue:
-                self._current_defaults = self._defaults_queue.pop(0)
-            else:
-                self._current_defaults = {}
-        return self._current_defaults
-
-    def current_defaults(self) -> dict[str, Any]:
-        return self._current_defaults or {}
-
-    def append_device(self, device: dict[str, Any]) -> None:
-        self._devices.append(device)
-        self._current_defaults = None
-
-    def placeholders(self) -> dict[str, str]:
-        names = [
-            device.get(CONF_DEVICE_NAME)
-            or device.get(CONF_CLIMATE_ENTITY)
-            or f"HP{index}"
-            for index, device in enumerate(self._devices, start=1)
-        ]
-        return {
-            "device_list": ", ".join(names) if names else "None yet",
-        }
 
 
 class PowerClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -524,21 +553,30 @@ class PowerClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._base: dict[str, Any] = {}
         self._entry_name: str = DEFAULT_ENTRY_NAME
         self._entry_data: dict[str, Any] = {}
-        self._primary_device: dict[str, Any] | None = None
-        self._device_state = _DeviceWizardState()
-        self._collect_additional = False
+        
+        # Device selection state
+        self._water_entity: str | None = None
+        self._air_entities: list[str] = []
+        
+        # Configured devices
+        self._water_device: dict[str, Any] | None = None
+        self._air_devices: list[dict[str, Any]] = []
+        
+        # Track current air device index during configuration
+        self._air_device_index: int = 0
+        
         self._used_ids: set[str] = set()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
+        """Handle the initial step: name and room sensors."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            entry_name, data, errors = _process_global_input(
-                user_input, self._base,
-            )
+            entry_name, data, errors = _process_global_input(user_input, self._base)
             if not errors:
                 self._entry_name = entry_name or DEFAULT_ENTRY_NAME
                 self._entry_data = data
-                return await self.async_step_primary()
+                return await self.async_step_select_devices()
+        
         defaults = _global_form_defaults(self._base, user_input)
         schema = _build_global_schema(defaults)
         return self.async_show_form(
@@ -547,103 +585,132 @@ class PowerClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_primary(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ):
-        defaults = _hp1_form_defaults(
-            self._entry_data,
-            self._primary_device,
-            user_input,
-            False,
-        )
+    async def async_step_select_devices(self, user_input: dict[str, Any] | None = None):
+        """Handle device selection: optional water HP + multi-select air HPs."""
         errors: dict[str, str] = {}
+        
         if user_input is not None:
-            device, add_more, errors = _process_hp1_input(
+            water_entity, air_entities, errors = _process_select_devices_input(user_input)
+            if not errors:
+                self._water_entity = water_entity
+                self._air_entities = air_entities
+                self._air_device_index = 0
+                
+                # Go to water device config if selected, otherwise start with air devices
+                if self._water_entity:
+                    return await self.async_step_water_device()
+                elif self._air_entities:
+                    return await self.async_step_air_device()
+                else:
+                    # Should not happen due to validation, but handle gracefully
+                    return await self._create_entry()
+        
+        defaults = _select_devices_defaults(None, [], user_input)
+        schema = _build_select_devices_schema(defaults)
+        return self.async_show_form(
+            step_id="select_devices",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    async def async_step_water_device(self, user_input: dict[str, Any] | None = None):
+        """Configure the water-based heat pump."""
+        errors: dict[str, str] = {}
+        
+        if user_input is not None:
+            device, errors = _process_water_device_input(
                 user_input,
+                self._water_entity,
                 self._used_ids,
             )
             if not errors and device:
-                self._primary_device = device
+                self._water_device = device
                 self._used_ids.add(device[CONF_DEVICE_ID])
-                self._collect_additional = add_more
-                self._device_state.reset(None if not add_more else [])
-                if add_more:
-                    return await self.async_step_devices()
+                
+                # Continue to air devices if any
+                if self._air_entities:
+                    return await self.async_step_air_device()
                 return await self._create_entry()
-        schema = _build_hp1_schema(defaults)
+        
+        defaults = _water_device_defaults(None, user_input)
+        schema = _build_water_device_schema(defaults)
         return self.async_show_form(
-            step_id="primary",
+            step_id="water_device",
             data_schema=schema,
             errors=errors,
         )
 
-    async def async_step_devices(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ):
-        if not self._collect_additional:
-            return await self._create_entry()
-
-        device_index = 1 + self._device_state.next_index()
+    async def async_step_air_device(self, user_input: dict[str, Any] | None = None):
+        """Configure an air heat pump."""
         errors: dict[str, str] = {}
-
-        defaults_source = (
-            self._device_state.acquire_defaults()
-            if user_input is None
-            else self._device_state.current_defaults()
-        )
-        inherited_water = defaults_source.get(CONF_WATER_SENSOR)
-
+        
+        # Get current air entity
+        if self._air_device_index >= len(self._air_entities):
+            return await self._create_entry()
+        
+        current_entity = self._air_entities[self._air_device_index]
+        
         if user_input is not None:
-            device, errors = _build_additional_device_data(
+            device, errors = _process_air_device_input(
                 user_input,
-                device_index,
+                current_entity,
                 self._used_ids,
-                inherited_water,
             )
-            add_another = bool(user_input.get(ADD_ANOTHER_DEVICE_FIELD))
-            if not errors and device is not None:
-                self._device_state.append_device(device)
+            if not errors and device:
+                self._air_devices.append(device)
                 self._used_ids.add(device[CONF_DEVICE_ID])
-                if add_another:
-                    return await self.async_step_devices()
+                self._air_device_index += 1
+                
+                # Continue to next air device or finish
+                if self._air_device_index < len(self._air_entities):
+                    return await self.async_step_air_device()
                 return await self._create_entry()
-
-        defaults = _additional_form_defaults(
-            device_index,
-            defaults_source,
-            user_input,
-            self._device_state.has_pending_prefills(),
-        )
-        schema = _build_additional_schema(device_index, defaults)
-        placeholders = self._device_state.placeholders()
-        hp_number = device_index + 1
-        placeholders["next_index"] = str(hp_number)
-        placeholders["hp_number"] = str(hp_number)
-        placeholders["hp_label"] = f"HP{hp_number}"
+        
+        defaults = _air_device_defaults(None, user_input)
+        schema = _build_air_device_schema(defaults)
+        
+        # Generate a friendly name for the air HP
+        hp_number = self._air_device_index + 1
+        if self._water_device:
+            hp_number += 1  # Water device is HP1, so air devices start at HP2
+        
+        device_name = _generate_device_name(current_entity)
+        
         return self.async_show_form(
-            step_id="devices",
+            step_id="air_device",
             data_schema=schema,
             errors=errors,
-            description_placeholders=placeholders,
+            description_placeholders={
+                "hp_label": f"Air HP{hp_number}",
+                "device_name": device_name,
+                "device_index": str(self._air_device_index + 1),
+                "total_air_devices": str(len(self._air_entities)),
+            },
         )
 
     async def _create_entry(self):
-        if not self._primary_device:
-            return await self.async_step_primary()
-        devices = [self._primary_device] + [
-            dict(device) for device in self._device_state.devices
-        ]
+        """Create the config entry with all configured devices."""
+        # Build device list: water first (if present), then air devices
+        devices: list[dict[str, Any]] = []
+        
+        if self._water_device:
+            devices.append(self._water_device)
+        
+        devices.extend(self._air_devices)
+        
+        if not devices:
+            # No devices configured - go back to selection
+            return await self.async_step_select_devices()
+        
         entry_payload = dict(self._entry_data)
         entry_payload[CONF_DEVICES] = devices
         entry_payload[CONF_ENTRY_NAME] = self._entry_name
-
+        
         unique_id = _slugify(self._entry_name)
         if unique_id:
             await self.async_set_unique_id(unique_id, raise_on_progress=False)
             self._abort_if_unique_id_configured()
-
+        
         return self.async_create_entry(
             title=self._entry_name,
             data=entry_payload,
@@ -667,19 +734,26 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
             config_entry.title or DEFAULT_ENTRY_NAME,
         )
         self._entry_name = self._base.get(CONF_ENTRY_NAME, DEFAULT_ENTRY_NAME)
-        # Start from existing options so editing one section doesn't clear others.
         self._entry_data: dict[str, Any] = dict(config_entry.options)
-        self._primary_device: dict[str, Any] | None = None
-        self._base_primary, self._base_additional = _split_devices(self._base)
-        if self._base_primary:
-            self._primary_device = dict(self._base_primary)
-        self._device_state = _DeviceWizardState()
-        self._collect_additional = False
+        
+        # Parse existing devices
+        self._base_water, self._base_air = _split_devices_by_role(self._base)
+        
+        # Device selection state
+        self._water_entity: str | None = None
+        self._air_entities: list[str] = []
+        
+        # Configured devices
+        self._water_device: dict[str, Any] | None = None
+        self._air_devices: list[dict[str, Any]] = []
+        
+        # Track current air device index during configuration
+        self._air_device_index: int = 0
+        
         self._used_ids: set[str] = set()
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
-        # Start with a simple menu so users can change advanced behavior
-        # without having to reconfigure all devices.
+        """Show the options menu."""
         return self.async_show_menu(
             step_id="init",
             menu_options=[
@@ -689,22 +763,16 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
             ],
         )
 
-    async def async_step_edit_setup(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ):
+    async def async_step_edit_setup(self, user_input: dict[str, Any] | None = None):
         """Edit the general setup (name + room sensors), then devices."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            entry_name, data, errors = _process_global_input(
-                user_input,
-                self._base,
-            )
+            entry_name, data, errors = _process_global_input(user_input, self._base)
             if not errors:
                 self._entry_name = entry_name or self._entry_name
-                self._entry_data = data
-                return await self.async_step_primary()
-
+                self._entry_data.update(data)
+                return await self.async_step_select_devices()
+        
         defaults = _global_form_defaults(self._base, user_input)
         schema = _build_global_schema(defaults)
         return self.async_show_form(
@@ -713,135 +781,139 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
             errors=errors,
         )
 
-    async def async_step_primary(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ):
-        defaults = _hp1_form_defaults(
-            self._base,
-            self._base_primary,
-            user_input,
-            bool(self._base_additional),
-        )
+    async def async_step_select_devices(self, user_input: dict[str, Any] | None = None):
+        """Handle device selection: optional water HP + multi-select air HPs."""
         errors: dict[str, str] = {}
+        
         if user_input is not None:
-            device, add_more, errors = _process_hp1_input(
+            water_entity, air_entities, errors = _process_select_devices_input(user_input)
+            if not errors:
+                self._water_entity = water_entity
+                self._air_entities = air_entities
+                self._air_device_index = 0
+                
+                if self._water_entity:
+                    return await self.async_step_water_device()
+                elif self._air_entities:
+                    return await self.async_step_air_device()
+                else:
+                    return await self._create_options_entry()
+        
+        defaults = _select_devices_defaults(self._base_water, self._base_air, user_input)
+        schema = _build_select_devices_schema(defaults)
+        return self.async_show_form(
+            step_id="select_devices",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    async def async_step_water_device(self, user_input: dict[str, Any] | None = None):
+        """Configure the water-based heat pump."""
+        errors: dict[str, str] = {}
+        
+        # Find existing water device config if entity matches
+        existing = None
+        if self._base_water and self._base_water.get(CONF_CLIMATE_ENTITY) == self._water_entity:
+            existing = self._base_water
+        
+        if user_input is not None:
+            device, errors = _process_water_device_input(
                 user_input,
+                self._water_entity,
                 self._used_ids,
             )
             if not errors and device:
-                self._primary_device = device
+                self._water_device = device
                 self._used_ids.add(device[CONF_DEVICE_ID])
-                self._collect_additional = add_more
-                if add_more:
-                    self._device_state.reset(self._base_additional)
-                    return await self.async_step_devices()
-                self._device_state.reset(None)
+                
+                if self._air_entities:
+                    return await self.async_step_air_device()
                 return await self._create_options_entry()
-        schema = _build_hp1_schema(defaults)
+        
+        defaults = _water_device_defaults(existing, user_input)
+        schema = _build_water_device_schema(defaults)
         return self.async_show_form(
-            step_id="primary",
+            step_id="water_device",
             data_schema=schema,
             errors=errors,
         )
 
-    async def async_step_devices(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ):
-        if not self._collect_additional:
-            return await self._create_options_entry()
-
-        device_index = 1 + self._device_state.next_index()
+    async def async_step_air_device(self, user_input: dict[str, Any] | None = None):
+        """Configure an air heat pump."""
         errors: dict[str, str] = {}
-
-        defaults_source = (
-            self._device_state.acquire_defaults()
-            if user_input is None
-            else self._device_state.current_defaults()
-        )
-        inherited_water = defaults_source.get(CONF_WATER_SENSOR)
-
+        
+        if self._air_device_index >= len(self._air_entities):
+            return await self._create_options_entry()
+        
+        current_entity = self._air_entities[self._air_device_index]
+        
+        # Find existing air device config if entity matches
+        existing = None
+        for air_dev in self._base_air:
+            if air_dev.get(CONF_CLIMATE_ENTITY) == current_entity:
+                existing = air_dev
+                break
+        
         if user_input is not None:
-            device, errors = _build_additional_device_data(
+            device, errors = _process_air_device_input(
                 user_input,
-                device_index,
+                current_entity,
                 self._used_ids,
-                inherited_water,
             )
-            add_another = bool(user_input.get(ADD_ANOTHER_DEVICE_FIELD))
-            if not errors and device is not None:
-                self._device_state.append_device(device)
+            if not errors and device:
+                self._air_devices.append(device)
                 self._used_ids.add(device[CONF_DEVICE_ID])
-                if add_another:
-                    return await self.async_step_devices()
+                self._air_device_index += 1
+                
+                if self._air_device_index < len(self._air_entities):
+                    return await self.async_step_air_device()
                 return await self._create_options_entry()
-
-        defaults = _additional_form_defaults(
-            device_index,
-            defaults_source,
-            user_input,
-            self._device_state.has_pending_prefills(),
-        )
-        schema = _build_additional_schema(device_index, defaults)
-        placeholders = self._device_state.placeholders()
-        hp_number = device_index + 1
-        placeholders["next_index"] = str(hp_number)
-        placeholders["hp_number"] = str(hp_number)
-        placeholders["hp_label"] = f"HP{hp_number}"
+        
+        defaults = _air_device_defaults(existing, user_input)
+        schema = _build_air_device_schema(defaults)
+        
+        hp_number = self._air_device_index + 1
+        if self._water_device:
+            hp_number += 1
+        
+        device_name = _generate_device_name(current_entity)
+        
         return self.async_show_form(
-            step_id="devices",
+            step_id="air_device",
             data_schema=schema,
             errors=errors,
-            description_placeholders=placeholders,
+            description_placeholders={
+                "hp_label": f"Air HP{hp_number}",
+                "device_name": device_name,
+                "device_index": str(self._air_device_index + 1),
+                "total_air_devices": str(len(self._air_entities)),
+            },
         )
 
-    async def async_step_advanced(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ):
+    async def async_step_advanced(self, user_input: dict[str, Any] | None = None):
         """Handle advanced/expert configuration options."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            # Validate and store advanced options
             advanced_data = _process_advanced_input(user_input)
             self._entry_data.update(advanced_data)
             return await self._create_options_entry()
-
+        
         defaults = _advanced_form_defaults(self._base, user_input)
         schema = _build_advanced_schema(defaults)
         return self.async_show_form(
             step_id="advanced",
             data_schema=schema,
             errors=errors,
-            description_placeholders={
-                "timer_desc": (
-                    "Duration in seconds that a condition must remain true "
-                    "before action is taken"
-                ),
-                "eta_on_desc": "Turn assist pumps ON if ETA exceeds this many hours",
-                "eta_off_desc": (
-                    "Turn assist pumps OFF if ETA drops below this many hours "
-                    "(15min = 0.25)"
-                ),
-                "water_temp_desc": (
-                    "Turn assist pumps ON if water temperature reaches this threshold"
-                ),
-                "stall_delta_desc": "Temperature difference threshold for stall detection",
-            },
         )
 
-    async def async_step_experimental(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ):
+    async def async_step_experimental(self, user_input: dict[str, Any] | None = None):
         """Handle experimental configuration options."""
         errors: dict[str, str] = {}
         if user_input is not None:
             experimental_data = _process_experimental_input(user_input)
             self._entry_data.update(experimental_data)
             return await self._create_options_entry()
-
+        
         defaults = _experimental_form_defaults(self._base, user_input)
         schema = _build_experimental_schema(defaults)
         return self.async_show_form(
@@ -851,20 +923,32 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def _create_options_entry(self):
-        # If the user only edited Advanced options, keep existing devices.
-        if not self._primary_device and self._base_primary:
-            self._primary_device = dict(self._base_primary)
-
-        if not self._primary_device:
-            return await self.async_step_primary()
-
-        additional_devices = (
-            self._device_state.devices if self._device_state.devices else self._base_additional
-        )
-        devices = [self._primary_device] + [dict(device) for device in additional_devices]
-        data = dict(self._entry_data)
-        data[CONF_DEVICES] = devices
-
+        """Create the options entry with all configured devices."""
+        # If user only edited Advanced/Experimental, keep existing devices
+        if not self._water_device and not self._air_devices:
+            if self._base_water or self._base_air:
+                devices = []
+                if self._base_water:
+                    # Ensure role is set for backward compat
+                    water = dict(self._base_water)
+                    water.setdefault(CONF_DEVICE_ROLE, DEVICE_ROLE_WATER)
+                    devices.append(water)
+                for air in self._base_air:
+                    air_copy = dict(air)
+                    air_copy.setdefault(CONF_DEVICE_ROLE, DEVICE_ROLE_AIR)
+                    devices.append(air_copy)
+                self._entry_data[CONF_DEVICES] = devices
+        else:
+            # Build device list from newly configured devices
+            devices: list[dict[str, Any]] = []
+            if self._water_device:
+                devices.append(self._water_device)
+            devices.extend(self._air_devices)
+            
+            if devices:
+                self._entry_data[CONF_DEVICES] = devices
+        
+        # Update entry title if name changed
         if self._entry_name != (
             self._entry.title or self._entry.data.get(CONF_ENTRY_NAME)
         ):
@@ -875,8 +959,8 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
                 data=new_data,
                 title=self._entry_name,
             )
-
-        return self.async_create_entry(data=data)
+        
+        return self.async_create_entry(data=self._entry_data)
 
 
 def _generate_device_id(climate_entity: str, used_ids: set[str]) -> str:
@@ -921,7 +1005,6 @@ def _build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for advanced/expert options."""
     schema_fields: dict[Any, Any] = {}
 
-    # Data-driven approach for advanced options
     advanced_fields = [
         (CONF_MIN_SETPOINT_OVERRIDE, {"min": 10, "max": 25, "step": 0.5, "unit_of_measurement": "°C"}),
         (CONF_MAX_SETPOINT_OVERRIDE, {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C"}),
@@ -953,7 +1036,6 @@ def _advanced_form_defaults(
     if user_input:
         return dict(user_input)
 
-    # Data-driven defaults mapping
     default_map = {
         CONF_MIN_SETPOINT_OVERRIDE: DEFAULT_MIN_SETPOINT,
         CONF_MAX_SETPOINT_OVERRIDE: DEFAULT_MAX_SETPOINT,
@@ -971,7 +1053,6 @@ def _advanced_form_defaults(
 
 def _process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
     """Process and validate advanced options input."""
-    # All advanced option keys
     advanced_keys = {
         CONF_MIN_SETPOINT_OVERRIDE,
         CONF_MAX_SETPOINT_OVERRIDE,
@@ -991,7 +1072,6 @@ def _build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for experimental options."""
     schema_fields: dict[Any, Any] = {}
 
-    # Net active power sensor for the Solar preset (signed; negative when exporting)
     _optional_field(
         CONF_HOUSE_POWER_SENSOR,
         defaults,

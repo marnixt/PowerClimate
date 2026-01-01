@@ -54,6 +54,7 @@ from .const import (
     CONF_CLIMATE_ENTITY,
     CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_NAME,
+    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET,
@@ -83,6 +84,8 @@ from .const import (
     DEFAULT_POWER_SURPLUS_RESERVE_W,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
+    DEVICE_ROLE_AIR,
+    DEVICE_ROLE_WATER,
     DOMAIN,
     MIN_SET_CALL_INTERVAL_SECONDS,
     MODE_BOOST,
@@ -218,6 +221,45 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """
         config = merged_entry_data(self._entry)
         return bool(str(config.get(CONF_HOUSE_POWER_SENSOR) or "").strip())
+
+    def _get_device_role(self, device: dict[str, Any], index: int) -> str:
+        """Get device role, with backward compatibility for legacy config.
+
+        If device_role is explicitly set, use it. Otherwise, treat first device
+        as water (primary) and rest as air (assist).
+        """
+        role = device.get(CONF_DEVICE_ROLE)
+        if role in (DEVICE_ROLE_WATER, DEVICE_ROLE_AIR):
+            return role
+        # Backward compatibility: index 0 = water, rest = air
+        return DEVICE_ROLE_WATER if index == 0 else DEVICE_ROLE_AIR
+
+    def _is_water_device(self, device: dict[str, Any], index: int) -> bool:
+        """Check if device is a water-based heat pump."""
+        return self._get_device_role(device, index) == DEVICE_ROLE_WATER
+
+    def _is_air_device(self, device: dict[str, Any], index: int) -> bool:
+        """Check if device is an air-based heat pump."""
+        return self._get_device_role(device, index) == DEVICE_ROLE_AIR
+
+    def _get_water_device(self) -> tuple[dict[str, Any], int] | None:
+        """Get the water-based heat pump device and its index, if configured."""
+        config = merged_entry_data(self._entry)
+        devices = config.get(CONF_DEVICES) or []
+        for index, device in enumerate(devices):
+            if self._is_water_device(device, index):
+                return device, index
+        return None
+
+    def _get_air_devices(self) -> list[tuple[int, dict[str, Any]]]:
+        """Get all air-based heat pump devices with their indices."""
+        config = merged_entry_data(self._entry)
+        devices = config.get(CONF_DEVICES) or []
+        return [
+            (index, device)
+            for index, device in enumerate(devices)
+            if self._is_air_device(device, index)
+        ]
 
     @property
     def preset_modes(self) -> list[str] | None:
@@ -688,299 +730,303 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 and room_temp >= self._target_temperature
             )
 
-            hp1_device = devices[0]
-            hp1_entity = hp1_device.get(CONF_CLIMATE_ENTITY)
-            if hp1_entity:
-                desired_devices.add(hp1_entity)
-                hp1_payload = device_payloads.get(hp1_entity, {})
-                hp1_current = _safe_float(
-                    hp1_payload.get("current_temperature"),
+            # Handle water-based heat pump (if configured)
+            water_device_tuple = self._get_water_device()
+            if water_device_tuple:
+                water_hp_device, water_hp_index = water_device_tuple
+                water_hp_entity = water_hp_device.get(CONF_CLIMATE_ENTITY)
+                if water_hp_entity:
+                    desired_devices.add(water_hp_entity)
+                    water_hp_payload = device_payloads.get(water_hp_entity, {})
+                    water_hp_current = _safe_float(
+                        water_hp_payload.get("current_temperature"),
+                    )
+                    water_hp_power = _safe_float(water_hp_payload.get("energy"))
+                    water_temp = _safe_float(water_hp_payload.get("water_temperature"))
+
+                    # Determine water HP mode based on preset and power budget
+                    water_hp_mode = self._determine_hp1_mode(
+                        room_at_target,
+                        self._attr_preset_mode,
+                        water_hp_entity,
+                    )
+                    self._hp_modes[water_hp_entity] = water_hp_mode
+
+                    water_hp_target = self._calculate_mode_target(
+                        water_hp_mode,
+                        water_hp_current,
+                        water_hp_device,
+                        index=water_hp_index,
+                        current_power=water_hp_power,
+                    )
+                    desired_targets[water_hp_entity] = water_hp_target
+
+                    _LOGGER.debug(
+                        "Water HP: mode=%s, setpoint=%.1f, current=%s -> %.1f",
+                        water_hp_mode,
+                        self._target_temperature or 0.0,
+                        water_hp_current,
+                        water_hp_target,
+                    )
+
+                    mode = "water_hp_only"
+
+            # Handle air-based heat pumps (assist devices)
+            assist_devices = [
+                (index, device)
+                for index, device in self._get_air_devices()
+                if device.get(CONF_CLIMATE_ENTITY)
+            ]
+
+            if assist_devices:
+                # Get advanced options (with fallback to defaults)
+                assist_timer_seconds = config.get(
+                    CONF_ASSIST_TIMER_SECONDS, DEFAULT_ASSIST_TIMER_SECONDS
                 )
-                hp1_power = _safe_float(hp1_payload.get("energy"))
-                water_temp = _safe_float(hp1_payload.get("water_temperature"))
-
-                # Determine HP1 mode based on preset and power budget
-                hp1_mode = self._determine_hp1_mode(
-                    room_at_target,
-                    self._attr_preset_mode,
-                    hp1_entity,
+                eta_on_threshold_minutes = config.get(
+                    CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
+                    DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
                 )
-                self._hp_modes[hp1_entity] = hp1_mode
-
-                hp1_target = self._calculate_mode_target(
-                    hp1_mode,
-                    hp1_current,
-                    hp1_device,
-                    index=0,
-                    current_power=hp1_power,
-                )
-                desired_targets[hp1_entity] = hp1_target
-
-                _LOGGER.debug(
-                    "HP1: mode=%s, setpoint=%.1f, current=%s -> %.1f",
-                    hp1_mode,
-                    self._target_temperature or 0.0,
-                    hp1_current,
-                    hp1_target,
+                eta_off_threshold_minutes = config.get(
+                    CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
+                    DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
                 )
 
-                mode = "hp1_only"
+                # Anti-short-cycle settings (minutes)
+                min_on_minutes = float(
+                    config.get(CONF_ASSIST_MIN_ON_MINUTES, DEFAULT_ASSIST_MIN_ON_MINUTES)
+                )
+                min_off_minutes = float(
+                    config.get(CONF_ASSIST_MIN_OFF_MINUTES, DEFAULT_ASSIST_MIN_OFF_MINUTES)
+                )
+                water_temp_threshold = config.get(
+                    CONF_ASSIST_WATER_TEMP_THRESHOLD,
+                    DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
+                )
+                stall_temp_delta = config.get(
+                    CONF_ASSIST_STALL_TEMP_DELTA, DEFAULT_ASSIST_STALL_TEMP_DELTA
+                )
 
-                assist_devices = [
-                    (index, device)
-                    for index, device in enumerate(devices[1:], start=1)
-                    if device.get(CONF_CLIMATE_ENTITY)
-                ]
+                # Update timer deltas
+                now = datetime.now(timezone.utc)
+                delta_seconds = 0.0
+                if self._last_timer_update is not None:
+                    delta_seconds = (now - self._last_timer_update).total_seconds()
+                self._last_timer_update = now
 
-                if assist_devices:
-                    # Get advanced options (with fallback to defaults)
-                    assist_timer_seconds = config.get(
-                        CONF_ASSIST_TIMER_SECONDS, DEFAULT_ASSIST_TIMER_SECONDS
+                room_derivative = self.coordinator.data.get("room_derivative")
+
+                managed_any = False
+                for assist_index, device in assist_devices:
+                    entity = device.get(CONF_CLIMATE_ENTITY)
+                    if not entity:
+                        continue
+
+                    payload = device_payloads.get(entity, {}) or {}
+                    hvac_mode = str(payload.get("hvac_mode") or "").lower()
+                    is_running = (
+                        hvac_mode and hvac_mode != HVACMode.OFF.value
                     )
-                    eta_on_threshold_minutes = config.get(
-                        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-                        DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-                    )
-                    eta_off_threshold_minutes = config.get(
-                        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-                        DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-                    )
 
-                    # Anti-short-cycle settings (minutes)
-                    min_on_minutes = float(
-                        config.get(CONF_ASSIST_MIN_ON_MINUTES, DEFAULT_ASSIST_MIN_ON_MINUTES)
-                    )
-                    min_off_minutes = float(
-                        config.get(CONF_ASSIST_MIN_OFF_MINUTES, DEFAULT_ASSIST_MIN_OFF_MINUTES)
-                    )
-                    water_temp_threshold = config.get(
-                        CONF_ASSIST_WATER_TEMP_THRESHOLD,
-                        DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
-                    )
-                    stall_temp_delta = config.get(
-                        CONF_ASSIST_STALL_TEMP_DELTA, DEFAULT_ASSIST_STALL_TEMP_DELTA
-                    )
-
-                    # Update timer deltas
-                    now = datetime.now(timezone.utc)
-                    delta_seconds = 0.0
-                    if self._last_timer_update is not None:
-                        delta_seconds = (now - self._last_timer_update).total_seconds()
-                    self._last_timer_update = now
-
-                    room_derivative = self.coordinator.data.get("room_derivative")
-
-                    managed_any = False
-                    for assist_index, device in assist_devices:
-                        entity = device.get(CONF_CLIMATE_ENTITY)
-                        if not entity:
-                            continue
-
-                        payload = device_payloads.get(entity, {}) or {}
-                        hvac_mode = str(payload.get("hvac_mode") or "").lower()
-                        is_running = (
-                            hvac_mode and hvac_mode != HVACMode.OFF.value
-                        )
-
-                        # Track state transitions (also catches manual toggles)
-                        prev_running = self._assist_running_state.get(entity)
-                        if prev_running is None:
-                            self._assist_running_state[entity] = is_running
-                        elif prev_running != is_running:
-                            self._assist_running_state[entity] = is_running
-                            if is_running:
-                                self._assist_last_on[entity] = now
-                            else:
-                                self._assist_last_off[entity] = now
-
-                        self._assist_block_reason[entity] = ""
-
-                        # Default: no pending target action.
-                        if entity not in self._assist_target_hvac_mode:
-                            self._assist_target_hvac_mode[entity] = None
-                        if entity not in self._assist_target_reason:
-                            self._assist_target_reason[entity] = ""
-
-                        # Initialize timers if needed
-                        if entity not in self._assist_on_timers:
-                            self._assist_on_timers[entity] = 0.0
-                        if entity not in self._assist_off_timers:
-                            self._assist_off_timers[entity] = 0.0
-
-                        # Check mutually exclusive ON/OFF conditions
-                        room_eta_minutes = (
-                            self._room_eta_hours * 60.0
-                            if self._room_eta_hours is not None
-                            else None
-                        )
-
-                        on_condition_met, on_condition_name = self._check_assist_on_conditions(
-                            room_temp,
-                            room_eta_minutes,
-                            water_temp,
-                            room_derivative,
-                            eta_on_threshold_minutes,
-                            water_temp_threshold,
-                            stall_temp_delta,
-                        )
-
-                        off_condition_met, off_condition_name = self._check_assist_off_conditions(
-                            room_temp,
-                            room_eta_minutes,
-                            room_derivative,
-                            eta_off_threshold_minutes,
-                            stall_temp_delta,
-                        )
-
-                        # Mutually exclusive timer logic
-                        if on_condition_met:
-                            # ON condition active: increment ON timer, reset OFF timer
-                            self._assist_on_timers[entity] += delta_seconds
-                            self._assist_off_timers[entity] = 0.0
-                            self._assist_active_condition[entity] = on_condition_name
-                        elif off_condition_met:
-                            # OFF condition active: increment OFF timer, reset ON timer
-                            self._assist_off_timers[entity] += delta_seconds
-                            self._assist_on_timers[entity] = 0.0
-                            self._assist_active_condition[entity] = off_condition_name
+                    # Track state transitions (also catches manual toggles)
+                    prev_running = self._assist_running_state.get(entity)
+                    if prev_running is None:
+                        self._assist_running_state[entity] = is_running
+                    elif prev_running != is_running:
+                        self._assist_running_state[entity] = is_running
+                        if is_running:
+                            self._assist_last_on[entity] = now
                         else:
-                            # No condition active: reset both timers
-                            self._assist_on_timers[entity] = 0.0
-                            self._assist_off_timers[entity] = 0.0
-                            self._assist_active_condition[entity] = "none"
+                            self._assist_last_off[entity] = now
 
-                        # Apply ON/OFF control if allow_on_off_control is enabled
-                        if device.get(CONF_ALLOW_ON_OFF_CONTROL):
-                            on_timer = self._assist_on_timers[entity]
-                            off_timer = self._assist_off_timers[entity]
+                    self._assist_block_reason[entity] = ""
 
-                            min_on_seconds = max(0.0, min_on_minutes) * 60.0
-                            min_off_seconds = max(0.0, min_off_minutes) * 60.0
-                            seconds_since_on = None
-                            seconds_since_off = None
+                    # Default: no pending target action.
+                    if entity not in self._assist_target_hvac_mode:
+                        self._assist_target_hvac_mode[entity] = None
+                    if entity not in self._assist_target_reason:
+                        self._assist_target_reason[entity] = ""
 
-                            last_on = self._assist_last_on.get(entity)
-                            if last_on is not None:
-                                seconds_since_on = (now - last_on).total_seconds()
-                            last_off = self._assist_last_off.get(entity)
-                            if last_off is not None:
-                                seconds_since_off = (now - last_off).total_seconds()
+                    # Initialize timers if needed
+                    if entity not in self._assist_on_timers:
+                        self._assist_on_timers[entity] = 0.0
+                    if entity not in self._assist_off_timers:
+                        self._assist_off_timers[entity] = 0.0
 
-                            if not is_running and on_timer >= assist_timer_seconds:
-                                self._assist_target_hvac_mode[entity] = HVACMode.HEAT.value
-                                self._assist_target_reason[entity] = on_condition_name
-                                if (
-                                    seconds_since_off is not None
-                                    and seconds_since_off < min_off_seconds
-                                ):
-                                    remaining = int(min_off_seconds - seconds_since_off)
-                                    self._assist_block_reason[entity] = (
-                                        f"min_off {remaining}s"
-                                    )
-                                    _LOGGER.debug(
-                                        (
-                                            "Assist ON blocked (anti-short-cycle) for %s: "
-                                            "remaining=%ss"
-                                        ),
-                                        entity,
-                                        remaining,
-                                    )
-                                else:
-                                    _LOGGER.info(
-                                        "Turning ON %s: condition=%s, timer=%.1fs",
-                                        entity,
-                                        on_condition_name,
-                                        on_timer,
-                                    )
-                                    await self._ensure_device_mode(entity, HVACMode.HEAT)
-                                    self._assist_last_on[entity] = now
-                                # Refresh payload after mode change
-                                device_payloads = self._coordinator_devices()
-                                payload = device_payloads.get(entity, {}) or {}
-                                hvac_mode = str(payload.get("hvac_mode") or "").lower()
-                                is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
-                            elif is_running and off_timer >= assist_timer_seconds:
-                                self._assist_target_hvac_mode[entity] = HVACMode.OFF.value
-                                self._assist_target_reason[entity] = off_condition_name
-                                if (
-                                    seconds_since_on is not None
-                                    and seconds_since_on < min_on_seconds
-                                ):
-                                    remaining = int(min_on_seconds - seconds_since_on)
-                                    self._assist_block_reason[entity] = (
-                                        f"min_on {remaining}s"
-                                    )
-                                    _LOGGER.debug(
-                                        (
-                                            "Assist OFF blocked (anti-short-cycle) for %s: "
-                                            "remaining=%ss"
-                                        ),
-                                        entity,
-                                        remaining,
-                                    )
-                                else:
-                                    _LOGGER.info(
-                                        "Turning OFF %s: condition=%s, timer=%.1fs",
-                                        entity,
-                                        off_condition_name,
-                                        off_timer,
-                                    )
-                                    await self._ensure_device_mode(entity, HVACMode.OFF)
-                                    self._assist_last_off[entity] = now
-                                device_payloads = self._coordinator_devices()
-                                payload = device_payloads.get(entity, {}) or {}
-                                hvac_mode = str(payload.get("hvac_mode") or "").lower()
-                                is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
+                    # Check mutually exclusive ON/OFF conditions
+                    room_eta_minutes = (
+                        self._room_eta_hours * 60.0
+                        if self._room_eta_hours is not None
+                        else None
+                    )
 
-                        # Only manage setpoint if device is running
-                        if not is_running:
-                            self._assist_modes[entity] = MODE_OFF
-                            self._hp_modes[entity] = MODE_OFF
-                            continue
+                    on_condition_met, on_condition_name = self._check_assist_on_conditions(
+                        room_temp,
+                        room_eta_minutes,
+                        water_temp,
+                        room_derivative,
+                        eta_on_threshold_minutes,
+                        water_temp_threshold,
+                        stall_temp_delta,
+                    )
 
-                        current_temp = _safe_float(
-                            payload.get("current_temperature"),
-                        )
-                        current_power = _safe_float(payload.get("energy"))
+                    off_condition_met, off_condition_name = self._check_assist_off_conditions(
+                        room_temp,
+                        room_eta_minutes,
+                        room_derivative,
+                        eta_off_threshold_minutes,
+                        stall_temp_delta,
+                    )
 
-                        # Determine mode based on conditions, preset, and power budget
-                        off_timer = self._assist_off_timers.get(entity, 0.0)
-                        assist_mode = self._determine_assist_mode(
-                            room_at_target,
-                            off_timer,
-                            self._attr_preset_mode,
-                            entity,
-                        )
-                        self._hp_modes[entity] = assist_mode
+                    # Mutually exclusive timer logic
+                    if on_condition_met:
+                        # ON condition active: increment ON timer, reset OFF timer
+                        self._assist_on_timers[entity] += delta_seconds
+                        self._assist_off_timers[entity] = 0.0
+                        self._assist_active_condition[entity] = on_condition_name
+                    elif off_condition_met:
+                        # OFF condition active: increment OFF timer, reset ON timer
+                        self._assist_off_timers[entity] += delta_seconds
+                        self._assist_on_timers[entity] = 0.0
+                        self._assist_active_condition[entity] = off_condition_name
+                    else:
+                        # No condition active: reset both timers
+                        self._assist_on_timers[entity] = 0.0
+                        self._assist_off_timers[entity] = 0.0
+                        self._assist_active_condition[entity] = "none"
 
-                        target_for_device = self._calculate_mode_target(
-                            assist_mode,
-                            current_temp,
-                            device,
-                            assist_index,
-                            current_power=current_power,
-                        )
+                    # Apply ON/OFF control if allow_on_off_control is enabled
+                    if device.get(CONF_ALLOW_ON_OFF_CONTROL):
+                        on_timer = self._assist_on_timers[entity]
+                        off_timer = self._assist_off_timers[entity]
 
-                        desired_devices.add(entity)
-                        desired_targets[entity] = target_for_device
-                        self._assist_modes[entity] = assist_mode
-                        managed_any = True
+                        min_on_seconds = max(0.0, min_on_minutes) * 60.0
+                        min_off_seconds = max(0.0, min_off_minutes) * 60.0
+                        seconds_since_on = None
+                        seconds_since_off = None
 
-                        _LOGGER.debug(
-                            "Assist HP%d (%s): mode=%s, current=%s -> %.1f, "
-                            "on_timer=%.1fs, off_timer=%.1fs, condition=%s",
-                            assist_index + 1,
-                            entity,
-                            assist_mode,
-                            current_temp,
-                            target_for_device,
-                            self._assist_on_timers.get(entity, 0.0),
-                            self._assist_off_timers.get(entity, 0.0),
-                            self._assist_active_condition.get(entity, "none"),
-                        )
+                        last_on = self._assist_last_on.get(entity)
+                        if last_on is not None:
+                            seconds_since_on = (now - last_on).total_seconds()
+                        last_off = self._assist_last_off.get(entity)
+                        if last_off is not None:
+                            seconds_since_off = (now - last_off).total_seconds()
 
-                    if managed_any:
-                        mode = "hp2_assist"
+                        if not is_running and on_timer >= assist_timer_seconds:
+                            self._assist_target_hvac_mode[entity] = HVACMode.HEAT.value
+                            self._assist_target_reason[entity] = on_condition_name
+                            if (
+                                seconds_since_off is not None
+                                and seconds_since_off < min_off_seconds
+                            ):
+                                remaining = int(min_off_seconds - seconds_since_off)
+                                self._assist_block_reason[entity] = (
+                                    f"min_off {remaining}s"
+                                )
+                                _LOGGER.debug(
+                                    (
+                                        "Assist ON blocked (anti-short-cycle) for %s: "
+                                        "remaining=%ss"
+                                    ),
+                                    entity,
+                                    remaining,
+                                )
+                            else:
+                                _LOGGER.info(
+                                    "Turning ON %s: condition=%s, timer=%.1fs",
+                                    entity,
+                                    on_condition_name,
+                                    on_timer,
+                                )
+                                await self._ensure_device_mode(entity, HVACMode.HEAT)
+                                self._assist_last_on[entity] = now
+                            # Refresh payload after mode change
+                            device_payloads = self._coordinator_devices()
+                            payload = device_payloads.get(entity, {}) or {}
+                            hvac_mode = str(payload.get("hvac_mode") or "").lower()
+                            is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
+                        elif is_running and off_timer >= assist_timer_seconds:
+                            self._assist_target_hvac_mode[entity] = HVACMode.OFF.value
+                            self._assist_target_reason[entity] = off_condition_name
+                            if (
+                                seconds_since_on is not None
+                                and seconds_since_on < min_on_seconds
+                            ):
+                                remaining = int(min_on_seconds - seconds_since_on)
+                                self._assist_block_reason[entity] = (
+                                    f"min_on {remaining}s"
+                                )
+                                _LOGGER.debug(
+                                    (
+                                        "Assist OFF blocked (anti-short-cycle) for %s: "
+                                        "remaining=%ss"
+                                    ),
+                                    entity,
+                                    remaining,
+                                )
+                            else:
+                                _LOGGER.info(
+                                    "Turning OFF %s: condition=%s, timer=%.1fs",
+                                    entity,
+                                    off_condition_name,
+                                    off_timer,
+                                )
+                                await self._ensure_device_mode(entity, HVACMode.OFF)
+                                self._assist_last_off[entity] = now
+                            device_payloads = self._coordinator_devices()
+                            payload = device_payloads.get(entity, {}) or {}
+                            hvac_mode = str(payload.get("hvac_mode") or "").lower()
+                            is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
+
+                    # Only manage setpoint if device is running
+                    if not is_running:
+                        self._assist_modes[entity] = MODE_OFF
+                        self._hp_modes[entity] = MODE_OFF
+                        continue
+
+                    current_temp = _safe_float(
+                        payload.get("current_temperature"),
+                    )
+                    current_power = _safe_float(payload.get("energy"))
+
+                    # Determine mode based on conditions, preset, and power budget
+                    off_timer = self._assist_off_timers.get(entity, 0.0)
+                    assist_mode = self._determine_assist_mode(
+                        room_at_target,
+                        off_timer,
+                        self._attr_preset_mode,
+                        entity,
+                    )
+                    self._hp_modes[entity] = assist_mode
+
+                    target_for_device = self._calculate_mode_target(
+                        assist_mode,
+                        current_temp,
+                        device,
+                        assist_index,
+                        current_power=current_power,
+                    )
+
+                    desired_devices.add(entity)
+                    desired_targets[entity] = target_for_device
+                    self._assist_modes[entity] = assist_mode
+                    managed_any = True
+
+                    _LOGGER.debug(
+                        "Assist HP%d (%s): mode=%s, current=%s -> %.1f, "
+                        "on_timer=%.1fs, off_timer=%.1fs, condition=%s",
+                        assist_index + 1,
+                        entity,
+                        assist_mode,
+                        current_temp,
+                        target_for_device,
+                        self._assist_on_timers.get(entity, 0.0),
+                        self._assist_off_timers.get(entity, 0.0),
+                        self._assist_active_condition.get(entity, "none"),
+                    )
+
+                if managed_any:
+                    mode = "air_hp_assist"
 
         await self._sync_devices(
             devices,
@@ -1105,17 +1151,19 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Calculate device offset (lower or upper) with defaults based on role."""
         if offset_type == "lower":
             value = device.get(CONF_LOWER_SETPOINT_OFFSET)
-            default_hp1 = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
-            default_assist = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
+            default_water = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
+            default_air = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
         else:  # upper
             value = device.get(CONF_UPPER_SETPOINT_OFFSET)
-            default_hp1 = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
-            default_assist = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
+            default_water = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
+            default_air = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
 
         parsed = _parse_device_offset(value)
         if parsed is not None:
             return parsed
-        return default_hp1 if index == 0 else default_assist
+        # Use device role to determine default
+        is_water = self._is_water_device(device, index)
+        return default_water if is_water else default_air
 
     def _device_lower_offset(self, device: dict[str, Any], index: int) -> float:
         return self._calculate_device_offset(device, index, "lower")
