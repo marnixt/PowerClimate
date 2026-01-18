@@ -8,12 +8,37 @@ CONF_ENTRY_NAME = "entry_name"
 DEFAULT_ENTRY_NAME = "PowerClimate"
 MANUFACTURER = "MaxT"
 
-DERIVATIVE_WINDOW_SECONDS = 900
-DERIVATIVE_WATER_WINDOW_SECONDS = 900
+# Temperature derivative calculation windows
+DERIVATIVE_WINDOW_SECONDS = 900  # 15 minutes for room temperature
+DERIVATIVE_WATER_WINDOW_SECONDS = 900  # 15 minutes for water temperature
 
 # Minimum interval between set_temperature/set_hvac_mode calls per device
 MIN_SET_CALL_INTERVAL_SECONDS = 20
 SERVICE_CALL_TIMEOUT_SECONDS = 5
+
+# Default target temperature for new integrations
+DEFAULT_TARGET_TEMPERATURE = 21.0
+
+# ETA threshold met duration in minutes
+ETA_THRESHOLD_MET_DURATION_MINUTES = 5.0
+
+# Minimum delta for float comparison (prevents floating point issues)
+FLOAT_COMPARISON_EPSILON = 0.01
+
+# Temperature change threshold for detecting setpoint changes
+TEMPERATURE_CHANGE_THRESHOLD = 0.01
+
+# Setpoint comparison threshold (0.1°C precision)
+SETPOINT_COMPARISON_THRESHOLD = 0.1
+
+# Outlier detection threshold multiplier for derivative calculation
+OUTLIER_THRESHOLD_MULTIPLIER = 3.0
+
+# Default MAD threshold when MAD is zero
+DEFAULT_MAD_THRESHOLD = 0.5
+
+# Timer minimum value for condition checking
+TIMER_MIN_DELTA_SECONDS = 0.0
 
 
 CONF_DEVICES = "devices"
