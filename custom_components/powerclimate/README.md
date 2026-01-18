@@ -3,6 +3,12 @@
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using temperature offsets.
 
+## Audit Log
+
+- 0.2 — First public version
+- 0.3-beta — Improved config flow and optional water heat pump
+- 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
+
 ## Features
 
 - **Multi-heatpump orchestration**: One virtual thermostat coordinates an optional water-based device and any number of air-based assist heat pumps.

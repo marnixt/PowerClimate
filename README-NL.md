@@ -3,7 +3,8 @@
 ## Audit-log
 
 - 0.2 — Eerste publieke versie
-- 0.3 — Verbeterde configuratie en water-warmtepomp nu optioneel
+- 0.3-beta — Verbeterde configuratie en water-warmtepomp nu optioneel
+- 0.4.0-beta — Kernlogica opgesplitst, assist-regeling, zonne-energiebudgetten en opmaaktools
 
 Home Assistant custom integration om meerdere warmtepomp `climate.*` apparaten te beheren
 en hun setpoints te coordineren met per-apparaat temperatuur offsets.

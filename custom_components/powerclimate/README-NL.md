@@ -2,6 +2,12 @@
 
 Home Assistant custom integratie om meerdere warmtepomp climate devices samen te laten werken.
 
+## Audit-log
+
+- 0.2 — Eerste publieke versie
+- 0.3-beta — Verbeterde configuratie en water-warmtepomp nu optioneel
+- 0.4.0-beta — Kernlogica opgesplitst, assist-regeling, zonne-energiebudgetten en opmaaktools
+
 ## Functies
 
 - **Combineren meerdere warmtepompen**: een virtuele thermostaat die een water-warmtepomp en lucht warmtepompen (Airco's) bestuurt.

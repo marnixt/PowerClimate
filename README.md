@@ -3,7 +3,8 @@
 ## Audit Log
 
 - 0.2 — First public version
-- 0.3 — Improved config flow and optional water heat pump
+- 0.3-beta — Improved config flow and optional water heat pump
+- 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
 
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using per-device temperature offsets.
