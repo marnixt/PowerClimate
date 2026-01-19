@@ -3,6 +3,6 @@
   "domains": ["powerclimate"],
   "categories": ["integration"],
   "render_readme": true,
-  "zip_release": false,
+  "zip_release": true,
   "content_in_root": false
 }
