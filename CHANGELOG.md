@@ -2,6 +2,14 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
+## 0.5.1 — 2026-01-20
+
+**Fixes**
+- Ensure HACS installs from the default branch (no release zip required).
+- Align release metadata with `hacs.json` to prevent missing manifest errors.
+
+---
+
 ## v1.0.0 — 2026-01-01
 
 **Summary**
