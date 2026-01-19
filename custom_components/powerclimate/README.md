@@ -1,5 +1,9 @@
 # PowerClimate
 
+[![HACS Integration](https://img.shields.io/badge/HACS-Integration-blue?logo=hacs)](https://github.com/hacs/integration)
+
+**Install via HACS (recommended):** In Home Assistant, open **HACS → Integrations → Custom repositories**, add the repository URL and set **Category** to **Integration**, then install and restart Home Assistant.
+
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using temperature offsets.
 
@@ -21,6 +25,17 @@ and coordinate their setpoints using temperature offsets.
 - **Standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
 ## Quick Start
+
+### Install
+
+#### HACS (recommended)
+
+1. In Home Assistant, open **HACS → Integrations → Custom repositories**.
+2. Add the repository URL and set **Category** to **Integration**.
+3. Search for **PowerClimate** and install it.
+4. Restart Home Assistant.
+
+#### Manual
 
 1. Install the `powerclimate` folder into `custom_components/`.
 2. In Home Assistant, go to **Settings → Devices & Services → Add Integration

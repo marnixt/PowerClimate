@@ -1,5 +1,9 @@
 # PowerClimate
 
+[![HACS Integration](https://img.shields.io/badge/HACS-Integration-blue?logo=hacs)](https://github.com/hacs/integration)
+
+**Install via HACS (recommended):** Add this repository to HACS → Integrations → Custom repositories, set **Category** to **Integration**, then install and restart Home Assistant.
+
 ## Audit Log
 
 - 0.2 — First public version
@@ -34,6 +38,15 @@ Not affiliated with Home Assistant.
 - Gedetailleerde documentatie (NL): [custom_components/powerclimate/README-NL.md](custom_components/powerclimate/README-NL.md)
 
 ## Installation
+
+### HACS (recommended)
+
+1. In Home Assistant, open **HACS → Integrations → Custom repositories**.
+2. Add the repository URL and set **Category** to **Integration**.
+3. Search for **PowerClimate** and install it.
+4. Restart Home Assistant.
+
+### Manual
 
 Copy `custom_components/powerclimate/` into your Home Assistant `config/custom_components/` and restart Home Assistant.
 
