@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 """Device configuration builder for PowerClimate.
 
 This module provides reusable components for building device
@@ -7,14 +8,12 @@ configuration schemas and processing user input in the config flow.
 from __future__ import annotations
 
 from typing import Any
-
 import voluptuous as vol
 from homeassistant.helpers.selector import selector
 
 from .const import (
     CONF_ALLOW_ON_OFF_CONTROL,
     CONF_CLIMATE_ENTITY,
-    CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_DEVICE_ROLE,
@@ -191,9 +190,6 @@ class DeviceConfigBuilder:
 
         if existing_device:
             defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
-            defaults[CONF_COPY_SETPOINT_TO_POWERCLIMATE] = existing_device.get(
-                CONF_COPY_SETPOINT_TO_POWERCLIMATE, False
-            )
             defaults[CONF_LOWER_SETPOINT_OFFSET] = existing_device.get(
                 CONF_LOWER_SETPOINT_OFFSET, self.default_lower_offset
             )
@@ -214,7 +210,6 @@ class DeviceConfigBuilder:
         # Set role-specific defaults
         defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, self.default_lower_offset)
         defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, self.default_upper_offset)
-        defaults.setdefault(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
 
         if not self._is_water:
             defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
@@ -268,11 +263,6 @@ class DeviceConfigBuilder:
         )
 
         # Boolean flags
-        schema_fields[vol.Optional(
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE,
-            default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
-        )] = bool
-
         # Air-specific fields
         if not self._is_water:
             schema_fields[vol.Optional(
@@ -340,9 +330,6 @@ class DeviceConfigBuilder:
             CONF_DEVICE_ROLE: self._role,
             CONF_CLIMATE_ENTITY: self._climate_entity,
             CONF_ENERGY_SENSOR: energy_sensor,
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE: bool(
-                user_input.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
-            ),
             CONF_LOWER_SETPOINT_OFFSET: lower_offset,
             CONF_UPPER_SETPOINT_OFFSET: upper_offset,
         }

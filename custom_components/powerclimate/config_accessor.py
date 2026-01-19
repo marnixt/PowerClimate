@@ -21,6 +21,7 @@ from .const import (
     CONF_LOWER_SETPOINT_OFFSET,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MIN_SETPOINT_OVERRIDE,
+    CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
     DEFAULT_ASSIST_MIN_OFF_MINUTES,
@@ -103,6 +104,22 @@ class ConfigAccessor:
     def solar_enabled(self) -> bool:
         """Check if Solar preset is available."""
         return bool(self.house_power_sensor)
+
+    @property
+    def mirror_thermostats(self) -> list[str]:
+        """Get list of thermostats whose setpoints should be mirrored."""
+        raw = self._get_config().get(CONF_MIRROR_CLIMATE_ENTITIES) or []
+        if not isinstance(raw, list):
+            return []
+        seen: set[str] = set()
+        result: list[str] = []
+        for entity_id in raw:
+            entity_id = str(entity_id).strip()
+            if not entity_id or entity_id in seen:
+                continue
+            seen.add(entity_id)
+            result.append(entity_id)
+        return result
 
     # --- Assist Pump Settings ---
 
@@ -261,5 +278,6 @@ class ConfigAccessor:
             "assist_stall_temp_delta": self.assist_stall_temp_delta,
             "solar_enabled": self.solar_enabled,
             "house_power_sensor": self.house_power_sensor,
+            "mirror_thermostats": self.mirror_thermostats,
             "device_count": len(self.devices),
         }

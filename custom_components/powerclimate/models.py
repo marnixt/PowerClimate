@@ -15,7 +15,6 @@ class DeviceConfig:
     climate_entity: str
     energy_sensor: str | None = None
     water_sensor: str | None = None
-    copy_setpoint_to_powerclimate: bool = False
     allow_on_off_control: bool = False
     lower_setpoint_offset: float = 0.0
     upper_setpoint_offset: float = 0.0
@@ -23,10 +22,15 @@ class DeviceConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DeviceConfig:
         from .const import (
-            CONF_ALLOW_ON_OFF_CONTROL, CONF_CLIMATE_ENTITY,
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE, CONF_DEVICE_ID,
-            CONF_DEVICE_NAME, CONF_DEVICE_ROLE, CONF_ENERGY_SENSOR,
-            CONF_LOWER_SETPOINT_OFFSET, CONF_UPPER_SETPOINT_OFFSET, CONF_WATER_SENSOR,
+            CONF_ALLOW_ON_OFF_CONTROL,
+            CONF_CLIMATE_ENTITY,
+            CONF_DEVICE_ID,
+            CONF_DEVICE_NAME,
+            CONF_DEVICE_ROLE,
+            CONF_ENERGY_SENSOR,
+            CONF_LOWER_SETPOINT_OFFSET,
+            CONF_UPPER_SETPOINT_OFFSET,
+            CONF_WATER_SENSOR,
         )
         return cls(
             device_id=str(data.get(CONF_DEVICE_ID) or ""),
@@ -35,7 +39,6 @@ class DeviceConfig:
             climate_entity=str(data.get(CONF_CLIMATE_ENTITY) or ""),
             energy_sensor=data.get(CONF_ENERGY_SENSOR),
             water_sensor=data.get(CONF_WATER_SENSOR),
-            copy_setpoint_to_powerclimate=bool(data.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)),
             allow_on_off_control=bool(data.get(CONF_ALLOW_ON_OFF_CONTROL, False)),
             lower_setpoint_offset=float(data.get(CONF_LOWER_SETPOINT_OFFSET, 0.0) or 0.0),
             upper_setpoint_offset=float(data.get(CONF_UPPER_SETPOINT_OFFSET, 0.0) or 0.0),
@@ -43,16 +46,20 @@ class DeviceConfig:
 
     def to_dict(self) -> dict[str, Any]:
         from .const import (
-            CONF_ALLOW_ON_OFF_CONTROL, CONF_CLIMATE_ENTITY,
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE, CONF_DEVICE_ID,
-            CONF_DEVICE_NAME, CONF_DEVICE_ROLE, CONF_ENERGY_SENSOR,
-            CONF_LOWER_SETPOINT_OFFSET, CONF_UPPER_SETPOINT_OFFSET, CONF_WATER_SENSOR,
+            CONF_ALLOW_ON_OFF_CONTROL,
+            CONF_CLIMATE_ENTITY,
+            CONF_DEVICE_ID,
+            CONF_DEVICE_NAME,
+            CONF_DEVICE_ROLE,
+            CONF_ENERGY_SENSOR,
+            CONF_LOWER_SETPOINT_OFFSET,
+            CONF_UPPER_SETPOINT_OFFSET,
+            CONF_WATER_SENSOR,
         )
         return {
             CONF_DEVICE_ID: self.device_id, CONF_DEVICE_NAME: self.device_name,
             CONF_DEVICE_ROLE: self.device_role, CONF_CLIMATE_ENTITY: self.climate_entity,
             CONF_ENERGY_SENSOR: self.energy_sensor, CONF_WATER_SENSOR: self.water_sensor,
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE: self.copy_setpoint_to_powerclimate,
             CONF_ALLOW_ON_OFF_CONTROL: self.allow_on_off_control,
             CONF_LOWER_SETPOINT_OFFSET: self.lower_setpoint_offset,
             CONF_UPPER_SETPOINT_OFFSET: self.upper_setpoint_offset,

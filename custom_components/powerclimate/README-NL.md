@@ -7,6 +7,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 - 0.2 — Eerste publieke versie
 - 0.3-beta — Verbeterde configuratie en water-warmtepomp nu optioneel
 - 0.4.0-beta — Kernlogica opgesplitst, assist-regeling, zonne-energiebudgetten en opmaaktools
+- 0.5-beta — Separated mirror thermostats
 
 ## Functies
 
@@ -15,6 +16,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 - **Assists: handmatig of automatisch AAN/UIT**: optionele timers + anti-short-cycle beveiliging.
 - **Vermogensbewuste `Solar` preset (optioneel)**: verdeel per-apparaat vermogensbudgetten op basis van een signed house net power sensor.
 - **Diagnostiek**: thermische samenvatting, per-HP behavior, afgeleides, totaal vermogen en budgetdiagnostiek.
+- **Thermostaat-mirroring**: kopieer setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate.
 - **Standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 
 ![PowerClimate-dashboard: Home Assistant UI met de virtuele PowerClimate-thermostaat (huidige temperatuur, setpoint en modusbediening).](custom_components/powerclimate/images/Dashboard%20Climate%20device.png)
@@ -23,9 +25,8 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 
 1. Installeer de `powerclimate` folder onder `custom_components/`.
 2. In Home Assistant: **Instellingen -> Apparaten & Diensten -> Integratie toevoegen -> PowerClimate**.
-3. Kies de ruimtetemperatuursensor en vul de lower/upper setpoint offsets in
-   die de minimal/run targets bepalen.
-4. Configureer je warmtepompen:
+3. Kies de ruimtetemperatuursensor en selecteer optioneel thermostaten om te mirroren.
+4. Configureer je warmtepompen (de eerste gemirrorde thermostaat wordt vooraf geselecteerd voor de waterwarmtepomp):
   - **Waterwarmtepomp** (optioneel): climate entity, optionele vermogenssensor, optionele water
     temperatuursensor, en offsets
   - **Lucht- (assist) warmtepompen** (optioneel, 0..n): climate entity, optionele vermogenssensor, offsets per apparaat,
@@ -36,9 +37,10 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 ## Configuratie
 
 De configuratie is rol-gebaseerd: je kunt een optionele waterwarmtepomp
-(0 of 1) configureren en nul of meer lucht- (assist) warmtepompen. De UI toont
-een apparaatselectiepagina en daarna aparte configuratiepagina's per apparaat waar je
-de opties kiest.
+(0 of 1) configureren en nul of meer lucht- (assist) warmtepompen. Voor de
+apparaatselectie kun je optioneel thermostaten kiezen waarvan setpoints worden
+gemirrord naar PowerClimate. De UI toont daarna aparte configuratiepagina's per
+apparaat waar je de opties kiest.
 
 ## Regel-logica
 

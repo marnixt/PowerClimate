@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "PowerClimate",
-        "description": "Start by naming the integration and selecting one or more room temperature sensors.",
+        "description": "Start by naming the integration, selecting room temperature sensors, and optionally choosing thermostats to mirror.",
         "data": {
           "entry_name": "Integration name",
-          "room_sensor_entity_ids": "Select one or more room temperature sensors"
+          "room_sensor_entity_ids": "Select one or more room temperature sensors",
+          "mirror_climate_entity_ids": "Select thermostats that PowerClimate should mirror"
         }
       },
       "select_devices": {
@@ -28,8 +29,7 @@
           "energy_sensor_entity_id": "Power sensor",
           "water_sensor_entity_id": "Water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate"
+          "upper_setpoint_offset": "Upper setpoint offset (°C)"
         },
         "data_description": {
           "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
@@ -43,7 +43,6 @@
           "energy_sensor_entity_id": "Power sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate",
           "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {
@@ -75,10 +74,11 @@
       },
       "edit_setup": {
         "title": "Update PowerClimate",
-        "description": "Rename the integration or change the room temperature sensors.",
+        "description": "Rename the integration, change room temperature sensors, or update mirrored thermostats.",
         "data": {
           "entry_name": "Integration name",
-          "room_sensor_entity_ids": "Select one or more room temperature sensors"
+          "room_sensor_entity_ids": "Select one or more room temperature sensors",
+          "mirror_climate_entity_ids": "Select thermostats that PowerClimate should mirror"
         }
       },
       "select_devices": {
@@ -100,8 +100,7 @@
           "energy_sensor_entity_id": "Power sensor",
           "water_sensor_entity_id": "Water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate"
+          "upper_setpoint_offset": "Upper setpoint offset (°C)"
         },
         "data_description": {
           "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
@@ -115,7 +114,6 @@
           "energy_sensor_entity_id": "Power sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
           "upper_setpoint_offset": "Upper setpoint offset (°C)",
-          "copy_setpoint_to_powerclimate": "Copy manual setpoint changes to PowerClimate",
           "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {

@@ -5,6 +5,7 @@
 - 0.2 — Eerste publieke versie
 - 0.3-beta — Verbeterde configuratie en water-warmtepomp nu optioneel
 - 0.4.0-beta — Kernlogica opgesplitst, assist-regeling, zonne-energiebudgetten en opmaaktools
+- 0.5-beta — Separated mirror thermostats
 
 Home Assistant custom integration om meerdere warmtepomp `climate.*` apparaten te beheren
 en hun setpoints te coordineren met per-apparaat temperatuur offsets.
@@ -24,6 +25,7 @@ Niet gelieerd aan Home Assistant.
 - **Assists handmatig (default) + optioneel automatisch aan/uit**: jij bepaalt of assists draaien, of laat PowerClimate assist HVAC mode beheren met timers en anti-short-cycle.
 - **Vermogensbewuste regeling (optioneel)**: preset `Solar` kan per-apparaat vermogensbudgetten verdelen op basis van een signed house net power sensor.
 - **Diagnostiek**: thermische samenvatting, per-HP gedrag, afgeleides, totaal vermogen en budgetdiagnostiek.
+- **Thermostaat-mirroring**: kopieer setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate.
 - **Werkt met standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 
 ## Documentatie
@@ -39,11 +41,12 @@ Kopieer `custom_components/powerclimate/` naar je Home Assistant `config/custom_
 
 1. Home Assistant -> **Instellingen -> Apparaten & Diensten -> Integratie toevoegen -> PowerClimate**.
 2. Kies een of meerdere ruimtesensoren (PowerClimate gebruikt het gemiddelde van beschikbare waarden).
-3. Selecteer een optionele waterwarmtepomp (0 of 1) en nul of meer lucht- (assist) warmtepompen.
+3. Selecteer thermostaten die PowerClimate moet mirroren (optioneel). Setpoint-wijzigingen daarvan worden overgenomen.
+4. Selecteer een optionele waterwarmtepomp (0 of 1) en nul of meer lucht- (assist) warmtepompen. De eerste gemirrorde thermostaat wordt vooraf geselecteerd als waterwarmtepomp.
 
 ![Select heat pumps configuration](custom_components/powerclimate/images/Config_select_heat_pumps.png)
 
-4. Configureer elk geselecteerd apparaat op een eigen pagina (rol, sensoren, offsets en optioneel aan/uit controle voor assists).
+5. Configureer elk geselecteerd apparaat op een eigen pagina (rol, sensoren, offsets en optioneel aan/uit controle voor assists).
 
 Let op: stel de lower setpoint offset zo in dat de warmtepomp net niet uit gaat. In dit voorbeeld zal setpoint op 17 graden ingesteld worden als de warmtepomp zelf 20 graden meet. 
   

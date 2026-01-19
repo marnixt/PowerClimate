@@ -8,6 +8,7 @@ and coordinate their setpoints using temperature offsets.
 - 0.2 — First public version
 - 0.3-beta — Improved config flow and optional water heat pump
 - 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
+- 0.5-beta — Separated mirror thermostats
 
 ## Features
 
@@ -16,6 +17,7 @@ and coordinate their setpoints using temperature offsets.
 - **Assists: manual or automatic ON/OFF**: Optional timers + anti-short-cycle protections.
 - **Power-aware `Solar` preset (optional)**: Allocate per-device power budgets from a signed house net power sensor.
 - **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
+- **Thermostat mirroring**: Mirror setpoint changes from selected thermostats into PowerClimate.
 - **Standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
 ## Quick Start
@@ -23,9 +25,8 @@ and coordinate their setpoints using temperature offsets.
 1. Install the `powerclimate` folder into `custom_components/`.
 2. In Home Assistant, go to **Settings → Devices & Services → Add Integration
   → PowerClimate**.
-3. Pick the room temperature sensor and provide the lower/upper setpoint
-   offsets that define the minimal/run targets.
-4. Configure your heat pumps:
+3. Pick the room temperature sensor and optionally select thermostats to mirror.
+4. Configure your heat pumps (the first mirrored thermostat is preselected for the water heat pump):
   - **Water-based heat pump** (optional): Climate entity, optional power sensor, optional water
     temperature sensor, and offsets
   - **Air-based assist pumps** (optional, 0..n): Climate entity, optional power sensor, offsets per device,
@@ -34,9 +35,11 @@ and coordinate their setpoints using temperature offsets.
 ## Configuration Flow
 
 The setup flow is role-based: you may configure one optional water-based heat
-pump (0 or 1) and zero or more air-based assist heat pumps. The UI presents a
-device selection page and then separate configuration pages per device where
-you choose device role (`water` or `air`) and advanced options.
+pump (0 or 1) and zero or more air-based assist heat pumps. Before selecting
+devices, you can optionally choose thermostats whose setpoint changes should be
+mirrored into PowerClimate. The UI presents a device selection page and then
+separate configuration pages per device where you choose device role (`water` or
+`air`) and advanced options.
 
 ## Control Algorithm
 

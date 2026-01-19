@@ -5,6 +5,7 @@
 - 0.2 — First public version
 - 0.3-beta — Improved config flow and optional water heat pump
 - 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
+- 0.5-beta — Separated mirror thermostats
 
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using per-device temperature offsets.
@@ -20,6 +21,7 @@ Not affiliated with Home Assistant.
 - **Per-device offsets + guardrails**: Lower/upper offsets per device, plus global min/max setpoint limits.
 - **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
 - **Power-aware control (optional)**: `Solar` preset can allocate per-device power budgets from a signed house net power sensor.
+- **Thermostat mirroring**: Optionally mirror setpoint changes from selected thermostats into PowerClimate.
 - **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
 - **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
@@ -39,10 +41,11 @@ Copy `custom_components/powerclimate/` into your Home Assistant `config/custom_c
 
 1. Home Assistant → **Settings → Devices & Services → Add Integration → PowerClimate**.
 2. Select one or more room temperature sensors (PowerClimate uses an average of available values).
-3. Select an optional water-based heat pump (0 or 1) and zero or more air-based assist heat pumps.
+3. Select thermostats that PowerClimate should mirror (optional). Setpoint changes on these thermostats will be copied to PowerClimate.
+4. Select an optional water-based heat pump (0 or 1) and zero or more air-based assist heat pumps. The first mirrored thermostat is preselected for the water heat pump.
 ![Select heat pumps configuration](custom_components/powerclimate/images/Config_select_heat_pumps.png)
 
-4. Configure each selected device on its own page (role, sensors, offsets, and optional on/off control for assists).
+5. Configure each selected device on its own page (role, sensors, offsets, and optional on/off control for assists).
 
 Note: Set the lower setpoint offset so that the heat pump almost, but not completely, switches off. In this example, the setpoint will be a minimum of 17 °C when the heat pump itself measures 20 °C.
 

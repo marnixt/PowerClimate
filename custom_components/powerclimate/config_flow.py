@@ -18,7 +18,6 @@ from .const import (
     CONF_ASSIST_TIMER_SECONDS,
     CONF_ASSIST_WATER_TEMP_THRESHOLD,
     CONF_CLIMATE_ENTITY,
-    CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_DEVICE_ROLE,
@@ -29,6 +28,7 @@ from .const import (
     CONF_LOWER_SETPOINT_OFFSET,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MIN_SETPOINT_OVERRIDE,
+    CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
     CONF_WATER_SENSOR,
@@ -163,6 +163,8 @@ def _global_form_defaults(
     defaults[CONF_ENTRY_NAME] = base.get(CONF_ENTRY_NAME, DEFAULT_ENTRY_NAME)
     if base.get(CONF_ROOM_SENSORS) is not None:
         defaults[CONF_ROOM_SENSORS] = base.get(CONF_ROOM_SENSORS)
+    if base.get(CONF_MIRROR_CLIMATE_ENTITIES) is not None:
+        defaults[CONF_MIRROR_CLIMATE_ENTITIES] = base.get(CONF_MIRROR_CLIMATE_ENTITIES)
     if user_input:
         defaults.update(user_input)
     return defaults
@@ -181,6 +183,12 @@ def _build_global_schema(defaults: dict[str, Any]) -> vol.Schema:
         defaults,
         schema_fields,
         _entity_selector("sensor", multiple=True),
+    )
+    _optional_field(
+        CONF_MIRROR_CLIMATE_ENTITIES,
+        defaults,
+        schema_fields,
+        _entity_selector("climate", multiple=True),
     )
     return vol.Schema(schema_fields)
 
@@ -203,9 +211,23 @@ def _process_global_input(
             seen.add(entity_id)
             deduped.append(entity_id)
         room_sensors = deduped
+
+    mirror_raw = user_input.get(CONF_MIRROR_CLIMATE_ENTITIES)
+    if mirror_raw is None and base:
+        mirror_raw = base.get(CONF_MIRROR_CLIMATE_ENTITIES)
+    mirror_entities: list[str] = []
+    if isinstance(mirror_raw, list):
+        seen_mirror: set[str] = set()
+        for entity_id in mirror_raw:
+            entity_id = str(entity_id).strip()
+            if not entity_id or entity_id in seen_mirror:
+                continue
+            seen_mirror.add(entity_id)
+            mirror_entities.append(entity_id)
     entry_name = _entry_name_from_input(user_input, base)
     data = {
         CONF_ROOM_SENSORS: room_sensors,
+        CONF_MIRROR_CLIMATE_ENTITIES: mirror_entities,
     }
     return entry_name, data, errors
 
@@ -216,12 +238,15 @@ def _select_devices_defaults(
     water_device: dict[str, Any] | None,
     air_devices: list[dict[str, Any]],
     user_input: dict[str, Any] | None,
+    mirror_entities: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build defaults for the device selection step."""
     defaults: dict[str, Any] = {}
 
     if water_device:
         defaults[FIELD_WATER_CLIMATE] = water_device.get(CONF_CLIMATE_ENTITY)
+    elif mirror_entities:
+        defaults[FIELD_WATER_CLIMATE] = mirror_entities[0]
 
     if air_devices:
         defaults[FIELD_AIR_CLIMATES] = [
@@ -307,9 +332,6 @@ def _water_device_defaults(
     if existing_device:
         defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
         defaults[CONF_WATER_SENSOR] = existing_device.get(CONF_WATER_SENSOR)
-        defaults[CONF_COPY_SETPOINT_TO_POWERCLIMATE] = existing_device.get(
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE, False
-        )
         defaults[CONF_LOWER_SETPOINT_OFFSET] = existing_device.get(
             CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1
         )
@@ -319,7 +341,6 @@ def _water_device_defaults(
 
     defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
     defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
-    defaults.setdefault(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
 
     if user_input:
         defaults.update(user_input)
@@ -355,10 +376,6 @@ def _build_water_device_schema(defaults: dict[str, Any]) -> vol.Schema:
         schema_fields,
         _upper_offset_selector(),
     )
-    schema_fields[vol.Optional(
-        CONF_COPY_SETPOINT_TO_POWERCLIMATE,
-        default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
-    )] = bool
 
     return vol.Schema(schema_fields)
 
@@ -409,9 +426,6 @@ def _process_water_device_input(
         CONF_CLIMATE_ENTITY: climate_entity,
         CONF_ENERGY_SENSOR: energy_sensor,
         CONF_WATER_SENSOR: water_sensor,
-        CONF_COPY_SETPOINT_TO_POWERCLIMATE: bool(
-            user_input.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
-        ),
         CONF_LOWER_SETPOINT_OFFSET: lower_offset,
         CONF_UPPER_SETPOINT_OFFSET: upper_offset,
     }
@@ -430,9 +444,6 @@ def _air_device_defaults(
 
     if existing_device:
         defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
-        defaults[CONF_COPY_SETPOINT_TO_POWERCLIMATE] = existing_device.get(
-            CONF_COPY_SETPOINT_TO_POWERCLIMATE, False
-        )
         defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
             CONF_ALLOW_ON_OFF_CONTROL, False
         )
@@ -445,7 +456,6 @@ def _air_device_defaults(
 
     defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST)
     defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST)
-    defaults.setdefault(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
     defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
 
     if user_input:
@@ -476,10 +486,6 @@ def _build_air_device_schema(defaults: dict[str, Any]) -> vol.Schema:
         schema_fields,
         _upper_offset_selector(),
     )
-    schema_fields[vol.Optional(
-        CONF_COPY_SETPOINT_TO_POWERCLIMATE,
-        default=defaults.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False),
-    )] = bool
     schema_fields[vol.Optional(
         CONF_ALLOW_ON_OFF_CONTROL,
         default=defaults.get(CONF_ALLOW_ON_OFF_CONTROL, False),
@@ -529,9 +535,6 @@ def _process_air_device_input(
         CONF_DEVICE_ROLE: DEVICE_ROLE_AIR,
         CONF_CLIMATE_ENTITY: climate_entity,
         CONF_ENERGY_SENSOR: energy_sensor,
-        CONF_COPY_SETPOINT_TO_POWERCLIMATE: bool(
-            user_input.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE, False)
-        ),
         CONF_ALLOW_ON_OFF_CONTROL: bool(
             user_input.get(CONF_ALLOW_ON_OFF_CONTROL, False)
         ),
@@ -603,7 +606,13 @@ class PowerClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Should not happen due to validation, but handle gracefully
                     return await self._create_entry()
 
-        defaults = _select_devices_defaults(None, [], user_input)
+        mirror_entities = self._entry_data.get(CONF_MIRROR_CLIMATE_ENTITIES) or []
+        defaults = _select_devices_defaults(
+            None,
+            [],
+            user_input,
+            mirror_entities=mirror_entities,
+        )
         schema = _build_select_devices_schema(defaults)
         return self.async_show_form(
             step_id="select_devices",
@@ -797,7 +806,17 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
                 else:
                     return await self._create_options_entry()
 
-        defaults = _select_devices_defaults(self._base_water, self._base_air, user_input)
+        mirror_entities = (
+            self._entry_data.get(CONF_MIRROR_CLIMATE_ENTITIES)
+            or self._base.get(CONF_MIRROR_CLIMATE_ENTITIES)
+            or []
+        )
+        defaults = _select_devices_defaults(
+            self._base_water,
+            self._base_air,
+            user_input,
+            mirror_entities=mirror_entities,
+        )
         schema = _build_select_devices_schema(defaults)
         return self.async_show_form(
             step_id="select_devices",

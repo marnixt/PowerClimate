@@ -31,7 +31,6 @@ from .config_accessor import ConfigAccessor
 from .const import (
     CONF_ALLOW_ON_OFF_CONTROL,
     CONF_CLIMATE_ENTITY,
-    CONF_COPY_SETPOINT_TO_POWERCLIMATE,
     CONF_DEVICE_NAME,
     CONF_ROOM_SENSOR_VALUES,
     CONF_ROOM_TEMPERATURE_KEY,
@@ -121,7 +120,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._pending_state_refresh = False
         self._last_mode_call: dict[str, datetime] = {}
         self._last_temp_call: dict[str, datetime] = {}
-        self._copy_enabled_entities: set[str] = set()
+        self._mirror_entities: set[str] = set()
         self._integration_context = Context()
         self._eta_exceeded_since: datetime | None = None
 
@@ -282,12 +281,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Apply staging logic to all heat pumps."""
         devices = self._config.devices
         device_payloads = self._get_device_payloads()
-        self._copy_enabled_entities = {
-            device.get(CONF_CLIMATE_ENTITY)
-            for device in devices
-            if device.get(CONF_COPY_SETPOINT_TO_POWERCLIMATE)
-            and device.get(CONF_CLIMATE_ENTITY)
-        }
+        self._mirror_entities = set(self._config.mirror_thermostats)
         if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
             return
@@ -337,9 +331,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         # Sync devices and state
         await self._sync_devices(devices, desired_devices, device_payloads, desired_targets)
-        self._sync_state_listeners(
-            {d.get(CONF_CLIMATE_ENTITY) for d in devices if d.get(CONF_CLIMATE_ENTITY)}
-        )
+        device_entities = {
+            d.get(CONF_CLIMATE_ENTITY)
+            for d in devices
+            if d.get(CONF_CLIMATE_ENTITY)
+        }
+        self._sync_state_listeners(device_entities | self._mirror_entities)
 
         # Update state
         actual_running = {
@@ -578,7 +575,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         is_automatic: bool = False,
     ) -> str:
         """Determine operating mode for assist pump.
-        
+
         Args:
             room_at_target: Whether room temperature is at or above target.
             off_timer: Time since OFF condition was met (for automatic pumps).
@@ -771,7 +768,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         old_state = event.data.get("old_state") if event and event.data else None
 
         # Handle setpoint forwarding
-        if entity_id and entity_id in self._copy_enabled_entities:
+        if entity_id and entity_id in self._mirror_entities:
             self._maybe_forward_setpoint(entity_id, old_state, new_state)
 
         # Schedule coordinator refresh
