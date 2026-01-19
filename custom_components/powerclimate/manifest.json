@@ -1,7 +1,7 @@
 {
   "domain": "powerclimate",
   "name": "PowerClimate",
-  "version": "0.4.0-beta",
+  "version": "0.5-beta",
   "documentation": "https://github.com/marnixt/PowerClimate",
   "issue_tracker": "https://github.com/marnixt/PowerClimate/issues",
   "homeassistant": "2024.11.0",
