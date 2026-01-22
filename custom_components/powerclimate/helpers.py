@@ -122,9 +122,9 @@ def _load_strings_from_file(path: Path) -> dict[str, str]:
 def get_strings(hass: HomeAssistant, language: str | None = None) -> dict[str, str]:
     """Load translated strings for the integration.
 
-    Custom strings are stored in strings.json (not translations/en.json,
-    which is reserved for config flows). We keep a tiny cache per language
-    and fall back to English if the requested language is unavailable.
+    Custom strings are stored in custom_strings.json (not strings.json or
+    translations/en.json, which are reserved/validated by hassfest). We keep
+    a tiny cache per language and fall back to English if unavailable.
     """
 
     lang = (language or hass.config.language or "en").split("-")[0]
@@ -140,7 +140,7 @@ def get_strings(hass: HomeAssistant, language: str | None = None) -> dict[str, s
     strings: dict[str, str] = {}
     for candidate in (lang, "en"):
         strings = _load_strings_from_file(
-            strings_dir / f"strings.json"
+            strings_dir / "custom_strings.json"
         )
         if strings:
             break
