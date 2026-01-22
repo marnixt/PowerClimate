@@ -1,6 +1,5 @@
 {
-  "powerclimate": {
-    "config": {
+  "config": {
       "step": {
         "user": {
           "title": "PowerClimate",
@@ -168,53 +167,5 @@
       "invalid": "Select a valid value.",
       "invalid_offsets": "Lower offset must be less than or equal to upper offset."
     }
-  },
-  "strings": {
-        "unavailable": "unavailable",
-        "label_preset": "Preset",
-        "label_room": "Room",
-        "label_target": "target",
-        "label_delta": "Δ",
-        "label_trend": "Trend",
-        "label_avg_room": "Avg room",
-        "label_avg_func": "avg",
-        "label_water": "Water",
-        "label_derivative": "ΔT",
-        "label_eta": "ETA",
-        "label_hvac": "HVAC",
-        "label_mode": "Mode",
-        "label_power": "Power",
-        "label_temps": "Temps",
-        "label_assist": "Assist",
-        "assist_off": "off",
-        "unit_hours_short": "h",
-        "unit_minutes_short": "min",
-        "value_none": "none",
-        "value_unknown": "unknown",
-        "hp_not_configured": "not configured",
-        "state_active": "active",
-        "state_idle": "idle",
-        "state_on": "ON",
-        "state_off": "OFF",
-        "assist_no_pumps": "No assist pumps configured",
-        "assist_no_condition": "No condition",
-        "assist_manual_control": "Manual control",
-        "assist_blocked": "Blocked",
-        "assist_target_on": "TargetON",
-        "assist_target_off": "TargetOFF",
-        "trend_warming": "warming",
-        "trend_cooling": "cooling",
-        "trend_stable": "stable",
-        "assist_condition_eta_high": "ETA high",
-        "assist_condition_eta_low": "ETA low",
-        "assist_condition_water_hot": "Water≥40°C",
-        "assist_condition_stalled_below_target": "Stalled",
-        "assist_condition_stalled_at_target": "At target",
-        "assist_condition_overshoot": "Overshoot",
-        "preset_boost": "Boost",
-        "preset_away": "Away",
-        "preset_solar": "Solar",
-        "preset_none": "None"
-      }
-    }
+  }
 }

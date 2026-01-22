@@ -1,13 +1,13 @@
 {
   "domain": "powerclimate",
   "name": "PowerClimate",
-  "version": "0.5.1",
-  "documentation": "https://github.com/marnixt/PowerClimate",
-  "issue_tracker": "https://github.com/marnixt/PowerClimate/issues",
-  "integration_type": "hub",
-  "requirements": [],
-  "dependencies": [],
   "codeowners": ["@marnixt"],
   "config_flow": true,
-  "iot_class": "calculated"
+  "dependencies": [],
+  "documentation": "https://github.com/marnixt/PowerClimate",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/marnixt/PowerClimate/issues",
+  "requirements": [],
+  "version": "0.5.1"
 }

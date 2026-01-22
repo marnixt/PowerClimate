@@ -97,6 +97,14 @@ def integration_device_info(entry: ConfigEntry) -> DeviceInfo:
 
 
 def _load_strings_from_file(path: Path) -> dict[str, str]:
+    """Load custom strings from a JSON file.
+    
+    Args:
+        path: Path to the JSON file containing string definitions.
+    
+    Returns:
+        Dictionary mapping string keys to translated values.
+    """
     if not path.exists():
         return {}
     try:
@@ -105,46 +113,34 @@ def _load_strings_from_file(path: Path) -> dict[str, str]:
     except (OSError, json.JSONDecodeError):
         return {}
 
-    # Legacy: some integrations placed translations under a top-level "strings" key.
-    strings = data.get("strings") or {}
-
-    # Preferred: translations are namespaced under the integration domain (or another top-level key).
-    # Search for a nested "strings" key if top-level isn't present.
-    if not strings:
-        for v in data.values():
-            if isinstance(v, dict) and "strings" in v:
-                nested = v.get("strings") or {}
-                if isinstance(nested, dict):
-                    strings = nested
-                    break
-
-    if not isinstance(strings, dict):
+    if not isinstance(data, dict):
         return {}
 
-    return {str(key): str(value) for key, value in strings.items()}
+    return {str(key): str(value) for key, value in data.items()}
 
 
 def get_strings(hass: HomeAssistant, language: str | None = None) -> dict[str, str]:
     """Load translated strings for the integration.
 
-    We keep a tiny cache per language and fall back to English if the
-    requested language is unavailable.
+    Custom strings are stored in strings.json (not translations/en.json,
+    which is reserved for config flows). We keep a tiny cache per language
+    and fall back to English if the requested language is unavailable.
     """
 
     lang = (language or hass.config.language or "en").split("-")[0]
     if lang in _STRING_CACHE:
         return _STRING_CACHE[lang]
 
-    translations_dir = Path(
-        hass.config.path("custom_components", DOMAIN, "translations")
+    strings_dir = Path(
+        hass.config.path("custom_components", DOMAIN)
     )
-    if not translations_dir.exists():
-        translations_dir = Path(__file__).resolve().parent / "translations"
+    if not strings_dir.exists():
+        strings_dir = Path(__file__).resolve().parent
 
     strings: dict[str, str] = {}
     for candidate in (lang, "en"):
         strings = _load_strings_from_file(
-            translations_dir / f"{candidate}.json"
+            strings_dir / f"strings.json"
         )
         if strings:
             break
