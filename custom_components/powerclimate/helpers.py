@@ -104,7 +104,23 @@ def _load_strings_from_file(path: Path) -> dict[str, str]:
             data = json.load(handle)
     except (OSError, json.JSONDecodeError):
         return {}
+
+    # Legacy: some integrations placed translations under a top-level "strings" key.
     strings = data.get("strings") or {}
+
+    # Preferred: translations are namespaced under the integration domain (or another top-level key).
+    # Search for a nested "strings" key if top-level isn't present.
+    if not strings:
+        for v in data.values():
+            if isinstance(v, dict) and "strings" in v:
+                nested = v.get("strings") or {}
+                if isinstance(nested, dict):
+                    strings = nested
+                    break
+
+    if not isinstance(strings, dict):
+        return {}
+
     return {str(key): str(value) for key, value in strings.items()}
 
 
