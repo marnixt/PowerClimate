@@ -94,11 +94,15 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 |--------|------------------|----------------------|
 | **none** | Normale werking (HEAT mode, volgt setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost mode (huidig + upper offset) | Boost mode (huidig + upper offset) |
+| **Minimal support** | Boost mode (huidig + upper offset) | Minimal mode (huidig + lower offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
 | **Solar** | Vermogensgebudgetteerde setpoint (gebruik surplus) | Vermogensgebudgetteerde setpoint (prioriteit na water-HP) |
 
 **Let op:** Solar preset vereist een geconfigureerde house net power sensor. Budgetten worden verdeeld in apparaatvolgorde, met prioriteit voor het water-apparaat wanneer aanwezig.
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
+
+**Preset use cases:**
+- **Minimal support**: Gebruik wanneer je maximaal vermogen van de primaire waterwarmtepomp wilt terwijl de luchtwarmtepompen op standby blijven. Ideaal voor koude ochtenden wanneer je snel wilt verwarmen met het hoofdsysteem maar niet het volledige assist-vermogen nodig hebt.
 
 **Configuratie-ranges:**
 - Lower setpoint offset: -5.0–0.0 °C

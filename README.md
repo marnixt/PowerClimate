@@ -97,11 +97,15 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 |--------|-------------------|---------------------|
 | **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF |
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) |
+| **Minimal support** | Boost mode (current + upper offset) | Minimal mode (current + lower offset) |
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
 | **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) |
 
 **Note:** Solar preset requires a configured house net power sensor. Budgets are allocated in device order, prioritizing the water-based device when configured.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
+
+**Preset Use Cases:**
+- **Minimal support**: Use when you want maximum output from the primary water heat pump while keeping air heat pumps in standby mode. Ideal for cold mornings when you want fast heating from the main system but don't need full assist power.
 
 ## Configuration Constants
 

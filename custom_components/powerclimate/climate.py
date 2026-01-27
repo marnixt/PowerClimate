@@ -62,6 +62,7 @@ PRESET_NONE = "none"
 PRESET_BOOST = "boost"
 PRESET_SOLAR = "Solar"
 PRESET_AWAY = "Away"
+PRESET_MINIMAL_SUPPORT = "Minimal support"
 
 
 async def async_setup_entry(
@@ -88,7 +89,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.PRESET_MODE
     )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_SOLAR]
+    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MINIMAL_SUPPORT, PRESET_SOLAR]
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, coordinator) -> None:
         """Initialize the PowerClimate climate entity."""
@@ -127,7 +128,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @property
     def preset_modes(self) -> list[str] | None:
         """Return list of available preset modes."""
-        modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY]
+        modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MINIMAL_SUPPORT]
         if self._config.solar_enabled:
             modes.append(PRESET_SOLAR)
         return modes
@@ -222,6 +223,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_boost_mode()
         elif preset_mode == PRESET_AWAY:
             await self._enter_away_mode()
+        elif preset_mode == PRESET_MINIMAL_SUPPORT:
+            await self._enter_minimal_support_mode()
         elif preset_mode == PRESET_SOLAR:
             await self._enter_solar_mode()
         elif preset_mode == PRESET_NONE:
@@ -248,6 +251,26 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._power_manager.clear_all()
 
         await self._apply_away_mode()
+
+    async def _enter_minimal_support_mode(self) -> None:
+        """Enter minimal support preset mode.
+
+        In this mode:
+        - Water heat pump is boosted (current + upper offset)
+        - Air heat pumps are set to minimal mode (current + lower offset)
+        """
+        if self._attr_preset_mode == PRESET_MINIMAL_SUPPORT:
+            return
+
+        # Restore target if coming from Away
+        if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
+            self._target_temperature = self._previous_target
+        self._previous_target = None
+
+        self._attr_preset_mode = PRESET_MINIMAL_SUPPORT
+        self._attr_hvac_mode = HVACMode.HEAT
+        self._power_manager.clear_all()
+        await self._apply_minimal_support_mode()
 
     async def _enter_solar_mode(self) -> None:
         """Enter solar preset mode."""
@@ -284,6 +307,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._mirror_entities = set(self._config.mirror_thermostats)
         if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
+            return
+        if self._attr_preset_mode == PRESET_MINIMAL_SUPPORT:
+            await self._apply_minimal_support_mode()
             return
         if self._attr_preset_mode == PRESET_SOLAR:
             if not self._config.solar_enabled:
@@ -561,6 +587,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Determine operating mode for HP1 (water-based heat pump)."""
         if self._attr_preset_mode == PRESET_BOOST:
             return MODE_BOOST
+        if self._attr_preset_mode == PRESET_MINIMAL_SUPPORT:
+            return MODE_BOOST
         if self._attr_preset_mode == PRESET_AWAY:
             return MODE_MINIMAL
         if self._power_manager.get_budget(entity_id) > 0:
@@ -584,6 +612,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """
         if self._attr_preset_mode == PRESET_BOOST:
             return MODE_BOOST
+        if self._attr_preset_mode == PRESET_MINIMAL_SUPPORT:
+            return MODE_MINIMAL
         if self._power_manager.get_budget(entity_id) > 0:
             return MODE_POWER
         # For automatic pumps, check off_timer to keep running briefly after target is reached
@@ -692,6 +722,66 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._assist_controller.force_off(entity_id)
 
         await self._apply_staging()
+
+    async def _apply_minimal_support_mode(self) -> None:
+        """Apply minimal support preset behavior.
+
+        Water heat pump is boosted, air heat pumps are set to minimal.
+        """
+        devices = self._config.devices
+        device_payloads = self._get_device_payloads()
+
+        # Process water device (boost mode)
+        water_device_tuple = self._config.get_water_device()
+        if water_device_tuple:
+            device, index = water_device_tuple
+            entity_id = device.get(CONF_CLIMATE_ENTITY)
+            if entity_id:
+                payload = device_payloads.get(entity_id, {}) or {}
+                current_temp = safe_float(payload.get("current_temperature"))
+                if current_temp is not None:
+                    self._hp_modes[entity_id] = MODE_BOOST
+                    boost_target = self._calculate_mode_target(
+                        MODE_BOOST, current_temp, device, index
+                    )
+                    _LOGGER.debug(
+                        "Minimal support preset: Water HP %s boosted to %.1f°C",
+                        entity_id, boost_target,
+                    )
+                    await self._ensure_device_temperature(entity_id, boost_target)
+
+        # Refresh payloads after water device changes
+        device_payloads = self._get_device_payloads()
+
+        # Process air devices (minimal mode)
+        for assist_index, device in self._config.get_air_devices():
+            entity_id = device.get(CONF_CLIMATE_ENTITY)
+            if not entity_id:
+                continue
+
+            payload = device_payloads.get(entity_id, {}) or {}
+            hvac_mode = str(payload.get("hvac_mode") or "").lower()
+
+            if hvac_mode != HVACMode.HEAT.value:
+                self._hp_modes[entity_id] = MODE_OFF
+                self._assist_modes[entity_id] = MODE_OFF
+                continue
+
+            current_temp = safe_float(payload.get("current_temperature"))
+            if current_temp is not None:
+                self._hp_modes[entity_id] = MODE_MINIMAL
+                self._assist_modes[entity_id] = MODE_MINIMAL
+                minimal_target = self._calculate_mode_target(
+                    MODE_MINIMAL, current_temp, device, assist_index
+                )
+                _LOGGER.debug(
+                    "Minimal support preset: Air HP%d %s set to minimal at %.1f°C",
+                    assist_index + 1, entity_id, minimal_target,
+                )
+                await self._ensure_device_temperature(entity_id, minimal_target)
+
+        self.async_write_ha_state()
+        self._emit_summary(devices, device_payloads)
 
     # --- Device Sync ---
 
