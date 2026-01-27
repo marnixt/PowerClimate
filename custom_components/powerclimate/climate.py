@@ -237,6 +237,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         self._attr_preset_mode = PRESET_BOOST
         self._attr_hvac_mode = HVACMode.HEAT
+        self.async_write_ha_state()  # Immediate UI feedback
         await self._apply_boost_mode()
 
     async def _enter_away_mode(self) -> None:
@@ -249,6 +250,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._attr_preset_mode = PRESET_AWAY
         self._attr_hvac_mode = HVACMode.HEAT
         self._power_manager.clear_all()
+        self.async_write_ha_state()  # Immediate UI feedback
 
         await self._apply_away_mode()
 
@@ -270,6 +272,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._attr_preset_mode = PRESET_MINIMAL_SUPPORT
         self._attr_hvac_mode = HVACMode.HEAT
         self._power_manager.clear_all()
+        self.async_write_ha_state()  # Immediate UI feedback
         await self._apply_minimal_support_mode()
 
     async def _enter_solar_mode(self) -> None:
@@ -284,6 +287,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         self._attr_preset_mode = PRESET_SOLAR
         self._attr_hvac_mode = HVACMode.HEAT
+        self.async_write_ha_state()  # Immediate UI feedback
         await self._apply_staging()
 
     async def _exit_preset_mode(self) -> None:
@@ -298,6 +302,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         self._attr_preset_mode = PRESET_NONE
         self._power_manager.clear_all()
+        self.async_write_ha_state()  # Immediate UI feedback
         await self._apply_staging()
 
     async def _apply_staging(self) -> None:
