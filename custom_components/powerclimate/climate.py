@@ -104,7 +104,15 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._previous_target: float | None = None
         self._config = ConfigAccessor(entry)
         self._power_manager = PowerBudgetManager(hass, self._config)
-        self._assist_controller = AssistPumpController(self._config)
+
+        # Initialize assist controller with persistent storage
+        from .timer_storage import TimerStorage
+
+        self._timer_storage = TimerStorage(hass, entry.entry_id)
+        self._assist_controller = AssistPumpController(
+            self._config, hass=hass, storage=self._timer_storage
+        )
+
         self._active_devices: set[str] = set()
         self._device_modes: dict[str, HVACMode] = {}
         self._device_targets: dict[str, float] = {}
@@ -167,6 +175,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         """Handle entity being added to Home Assistant."""
         await super().async_added_to_hass()
+
+        # Load persisted timer states
+        await self._assist_controller.async_load_states()
+
         last_state = await self.async_get_last_state()
         if last_state is not None:
             value = last_state.attributes.get(ATTR_TEMPERATURE)
@@ -179,6 +191,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Handle entity removal from Home Assistant."""
+        # Save timer states before removal
+        await self._assist_controller.async_save_states()
+
         for unsub in self._hp_state_unsubs.values():
             unsub()
         self._hp_state_unsubs.clear()
