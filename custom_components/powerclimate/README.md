@@ -13,6 +13,7 @@ and coordinate their setpoints using temperature offsets.
 - 0.3-beta — Improved config flow and optional water heat pump
 - 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
 - 0.5-beta — Separated mirror thermostats
+- 0.6.0 — Persistent timer state, refactored config flow, cleaned up codebase
 
 ## Features
 
@@ -95,7 +96,7 @@ separate configuration pages per device where you choose device role (`water` or
     - **OFF** until it has been ON for at least *Min ON time* (default 20 minutes)
     - **ON** until it has been OFF for at least *Min OFF time* (default 10 minutes)
   - This also applies when you manually toggle an assist pump (the integration will respect the protection window)
-- Timer state is **in-memory only** and resets on Home Assistant restart
+- Timer state is **persistent** and survives Home Assistant restarts (stored in `.storage/powerclimate_timers_*.json`)
 - All temperatures are clamped between the global min/max before sending
   commands, ensuring thermostats stay in a safe operating window.
 
@@ -146,7 +147,7 @@ To access: **Settings → Devices & Services → Integrations → PowerClimate �
 **Notes:**
 - Changes take effect immediately (no restart required)
 - Existing entries without advanced options use defaults for backwards compatibility
-- Timers are in-memory and reset on Home Assistant restart
+- Timer states are persisted to disk and survive Home Assistant restarts
 - Advanced options are stored in `config_entry.options` and merged via `merged_entry_data()`
 
 ## Configuration Constants
@@ -209,6 +210,6 @@ General setup guidance (always double-check your device manual):
 ## Next Steps
 
 - ✅ Min/max clamp values and assist timer/thresholds now configurable via Advanced Options
+- ✅ Persistent timer state now survives Home Assistant restarts
 - Use energy sensors or COP data for economic decisions
 - Add unit tests for the assist logic and advanced configuration
-- Consider adding persistent timer state (currently in-memory only)

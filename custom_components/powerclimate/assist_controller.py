@@ -2,6 +2,8 @@
 
 This module manages the state and control logic for assist heat pumps,
 including timer tracking, anti-short-cycle protection, and ON/OFF control.
+
+Timer states are persisted to disk to survive Home Assistant restarts.
 """
 
 from __future__ import annotations
@@ -14,9 +16,15 @@ from .assist_conditions import AssistConditionChecker
 from .models import AssistTimerState
 
 if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
     from .config_accessor import ConfigAccessor
+    from .timer_storage import TimerStorage
 
 _LOGGER = logging.getLogger(__name__)
+
+# Interval for persisting timer state (seconds)
+PERSIST_INTERVAL_SECONDS = 60.0
 
 
 class AssistPumpController:
@@ -26,20 +34,73 @@ class AssistPumpController:
     - Timer state for ON/OFF condition tracking
     - Anti-short-cycle protection
     - Condition evaluation and state transitions
+    - Persistent storage of timer states
     """
 
-    def __init__(self, config: ConfigAccessor) -> None:
+    def __init__(
+        self,
+        config: ConfigAccessor,
+        hass: HomeAssistant | None = None,
+        storage: TimerStorage | None = None,
+    ) -> None:
         """Initialize the assist pump controller.
 
         Args:
             config: ConfigAccessor for reading configuration.
+            hass: Home Assistant instance (for async operations).
+            storage: TimerStorage instance for persistence.
         """
         self._config = config
+        self._hass = hass
+        self._storage = storage
         self._condition_checker = AssistConditionChecker(config)
 
         # Timer state by entity_id
         self._timer_states: dict[str, AssistTimerState] = {}
         self._last_timer_update: datetime | None = None
+        self._last_persist_time: datetime | None = None
+        self._states_loaded = False
+
+    async def async_load_states(self) -> None:
+        """Load timer states from persistent storage."""
+        if self._states_loaded or self._storage is None:
+            return
+
+        try:
+            loaded_states = await self._storage.async_load()
+            self._timer_states.update(loaded_states)
+            self._states_loaded = True
+            _LOGGER.info(
+                "Restored %d assist timer states from storage",
+                len(loaded_states),
+            )
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.warning("Failed to load timer states: %s", err)
+            self._states_loaded = True
+
+    async def async_save_states(self) -> None:
+        """Save timer states to persistent storage."""
+        if self._storage is None:
+            return
+
+        try:
+            await self._storage.async_save(self._timer_states)
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.warning("Failed to save timer states: %s", err)
+
+    async def _maybe_persist(self) -> None:
+        """Persist timer states periodically."""
+        if self._storage is None or self._hass is None:
+            return
+
+        now = datetime.now(timezone.utc)
+        if self._last_persist_time is not None:
+            elapsed = (now - self._last_persist_time).total_seconds()
+            if elapsed < PERSIST_INTERVAL_SECONDS:
+                return
+
+        self._last_persist_time = now
+        await self.async_save_states()
 
     def get_timer_state(self, entity_id: str) -> AssistTimerState:
         """Get or create timer state for an entity.
@@ -124,6 +185,10 @@ class AssistPumpController:
             state.on_timer_seconds = 0.0
             state.off_timer_seconds = 0.0
             state.active_condition = "none"
+
+        # Schedule periodic persistence (non-blocking)
+        if self._hass is not None and self._storage is not None:
+            self._hass.async_create_task(self._maybe_persist())
 
         return state
 
