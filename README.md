@@ -10,6 +10,7 @@
 - 0.3-beta — Improved config flow and optional water heat pump
 - 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
 - 0.5-beta — Separated mirror thermostats
+- 0.6.0 — Persistent timer state, refactored config flow, cleaned up codebase
 
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using per-device temperature offsets.
