@@ -39,5 +39,6 @@ class AssistTimerState:
 
 
     @classmethod
-    def no_condition(cls) -> AssistConditionResult:
-        return cls(condition_met=False, condition_name="")
+    def no_condition(cls) -> AssistTimerState:
+        """Return a default timer state with no active condition."""
+        return cls()

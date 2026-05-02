@@ -26,11 +26,14 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    CONF_CLIMATE_ENTITY,
+    CONF_DEVICES,
     COORDINATOR,
     DOMAIN,
     PLATFORMS,
 )
 from .coordinator import OSDataUpdateCoordinator
+from .helpers import merged_entry_data
 
 LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = {
         COORDINATOR: coordinator,
+        "entry": entry,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -86,38 +90,78 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_register_services(hass: HomeAssistant) -> None:
     """Register PowerClimate services."""
 
+    def resolve_climate_entity(target_entity_id: str):
+        """Resolve the climate entity that owns a controlled device."""
+        matches = []
+        all_entities = []
+
+        for data in hass.data.get(DOMAIN, {}).values():
+            climate_entity = data.get("climate_entity")
+            if climate_entity is None:
+                continue
+
+            all_entities.append(climate_entity)
+
+            entry = data.get("entry")
+            if entry is None:
+                continue
+
+            devices = merged_entry_data(entry).get(CONF_DEVICES) or []
+            if any(
+                str(device.get(CONF_CLIMATE_ENTITY) or "").strip() == target_entity_id
+                for device in devices
+            ):
+                matches.append(climate_entity)
+
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(matches) > 1:
+            LOGGER.warning(
+                "Multiple PowerClimate entries manage %s; service call is ambiguous",
+                target_entity_id,
+            )
+            return None
+
+        if len(all_entities) == 1:
+            return all_entities[0]
+
+        return None
+
     async def handle_set_power_budget(call: ServiceCall) -> None:
         """Handle set_power_budget service call."""
-        entity_id = call.data["entity_id"]
+        entity_id = str(call.data["entity_id"]).strip()
         power_watts = call.data["power_watts"]
 
-        # Find the PowerClimate climate entity and call set_power_budget
-        for _entry_id, data in hass.data.get(DOMAIN, {}).items():
-            climate_entity = data.get("climate_entity")
-            if climate_entity is not None:
-                climate_entity.set_power_budget(entity_id, power_watts)
-                LOGGER.info(
-                    "Power budget set for %s: %.0f W via service",
-                    entity_id,
-                    power_watts,
-                )
-                return
+        climate_entity = resolve_climate_entity(entity_id)
+        if climate_entity is None:
+            LOGGER.warning(
+                "No PowerClimate climate entity found for power budget target %s",
+                entity_id,
+            )
+            return
 
-        LOGGER.warning("No PowerClimate climate entity found")
+        climate_entity.set_power_budget(entity_id, power_watts)
+        LOGGER.info(
+            "Power budget set for %s: %.0f W via service",
+            entity_id,
+            power_watts,
+        )
 
     async def handle_clear_power_budget(call: ServiceCall) -> None:
         """Handle clear_power_budget service call."""
-        entity_id = call.data["entity_id"]
+        entity_id = str(call.data["entity_id"]).strip()
 
-        # Find the PowerClimate climate entity and call clear_power_budget
-        for _entry_id, data in hass.data.get(DOMAIN, {}).items():
-            climate_entity = data.get("climate_entity")
-            if climate_entity is not None:
-                climate_entity.clear_power_budget(entity_id)
-                LOGGER.info("Power budget cleared for %s via service", entity_id)
-                return
+        climate_entity = resolve_climate_entity(entity_id)
+        if climate_entity is None:
+            LOGGER.warning(
+                "No PowerClimate climate entity found for power budget target %s",
+                entity_id,
+            )
+            return
 
-        LOGGER.warning("No PowerClimate climate entity found")
+        climate_entity.clear_power_budget(entity_id)
+        LOGGER.info("Power budget cleared for %s via service", entity_id)
 
     hass.services.async_register(
         DOMAIN,

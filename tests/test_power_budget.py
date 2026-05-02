@@ -20,6 +20,10 @@ class MockConfig:
     def __init__(self, house_power_sensor: str = "sensor.house_power"):
         self.house_power_sensor = house_power_sensor
 
+    @staticmethod
+    def is_water_device(device, index: int) -> bool:
+        return index == 0
+
 
 class MockState:
     """Mock Home Assistant state object."""
@@ -153,6 +157,32 @@ class TestBudgetAllocation:
         assert hp1_budget >= hp2_budget  # Priority allocation
         assert hp1_budget + hp2_budget <= 2000.0 - DEFAULT_POWER_SURPLUS_RESERVE_W
 
+    @patch("custom_components.powerclimate.power_budget.dt_util.utcnow")
+    def test_allocate_rotates_air_device_priority(self, mock_utcnow):
+        """Partial surplus after HP1 should rotate across air devices over time."""
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+        self.hass.states.get.return_value = MockState("-1800", "W")
+        devices = [
+            {CONF_CLIMATE_ENTITY: "climate.hp1"},
+            {CONF_CLIMATE_ENTITY: "climate.hp2"},
+            {CONF_CLIMATE_ENTITY: "climate.hp3"},
+        ]
+
+        mock_utcnow.return_value = base_time
+        self.manager.update_budgets(devices)
+        first_hp2 = self.manager.get_budget("climate.hp2")
+        first_hp3 = self.manager.get_budget("climate.hp3")
+
+        mock_utcnow.return_value = base_time + timedelta(minutes=1)
+        self.manager.update_budgets(devices)
+        second_hp2 = self.manager.get_budget("climate.hp2")
+        second_hp3 = self.manager.get_budget("climate.hp3")
+
+        assert first_hp2 != first_hp3
+        assert second_hp2 != second_hp3
+        assert second_hp2 == first_hp3
+        assert second_hp3 == first_hp2
+
     def test_allocate_respects_minimum(self):
         """Should not allocate below minimum threshold."""
         # Small surplus, less than minimum budget
@@ -229,6 +259,20 @@ class TestSetpointCalculation:
 
         # Initial setpoint is midpoint
         assert setpoint == 23.0
+
+    def test_calculate_initial_setpoint_uses_current_target(self):
+        """Should seed power mode from the device's current target when available."""
+        self.manager.set_budget("climate.hp1", 1000.0)
+
+        setpoint = self.manager.calculate_setpoint(
+            "climate.hp1",
+            current_power=None,
+            min_setpoint=16.0,
+            max_setpoint=30.0,
+            current_target_setpoint=20.5,
+        )
+
+        assert setpoint == 20.5
 
     def test_calculate_no_budget(self):
         """Should return current setpoint when no budget."""

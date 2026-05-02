@@ -102,6 +102,13 @@ class AssistPumpController:
         self._last_persist_time = now
         await self.async_save_states()
 
+    def _schedule_persist(self) -> None:
+        """Schedule persistence when Home Assistant and storage are available."""
+        if self._hass is None or self._storage is None:
+            return
+
+        self._hass.async_create_task(self._maybe_persist())
+
     def get_timer_state(self, entity_id: str) -> AssistTimerState:
         """Get or create timer state for an entity.
 
@@ -187,8 +194,7 @@ class AssistPumpController:
             state.active_condition = "none"
 
         # Schedule periodic persistence (non-blocking)
-        if self._hass is not None and self._storage is not None:
-            self._hass.async_create_task(self._maybe_persist())
+        self._schedule_persist()
 
         return state
 
@@ -300,6 +306,7 @@ class AssistPumpController:
             state.active_condition,
             state.on_timer_seconds,
         )
+        self._schedule_persist()
 
     def record_turn_off(self, entity_id: str) -> None:
         """Record that a device was turned off.
@@ -316,6 +323,7 @@ class AssistPumpController:
             state.active_condition,
             state.off_timer_seconds,
         )
+        self._schedule_persist()
 
     def reset_timers(self, entity_id: str) -> None:
         """Reset all timers for an entity.
@@ -327,6 +335,7 @@ class AssistPumpController:
         state.on_timer_seconds = 0.0
         state.off_timer_seconds = 0.0
         state.active_condition = "none"
+        self._schedule_persist()
 
     def force_off(self, entity_id: str) -> None:
         """Force a device to off state (e.g., for Away mode).
@@ -340,6 +349,7 @@ class AssistPumpController:
         state.active_condition = "none"
         state.last_off = datetime.now(timezone.utc)
         state.running_state = False
+        self._schedule_persist()
 
     def get_hp_status_info(self, entity_id: str) -> dict[str, Any]:
         """Get status info for summary payload.

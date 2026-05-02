@@ -148,7 +148,7 @@ def _build_behavior_sensors(
     sensors: list[SensorEntity] = []
     config = merged_entry_data(entry)
     devices = config.get(CONF_DEVICES, []) or []
-    for index, device in enumerate(devices[:5]):
+    for index, device in enumerate(devices):
         if not device or not device.get(CONF_CLIMATE_ENTITY):
             continue
 
@@ -379,11 +379,12 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
         # Add preset mode at the beginning
         preset_mode = payload.get("preset_mode", "none")
         preset_label = self._t("label_preset", "Preset")
+        preset_mode = str(payload.get("preset_mode") or "none").strip().lower()
         if preset_mode == "boost":
             preset_value = self._t("preset_boost", "Boost")
-        elif preset_mode == "Away":
+        elif preset_mode == "away":
             preset_value = self._t("preset_away", "Away")
-        elif preset_mode == "Solar":
+        elif preset_mode == "solar":
             preset_value = self._t("preset_solar", "Solar")
         else:
             preset_value = self._t("preset_none", "None")

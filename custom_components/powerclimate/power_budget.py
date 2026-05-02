@@ -60,6 +60,7 @@ class PowerBudgetManager:
         self._current_setpoints: dict[str, float] = {}  # entity_id -> setpoint
         self._last_adjustments: dict[str, datetime] = {}  # entity_id -> timestamp
         self._last_update: datetime | None = None
+        self._air_budget_rotation = 0
 
         # Diagnostic values
         self._house_net_power_w: float | None = None
@@ -132,6 +133,7 @@ class PowerBudgetManager:
         self._house_net_power_w = None
         self._power_available_w = None
         self._power_budget_remaining_w = None
+        self._air_budget_rotation = 0
 
     def update_budgets(self, devices: list[dict[str, Any]]) -> None:
         """Update per-device power budgets from house net power.
@@ -169,8 +171,9 @@ class PowerBudgetManager:
         remaining_w = available_w
         new_budgets: dict[str, float] = {}
 
-        # Allocate budgets in device order
-        for device in devices:
+        # Keep the primary water device first, but rotate assist devices so
+        # partial surplus does not starve the same air device every cycle.
+        for device in self._iter_budget_order(devices):
             entity_id = str(device.get(CONF_CLIMATE_ENTITY) or "").strip()
             if not entity_id:
                 continue
@@ -194,12 +197,36 @@ class PowerBudgetManager:
 
         self._power_budget_remaining_w = float(max(0.0, remaining_w))
 
+    def _iter_budget_order(self, devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Return device order for budget allocation."""
+        water_devices: list[dict[str, Any]] = []
+        air_devices: list[dict[str, Any]] = []
+
+        is_water_device = getattr(self._config, "is_water_device", None)
+
+        for index, device in enumerate(devices):
+            if callable(is_water_device) and is_water_device(device, index):
+                water_devices.append(device)
+            elif not callable(is_water_device) and index == 0:
+                water_devices.append(device)
+            else:
+                air_devices.append(device)
+
+        if not air_devices:
+            return water_devices
+
+        start_index = self._air_budget_rotation % len(air_devices)
+        rotated_air = air_devices[start_index:] + air_devices[:start_index]
+        self._air_budget_rotation = (start_index + 1) % len(air_devices)
+        return water_devices + rotated_air
+
     def calculate_setpoint(
         self,
         entity_id: str,
         current_power: float | None,
         min_setpoint: float,
         max_setpoint: float,
+        current_target_setpoint: float | None = None,
     ) -> float:
         """Calculate setpoint to match power budget.
 
@@ -224,7 +251,13 @@ class PowerBudgetManager:
         # Get or initialize current setpoint
         current_setpoint = self._current_setpoints.get(entity_id)
         if current_setpoint is None:
-            current_setpoint = (min_setpoint + max_setpoint) / 2.0
+            baseline_setpoint = safe_float(current_target_setpoint)
+            if baseline_setpoint is None:
+                baseline_setpoint = (min_setpoint + max_setpoint) / 2.0
+            current_setpoint = max(min_setpoint, min(baseline_setpoint, max_setpoint))
+            self._current_setpoints[entity_id] = current_setpoint
+        else:
+            current_setpoint = max(min_setpoint, min(current_setpoint, max_setpoint))
             self._current_setpoints[entity_id] = current_setpoint
 
         # No budget or no power reading - return current

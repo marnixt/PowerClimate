@@ -26,7 +26,7 @@ Not affiliated with Home Assistant.
 - **Per-device offsets + guardrails**: Lower/upper offsets per device, plus global min/max setpoint limits.
 - **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
 - **Power-aware control (optional)**: `Solar` preset can allocate per-device power budgets from a signed house net power sensor.
-- **Thermostat mirroring**: Optionally mirror setpoint changes from selected thermostats into PowerClimate.
+- **Thermostat mirroring**: Optionally mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off state is ignored.
 - **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
 - **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
@@ -55,7 +55,7 @@ Copy `custom_components/powerclimate/` into your Home Assistant `config/custom_c
 
 1. Home Assistant → **Settings → Devices & Services → Add Integration → PowerClimate**.
 2. Select one or more room temperature sensors (PowerClimate uses an average of available values).
-3. Select thermostats that PowerClimate should mirror (optional). Setpoint changes on these thermostats will be copied to PowerClimate.
+3. Select thermostats that PowerClimate should mirror (optional). Only setpoint changes on these thermostats are copied to PowerClimate; turning a mirrored thermostat off does not turn PowerClimate off.
 4. Select an optional water-based heat pump (0 or 1) and zero or more air-based assist heat pumps. The first mirrored thermostat is preselected for the water heat pump.
 ![Select heat pumps configuration](custom_components/powerclimate/images/Config_select_heat_pumps.png)
 
@@ -72,8 +72,8 @@ Note: Set the lower setpoint offset so that the heat pump almost, but not comple
 ## Control Algorithm
 
 ### Water-based heat pump (optional)
-- If configured, PowerClimate can own the HVAC mode: the water-based device is forced to HEAT when the virtual
-  climate entity is on and turned off otherwise.
+- If configured, PowerClimate owns the HVAC mode for the water-based device: it is forced to HEAT while the virtual
+  climate entity is on and explicitly switched to OFF when PowerClimate is turned off.
 - The PowerClimate target temperature is clamped between the lower/upper offsets (and the global 16–30 °C limits)
   before being sent to the water-based device.
 - Water temperature is tracked and exposed via diagnostics (when a water sensor is configured).
@@ -101,8 +101,9 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
 | **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) |
 
-**Note:** Solar preset requires a configured house net power sensor. Budgets are allocated in device order, prioritizing the water-based device when configured.
+**Note:** Solar preset requires a configured house net power sensor. Budget allocation prioritizes the water-based device first; any remaining air-device budget rotates across assists to avoid starving the same device every cycle.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
+Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
 
 ## Configuration Constants
 
@@ -127,12 +128,11 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | Water Derivative | Water temperature change rate (°C/hour) |
 | Thermal Summary | Human-readable system state |
 | HP1 Behavior | HVAC status, temps, water temperature when available |
-| HP2 Behavior | HVAC status, temps, and PowerClimate mode (off/minimal/setpoint/power/boost) |
-| HP3 Behavior | Same as above when a third pump is configured |
-| HP4 Behavior | Same logic as HP2 when a fourth pump is configured |
-| HP5 Behavior | Same logic as HP2 when a fifth pump is configured |
+| HP2+ Behavior | HVAC status, temps, and PowerClimate mode for each configured assist pump |
 | Total Power | Aggregated power from all configured pumps |
 | Power Budget | Allocated budget totals + per-device budgets (when enabled) |
+
+Behavior sensors are created for every configured pump, not only the first five.
 
 Derivatives use the slope between the oldest and newest sample within the
 window (room: 15 minutes, water: 10 minutes), matching Home Assistant's

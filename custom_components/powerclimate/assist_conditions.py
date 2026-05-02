@@ -91,7 +91,11 @@ class AssistConditionChecker:
             return ConditionResult(met=True, name="eta_low")
         return ConditionResult.not_met()
 
-    def _check_overshoot(self, room_temp: float | None, target_temp: float | None) -> ConditionResult:
+    def _check_overshoot(
+        self,
+        room_temp: float | None,
+        target_temp: float | None,
+    ) -> ConditionResult:
         if room_temp is not None and target_temp is not None and room_temp >= target_temp:
             return ConditionResult(met=True, name="overshoot")
         return ConditionResult.not_met()

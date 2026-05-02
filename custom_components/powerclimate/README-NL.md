@@ -16,7 +16,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 - **Assists: handmatig of automatisch AAN/UIT**: optionele timers + anti-short-cycle beveiliging.
 - **Vermogensbewuste `Solar` preset (optioneel)**: verdeel per-apparaat vermogensbudgetten op basis van een signed house net power sensor.
 - **Diagnostiek**: thermische samenvatting, per-HP behavior, afgeleides, totaal vermogen en budgetdiagnostiek.
-- **Thermostaat-mirroring**: kopieer setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate.
+- **Thermostaat-mirroring**: kopieer alleen setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate; HVAC aan/uit van die thermostaten wordt genegeerd.
 - **Standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 
 ![PowerClimate-dashboard: Home Assistant UI met de virtuele PowerClimate-thermostaat (huidige temperatuur, setpoint en modusbediening).](custom_components/powerclimate/images/Dashboard%20Climate%20device.png)
@@ -25,7 +25,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 
 1. Installeer de `powerclimate` folder onder `custom_components/`.
 2. In Home Assistant: **Instellingen -> Apparaten & Diensten -> Integratie toevoegen -> PowerClimate**.
-3. Kies de ruimtetemperatuursensor en selecteer optioneel thermostaten om te mirroren.
+3. Kies de ruimtetemperatuursensor en selecteer optioneel thermostaten om te mirroren. Alleen setpoint-wijzigingen worden overgenomen; het uitschakelen van een gemirrorde thermostaat schakelt PowerClimate niet uit.
 4. Configureer je warmtepompen (de eerste gemirrorde thermostaat wordt vooraf geselecteerd voor de waterwarmtepomp):
   - **Waterwarmtepomp** (optioneel): climate entity, optionele vermogenssensor, optionele water
     temperatuursensor, en offsets
@@ -39,16 +39,16 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 De configuratie is rol-gebaseerd: je kunt een optionele waterwarmtepomp
 (0 of 1) configureren en nul of meer lucht- (assist) warmtepompen. Voor de
 apparaatselectie kun je optioneel thermostaten kiezen waarvan setpoints worden
-gemirrord naar PowerClimate. De UI toont daarna aparte configuratiepagina's per
+gemirrord naar PowerClimate. Alleen numerieke temperatuurwijzigingen worden gemirrord; HVAC-moduswijzigingen niet. De UI toont daarna aparte configuratiepagina's per
 apparaat waar je de opties kiest.
 
 ## Regel-logica
 
 ### Waterwarmtepomp (optioneel)
 
-- Indien geconfigureerd kan PowerClimate de HVAC mode beheren: het water-apparaat wordt geforceerd naar HEAT wanneer de virtuele
-  climate entity aan staat, en wordt uitgezet wanneer die uit staat.
--- Het PowerClimate doelsetpoint wordt begrensd tussen de lower/upper offsets (en de globale 16–30 °C limieten)
+- Indien geconfigureerd beheert PowerClimate de HVAC mode van het water-apparaat: het wordt geforceerd naar HEAT zolang de virtuele
+  climate entity aan staat, en expliciet naar OFF gezet wanneer PowerClimate wordt uitgezet.
+- Het PowerClimate doelsetpoint wordt begrensd tussen de lower/upper offsets (en de globale 16–30 °C limieten)
   voordat deze naar de warmtepompen gestuurd wordt.
 - Watertemperatuur wordt gemeten en ter info wanneer een watersensor is geconfigureerd.
 
@@ -83,7 +83,7 @@ apparaat waar je de opties kiest.
     - **UIT** totdat hij minimaal *Min ON time* aan stond (default 20 minuten)
     - **AAN** totdat hij minimaal *Min OFF time* uit stond (default 10 minuten)
   - Dit geldt ook als je handmatig togglet (de integratie respecteert het protectievenster)
-- Timerstatus is **alleen in-memory** en reset bij Home Assistant restart
+- Timerstatus is **persistent** en overleeft Home Assistant restarts (opgeslagen in `.storage/powerclimate_timers_*.json`)
 - Alle temperaturen worden begrensd tussen globale min/max voordat er commando's worden gestuurd.
 
 ## Preset Gedrag
@@ -97,8 +97,9 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
 | **Solar** | Vermogensgebudgetteerde setpoint (gebruik surplus) | Vermogensgebudgetteerde setpoint (prioriteit na water-HP) |
 
-**Let op:** Solar preset vereist een geconfigureerde house net power sensor. Budgetten worden verdeeld in apparaatvolgorde, met prioriteit voor het water-apparaat wanneer aanwezig.
+**Let op:** Solar preset vereist een geconfigureerde house net power sensor. Budgetten geven eerst prioriteit aan het water-apparaat; resterend assist-budget roteert daarna over luchtpompen zodat niet steeds dezelfde assist achterblijft.
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
+HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
 
 **Configuratie-ranges:**
 - Lower setpoint offset: -5.0–0.0 °C
@@ -133,7 +134,7 @@ Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerCli
 **Notes:**
 - Wijzigingen werken direct (geen restart nodig)
 - Bestaande entries zonder advanced options gebruiken defaults voor backwards compatibility
-- Timers zijn in-memory en resetten bij Home Assistant restart
+- Timerstatus wordt naar disk weggeschreven en overleeft Home Assistant restarts
 - Advanced options worden opgeslagen in `config_entry.options` en gemerged via `merged_entry_data()`
 
 ## Configuratie-constanten
@@ -163,10 +164,7 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 | **Thermal Summary** | `sensor.powerclimate_text_thermal_summary_*` | Leesbare systeemstatus met alle pomptemps en ETAs |
 | **Assist Summary** | `sensor.powerclimate_text_assist_summary_*` | Room state, trend, en per-pomp timer/conditie status |
 | **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, watertemperatuur wanneer beschikbaar |
-| **HP2 Behavior** | `sensor.powerclimate_text_hp2_behavior_*` | HVAC status, temps, en PowerClimate mode |
-| **HP3 Behavior** | `sensor.powerclimate_text_hp3_behavior_*` | Zelfde als HP2 wanneer een derde pomp geconfigureerd is |
-| **HP4 Behavior** | `sensor.powerclimate_text_hp4_behavior_*` | Zelfde als HP2 wanneer een vierde pomp geconfigureerd is |
-| **HP5 Behavior** | `sensor.powerclimate_text_hp5_behavior_*` | Zelfde als HP2 wanneer een vijfde pomp geconfigureerd is |
+| **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
 | Total Power | `sensor.powerclimate_total_power_*` | Opgeteld vermogen van geconfigureerde pompen |
 | Power Budget | `sensor.powerclimate_power_budget_*` | Totaal + per-apparaat budgetten (gebruikt door `Solar` preset) |
 
@@ -179,6 +177,7 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
         - sensor.powerclimate_text_*
   ```
 - Behavior sensors labelen elke pomp als `<first word> (hpX)` om te matchen met de Thermal Summary
+- Behavior-sensoren worden aangemaakt voor elke geconfigureerde pomp, niet alleen voor de eerste vijf
 - Assist Summary toont:
   - Room state (temp, target, delta, trend, ETA)
   - Per-pomp status met timer countdown (bijv. "Water≥40 °C ON:3:45/5:00")
@@ -198,4 +197,4 @@ Algemene setup guidance (check altijd je handleiding):
 - Min/max clamp values en assist timer/thresholds zijn nu configureerbaar via Advanced Options
 - Gebruik energiesensoren of COP data voor economische keuzes
 - Voeg unit tests toe voor assist logica en advanced configuration
-- Overweeg persistent timer state (nu alleen in-memory)
+- Persistent timer state is aanwezig; gebruik de assist- en behavior-sensoren om de herstelde timerstatus te controleren

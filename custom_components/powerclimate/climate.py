@@ -60,8 +60,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PRESET_NONE = "none"
 PRESET_BOOST = "boost"
-PRESET_SOLAR = "Solar"
-PRESET_AWAY = "Away"
+PRESET_SOLAR = "solar"
+PRESET_AWAY = "away"
 
 
 async def async_setup_entry(
@@ -131,6 +131,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._mirror_entities: set[str] = set()
         self._integration_context = Context()
         self._eta_exceeded_since: datetime | None = None
+        self._coordinator_update_pending = False
+        self._coordinator_update_task: asyncio.Task[None] | None = None
 
     @property
     def preset_modes(self) -> list[str] | None:
@@ -202,12 +204,28 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator data update."""
-        self.hass.async_create_task(self._async_process_update())
+        if (
+            self._coordinator_update_task is not None
+            and not self._coordinator_update_task.done()
+        ):
+            self._coordinator_update_pending = True
+            return
+
+        self._coordinator_update_task = self.hass.async_create_task(
+            self._async_process_update()
+        )
 
     async def _async_process_update(self) -> None:
-        """Process coordinator update asynchronously."""
-        await self._apply_staging()
-        super()._handle_coordinator_update()
+        """Process coordinator updates asynchronously without overlap."""
+        try:
+            while True:
+                self._coordinator_update_pending = False
+                await self._apply_staging()
+                super()._handle_coordinator_update()
+                if not self._coordinator_update_pending:
+                    break
+        finally:
+            self._coordinator_update_task = None
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set target temperature."""
@@ -230,6 +248,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set preset mode."""
+        preset_mode = self._normalize_preset_mode(preset_mode)
         if preset_mode not in self.preset_modes:
             return
 
@@ -241,6 +260,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_solar_mode()
         elif preset_mode == PRESET_NONE:
             await self._exit_preset_mode()
+
+    @staticmethod
+    def _normalize_preset_mode(preset_mode: str | None) -> str:
+        """Normalize preset mode values while keeping legacy compatibility."""
+        return str(preset_mode or PRESET_NONE).strip().lower()
 
     async def _enter_boost_mode(self) -> None:
         """Enter boost preset mode."""
@@ -315,6 +339,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._attr_hvac_mode == HVACMode.OFF
             or self._target_temperature is None
         )
+
+        if self._attr_hvac_mode == HVACMode.OFF:
+            await self._turn_off_water_device(device_payloads)
 
         # Calculate room state
         room_temp = self.current_temperature
@@ -426,6 +453,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         desired_devices.add(entity_id)
         payload = device_payloads.get(entity_id, {})
         current_temp = safe_float(payload.get("current_temperature"))
+        current_target = safe_float(payload.get("target_temperature"))
         current_power = safe_float(payload.get("energy"))
         water_temp = safe_float(payload.get("water_temperature"))
 
@@ -435,7 +463,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         # Calculate target
         target = self._calculate_mode_target(
-            hp_mode, current_temp, device, index, current_power
+            hp_mode,
+            current_temp,
+            device,
+            index,
+            current_power,
+            current_target,
         )
         desired_targets[entity_id] = target
 
@@ -509,6 +542,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
             # Determine mode and target
             current_temp = safe_float(payload.get("current_temperature"))
+            current_target = safe_float(payload.get("target_temperature"))
             current_power = safe_float(payload.get("energy"))
             timer_state = self._assist_controller.get_timer_state(entity_id)
             is_automatic = device.get(CONF_ALLOW_ON_OFF_CONTROL, False)
@@ -519,7 +553,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._hp_modes[entity_id] = assist_mode
 
             target = self._calculate_mode_target(
-                assist_mode, current_temp, device, assist_index, current_power
+                assist_mode,
+                current_temp,
+                device,
+                assist_index,
+                current_power,
+                current_target,
             )
 
             desired_devices.add(entity_id)
@@ -615,6 +654,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         device: dict[str, Any],
         index: int,
         current_power: float | None = None,
+        current_target: float | None = None,
     ) -> float:
         """Calculate target temperature for a given mode."""
         min_sp = self._config.min_setpoint
@@ -643,7 +683,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         elif mode == MODE_POWER:
             return self._power_manager.calculate_setpoint(
-                entity_id, current_power, min_sp, max_sp
+                entity_id,
+                current_power,
+                min_sp,
+                max_sp,
+                current_target_setpoint=current_target,
             )
 
         return min_sp
@@ -693,10 +737,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     async def _apply_away_mode(self) -> None:
         """Apply away preset behavior."""
-        devices = self._config.devices
-
         # Turn off assist pumps with control enabled
-        for device in devices[1:]:
+        for _index, device in self._config.get_air_devices():
             if not device.get(CONF_ALLOW_ON_OFF_CONTROL):
                 continue
             entity_id = str(device.get(CONF_CLIMATE_ENTITY) or "").strip()
@@ -707,6 +749,34 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._assist_controller.force_off(entity_id)
 
         await self._apply_staging()
+
+    async def _turn_off_water_device(
+        self,
+        device_payloads: dict[str, dict[str, Any]],
+    ) -> None:
+        """Turn off the owned water device when PowerClimate is OFF."""
+        water_device_tuple = self._config.get_water_device()
+        if not water_device_tuple:
+            return
+
+        device, _index = water_device_tuple
+        entity_id = str(device.get(CONF_CLIMATE_ENTITY) or "").strip()
+        if not entity_id:
+            return
+
+        payload = dict(device_payloads.get(entity_id, {}) or {})
+        hvac_mode = str(payload.get("hvac_mode") or "").lower()
+        if hvac_mode != HVACMode.OFF.value:
+            await self._ensure_device_mode(
+                entity_id,
+                HVACMode.OFF,
+                allow_when_off=True,
+                force=True,
+            )
+            payload["hvac_mode"] = HVACMode.OFF.value
+            device_payloads[entity_id] = payload
+
+        self._hp_modes[entity_id] = MODE_OFF
 
     # --- Device Sync ---
 
@@ -855,9 +925,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         service_name: str,
         service_data: dict[str, Any],
         action_description: str,
+        *,
+        allow_when_off: bool = False,
     ) -> None:
         """Call a climate service with error handling."""
-        if self.hvac_mode == HVACMode.OFF:
+        if self.hvac_mode == HVACMode.OFF and not allow_when_off:
             _LOGGER.debug(
                 "PowerClimate is OFF; skipping %s for %s",
                 action_description, entity_id,
@@ -888,11 +960,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         except HomeAssistantError as err:
             _LOGGER.warning("Failed %s for %s: %s", action_description, entity_id, err)
 
-    async def _ensure_device_mode(self, entity_id: str, mode: HVACMode) -> None:
+    async def _ensure_device_mode(
+        self,
+        entity_id: str,
+        mode: HVACMode,
+        *,
+        allow_when_off: bool = False,
+        force: bool = False,
+    ) -> None:
         """Ensure device is in the specified HVAC mode."""
         if self._device_modes.get(entity_id) == mode:
             return
-        if self._recent_call(self._last_mode_call, entity_id):
+        if not force and self._recent_call(self._last_mode_call, entity_id):
             _LOGGER.debug("Skipping HVAC mode set for %s due to cooldown", entity_id)
             return
 
@@ -901,6 +980,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             SERVICE_SET_HVAC_MODE,
             {ATTR_ENTITY_ID: entity_id, ATTR_HVAC_MODE: mode},
             "mode change",
+            allow_when_off=allow_when_off,
         )
         self._device_modes[entity_id] = mode
         self._mark_call(self._last_mode_call, entity_id)

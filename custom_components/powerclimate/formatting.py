@@ -302,11 +302,12 @@ class SensorFormatter(TemperatureFormatter):
         Returns:
             Translated preset label.
         """
+        preset_mode = str(preset_mode or "").strip().lower()
         if preset_mode == "boost":
             return self._t("preset_boost", "Boost")
-        elif preset_mode == "Away":
+        elif preset_mode == "away":
             return self._t("preset_away", "Away")
-        elif preset_mode == "Solar":
+        elif preset_mode == "solar":
             return self._t("preset_solar", "Solar")
         else:
             return self._t("preset_none", "None")

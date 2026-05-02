@@ -2,8 +2,7 @@
 
 [![HACS Integration](https://img.shields.io/badge/HACS-Integration-blue?logo=hacs)](https://github.com/hacs/integration)
 
-**Install via HACS (recommended):** In Home Assistant, open **HACS → Integrations → Custom repositories**, add the repository URL and set **Category** to **Integration**, then install and restart Home Assistant.
-
+**Install via HACS (recommended):**
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using temperature offsets.
 
@@ -22,7 +21,7 @@ and coordinate their setpoints using temperature offsets.
 - **Assists: manual or automatic ON/OFF**: Optional timers + anti-short-cycle protections.
 - **Power-aware `Solar` preset (optional)**: Allocate per-device power budgets from a signed house net power sensor.
 - **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
-- **Thermostat mirroring**: Mirror setpoint changes from selected thermostats into PowerClimate.
+- **Thermostat mirroring**: Mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off is ignored.
 - **Standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
 ## Quick Start
@@ -53,15 +52,15 @@ and coordinate their setpoints using temperature offsets.
 The setup flow is role-based: you may configure one optional water-based heat
 pump (0 or 1) and zero or more air-based assist heat pumps. Before selecting
 devices, you can optionally choose thermostats whose setpoint changes should be
-mirrored into PowerClimate. The UI presents a device selection page and then
+mirrored into PowerClimate. Only numeric temperature changes are mirrored; thermostat HVAC mode changes are ignored. The UI presents a device selection page and then
 separate configuration pages per device where you choose device role (`water` or
 `air`) and advanced options.
 
 ## Control Algorithm
 
 ### Water-based heat pump (optional)
-- If configured, PowerClimate can own the HVAC mode: the water-based device is forced to HEAT when the virtual
-  climate entity is on and turned off otherwise.
+- If configured, PowerClimate owns the HVAC mode: the water-based device is forced to HEAT while the virtual
+  climate entity is on and explicitly switched to OFF when PowerClimate is turned off.
 - The PowerClimate target temperature is clamped between the lower/upper offsets (and the global 16–30 °C limits)
   before being sent to the water-based device.
 - Water temperature is tracked and exposed via diagnostics when a water sensor is configured.
@@ -111,8 +110,9 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
 | **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) |
 
-**Note:** Solar preset requires a configured house net power sensor. Budgets are allocated in device order, prioritizing the water-based device when configured.
+**Note:** Solar preset requires a configured house net power sensor. Budget allocation prioritizes the water-based device first; any remaining air-device budget rotates across assists to avoid starving the same device every cycle.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
+Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
 
 **Configuration Ranges:**
 - Lower setpoint offset: -5.0–0.0 °C
@@ -177,10 +177,7 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | **Thermal Summary** | `sensor.powerclimate_text_thermal_summary_*` | Human-readable system state with all pump temps and ETAs |
 | **Assist Summary** | `sensor.powerclimate_text_assist_summary_*` | Room state, trend, and per-pump timer/condition status |
 | **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, water temperature when available |
-| **HP2 Behavior** | `sensor.powerclimate_text_hp2_behavior_*` | HVAC status, temps, and PowerClimate mode |
-| **HP3 Behavior** | `sensor.powerclimate_text_hp3_behavior_*` | Same as HP2 when a third pump is configured |
-| **HP4 Behavior** | `sensor.powerclimate_text_hp4_behavior_*` | Same as HP2 when a fourth pump is configured |
-| **HP5 Behavior** | `sensor.powerclimate_text_hp5_behavior_*` | Same as HP2 when a fifth pump is configured |
+| **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps, and PowerClimate mode for each configured assist pump |
 | Total Power | `sensor.powerclimate_total_power_*` | Aggregated power consumption from all configured pumps |
 | Power Budget | `sensor.powerclimate_power_budget_*` | Total + per-device budgets (used by `Solar` preset) |
 
@@ -193,6 +190,7 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
         - sensor.powerclimate_text_*
   ```
 - Behavior sensors label each pump as `<first word> (hpX)` to match the Thermal Summary format
+- Behavior sensors are created for every configured pump, not only the first five
 - Assist Summary shows:
   - Room state (temp, target, delta, trend, ETA)
   - Per-pump status with timer countdown (e.g., "Water≥40°C ON:3:45/5:00")

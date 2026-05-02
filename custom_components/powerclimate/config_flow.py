@@ -12,8 +12,6 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 
 from .config_flow_handlers import (
-    FIELD_AIR_CLIMATES,
-    FIELD_WATER_CLIMATE,
     advanced_form_defaults,
     air_device_defaults,
     build_advanced_schema,

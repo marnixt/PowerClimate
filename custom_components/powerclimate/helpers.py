@@ -98,10 +98,10 @@ def integration_device_info(entry: ConfigEntry) -> DeviceInfo:
 
 def _load_strings_from_file(path: Path) -> dict[str, str]:
     """Load custom strings from a JSON file.
-    
+
     Args:
         path: Path to the JSON file containing string definitions.
-    
+
     Returns:
         Dictionary mapping string keys to translated values.
     """
@@ -138,10 +138,15 @@ def get_strings(hass: HomeAssistant, language: str | None = None) -> dict[str, s
         strings_dir = Path(__file__).resolve().parent
 
     strings: dict[str, str] = {}
-    for candidate in (lang, "en"):
-        strings = _load_strings_from_file(
-            strings_dir / "custom_strings.json"
-        )
+    candidates = []
+    if lang:
+        candidates.append(strings_dir / f"custom_strings.{lang}.json")
+    if lang and lang != "en":
+        candidates.append(strings_dir / "custom_strings.en.json")
+    candidates.append(strings_dir / "custom_strings.json")
+
+    for candidate in candidates:
+        strings = _load_strings_from_file(candidate)
         if strings:
             break
 
