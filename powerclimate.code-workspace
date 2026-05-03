@@ -8,6 +8,14 @@
 		}
 	],
 	"settings": {
-		"powershell.cwd": "powerclimate"
+		"powershell.cwd": "powerclimate",
+		"python-envs.pythonProjects": [
+			{
+				"path": "custom_components/quatt_stooklijn",
+				"envManager": "ms-python.python:venv",
+				"packageManager": "ms-python.python:pip",
+				"workspace": "Z:"
+			}
+		]
 	}
 }
