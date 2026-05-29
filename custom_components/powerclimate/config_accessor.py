@@ -20,7 +20,9 @@ from .const import (
     CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET,
     CONF_MAX_SETPOINT_OVERRIDE,
+    CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
+    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
@@ -31,6 +33,7 @@ from .const import (
     DEFAULT_ASSIST_STALL_TEMP_DELTA,
     DEFAULT_ASSIST_TIMER_SECONDS,
     DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
+    DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
@@ -106,6 +109,17 @@ class ConfigAccessor:
         return bool(self.house_power_sensor)
 
     @property
+    def mpc_temperature_sensor(self) -> str | None:
+        """Get the external MPC advised temperature sensor entity ID."""
+        sensor = str(self._get_config().get(CONF_MPC_TEMPERATURE_SENSOR) or "").strip()
+        return sensor if sensor else None
+
+    @property
+    def mpc_enabled(self) -> bool:
+        """Check if MPC preset is available."""
+        return bool(self.mpc_temperature_sensor)
+
+    @property
     def mirror_thermostats(self) -> list[str]:
         """Get list of thermostats whose setpoints should be mirrored."""
         raw = self._get_config().get(CONF_MIRROR_CLIMATE_ENTITIES) or []
@@ -179,6 +193,13 @@ class ConfigAccessor:
         """Get the stall detection temperature delta."""
         return float(
             self._get_config().get(CONF_ASSIST_STALL_TEMP_DELTA, DEFAULT_ASSIST_STALL_TEMP_DELTA)
+        )
+
+    @property
+    def maximum_overshoot(self) -> float:
+        """Get the maximum room overshoot before optional water shutoff."""
+        return float(
+            self._get_config().get(CONF_MAXIMUM_OVERSHOOT, DEFAULT_MAXIMUM_OVERSHOOT)
         )
 
     # --- Device Configuration ---
@@ -276,8 +297,11 @@ class ConfigAccessor:
             "assist_min_off_minutes": self.assist_min_off_minutes,
             "assist_water_temp_threshold": self.assist_water_temp_threshold,
             "assist_stall_temp_delta": self.assist_stall_temp_delta,
+            "maximum_overshoot": self.maximum_overshoot,
             "solar_enabled": self.solar_enabled,
             "house_power_sensor": self.house_power_sensor,
+            "mpc_enabled": self.mpc_enabled,
+            "mpc_temperature_sensor": self.mpc_temperature_sensor,
             "mirror_thermostats": self.mirror_thermostats,
             "device_count": len(self.devices),
         }

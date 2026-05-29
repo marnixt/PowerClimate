@@ -31,7 +31,9 @@ from .const import (
     CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET,
     CONF_MAX_SETPOINT_OVERRIDE,
+    CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
+    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
@@ -41,6 +43,7 @@ from .const import (
     DEFAULT_ASSIST_STALL_TEMP_DELTA,
     DEFAULT_ASSIST_TIMER_SECONDS,
     DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
+    DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_ENTRY_NAME,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
@@ -398,6 +401,9 @@ def water_device_defaults(
     if existing_device:
         defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
         defaults[CONF_WATER_SENSOR] = existing_device.get(CONF_WATER_SENSOR)
+        defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
+            CONF_ALLOW_ON_OFF_CONTROL, False
+        )
         defaults[CONF_LOWER_SETPOINT_OFFSET] = existing_device.get(
             CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1
         )
@@ -407,6 +413,7 @@ def water_device_defaults(
 
     defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
     defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
+    defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
 
     if user_input:
         defaults.update(user_input)
@@ -442,6 +449,10 @@ def build_water_device_schema(defaults: dict[str, Any]) -> vol.Schema:
         schema_fields,
         upper_offset_selector(),
     )
+    schema_fields[vol.Optional(
+        CONF_ALLOW_ON_OFF_CONTROL,
+        default=defaults.get(CONF_ALLOW_ON_OFF_CONTROL, False),
+    )] = bool
 
     return vol.Schema(schema_fields)
 
@@ -496,6 +507,9 @@ def process_water_device_input(
         CONF_CLIMATE_ENTITY: climate_entity,
         CONF_ENERGY_SENSOR: energy_sensor,
         CONF_WATER_SENSOR: water_sensor,
+        CONF_ALLOW_ON_OFF_CONTROL: bool(
+            user_input.get(CONF_ALLOW_ON_OFF_CONTROL, False)
+        ),
         CONF_LOWER_SETPOINT_OFFSET: lower_offset,
         CONF_UPPER_SETPOINT_OFFSET: upper_offset,
     }
@@ -664,6 +678,10 @@ def build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
             CONF_ASSIST_STALL_TEMP_DELTA,
             {"min": 0.1, "max": 2, "step": 0.1, "unit_of_measurement": "°C"},
         ),
+        (
+            CONF_MAXIMUM_OVERSHOOT,
+            {"min": 0, "max": 5, "step": 0.1, "unit_of_measurement": "°C"},
+        ),
     ]
 
     for field_name, selector_config in advanced_fields:
@@ -695,6 +713,7 @@ def advanced_form_defaults(
         CONF_ASSIST_MIN_OFF_MINUTES: DEFAULT_ASSIST_MIN_OFF_MINUTES,
         CONF_ASSIST_WATER_TEMP_THRESHOLD: DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
         CONF_ASSIST_STALL_TEMP_DELTA: DEFAULT_ASSIST_STALL_TEMP_DELTA,
+        CONF_MAXIMUM_OVERSHOOT: DEFAULT_MAXIMUM_OVERSHOOT,
     }
 
     return {key: base.get(key, default_val) for key, default_val in default_map.items()}
@@ -712,6 +731,7 @@ def process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_ASSIST_MIN_OFF_MINUTES,
         CONF_ASSIST_WATER_TEMP_THRESHOLD,
         CONF_ASSIST_STALL_TEMP_DELTA,
+        CONF_MAXIMUM_OVERSHOOT,
     }
 
     return {key: user_input[key] for key in advanced_keys if key in user_input}
@@ -730,6 +750,12 @@ def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
         schema_fields,
         entity_selector("sensor"),
     )
+    optional_field(
+        CONF_MPC_TEMPERATURE_SENSOR,
+        defaults,
+        schema_fields,
+        entity_selector("sensor"),
+    )
 
     return vol.Schema(schema_fields)
 
@@ -744,6 +770,7 @@ def experimental_form_defaults(
 
     return {
         CONF_HOUSE_POWER_SENSOR: base.get(CONF_HOUSE_POWER_SENSOR),
+        CONF_MPC_TEMPERATURE_SENSOR: base.get(CONF_MPC_TEMPERATURE_SENSOR),
     }
 
 
@@ -753,4 +780,7 @@ def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     if CONF_HOUSE_POWER_SENSOR in user_input:
         sensor_entity_id = str(user_input.get(CONF_HOUSE_POWER_SENSOR) or "").strip()
         data[CONF_HOUSE_POWER_SENSOR] = sensor_entity_id or None
+    if CONF_MPC_TEMPERATURE_SENSOR in user_input:
+        sensor_entity_id = str(user_input.get(CONF_MPC_TEMPERATURE_SENSOR) or "").strip()
+        data[CONF_MPC_TEMPERATURE_SENSOR] = sensor_entity_id or None
     return data

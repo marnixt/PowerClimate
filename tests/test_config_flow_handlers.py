@@ -6,14 +6,26 @@ import pytest
 import voluptuous as vol
 
 from custom_components.powerclimate.config_flow_handlers import (
+    process_advanced_input,
+    process_water_device_input,
+    water_device_defaults,
+    experimental_form_defaults,
     parse_offset,
+    process_experimental_input,
     slugify,
     generate_device_id,
     generate_device_name,
     entry_name_from_input,
 )
 from custom_components.powerclimate.const import (
+    CONF_ALLOW_ON_OFF_CONTROL,
+    CONF_CLIMATE_ENTITY,
+    CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
+    CONF_HOUSE_POWER_SENSOR,
+    CONF_MAXIMUM_OVERSHOOT,
+    CONF_MPC_TEMPERATURE_SENSOR,
+    CONF_WATER_SENSOR,
     DEFAULT_ENTRY_NAME,
 )
 
@@ -186,3 +198,77 @@ class TestEntryNameFromInput:
         user_input = {CONF_ENTRY_NAME: "  "}
         name = entry_name_from_input(user_input, None)
         assert name == DEFAULT_ENTRY_NAME
+
+
+class TestExperimentalOptions:
+    """Tests for experimental option helpers."""
+
+    def test_experimental_form_defaults_include_mpc_sensor(self):
+        """Defaults should include the configured MPC sensor."""
+        base = {
+            CONF_HOUSE_POWER_SENSOR: "sensor.house_net",
+            CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
+        }
+
+        defaults = experimental_form_defaults(base, None)
+
+        assert defaults[CONF_HOUSE_POWER_SENSOR] == "sensor.house_net"
+        assert defaults[CONF_MPC_TEMPERATURE_SENSOR] == "sensor.quatt_mpc"
+
+    def test_process_experimental_input_keeps_mpc_sensor(self):
+        """Experimental input should normalize the optional MPC sensor."""
+        processed = process_experimental_input(
+            {
+                CONF_HOUSE_POWER_SENSOR: " sensor.house_net ",
+                CONF_MPC_TEMPERATURE_SENSOR: " sensor.quatt_mpc ",
+            }
+        )
+
+        assert processed == {
+            CONF_HOUSE_POWER_SENSOR: "sensor.house_net",
+            CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
+        }
+
+
+class TestWaterDeviceOptions:
+    """Tests for water-device specific helpers."""
+
+    def test_water_device_defaults_include_allow_on_off(self):
+        """Water defaults should retain the allow-on-off flag."""
+        defaults = water_device_defaults(
+            {
+                CONF_ENERGY_SENSOR: "sensor.hp1_power",
+                CONF_WATER_SENSOR: "sensor.hp1_water",
+                CONF_ALLOW_ON_OFF_CONTROL: True,
+            },
+            None,
+        )
+
+        assert defaults[CONF_ALLOW_ON_OFF_CONTROL] is True
+
+    def test_process_water_device_input_keeps_allow_on_off(self):
+        """Water device input processing should keep allow-on-off."""
+        device, errors = process_water_device_input(
+            {
+                CONF_ENERGY_SENSOR: "sensor.hp1_power",
+                CONF_WATER_SENSOR: "sensor.hp1_water",
+                CONF_ALLOW_ON_OFF_CONTROL: True,
+            },
+            "climate.hp1",
+            set(),
+        )
+
+        assert errors == {}
+        assert device is not None
+        assert device[CONF_CLIMATE_ENTITY] == "climate.hp1"
+        assert device[CONF_ALLOW_ON_OFF_CONTROL] is True
+
+
+class TestAdvancedOptions:
+    """Tests for advanced option helpers."""
+
+    def test_process_advanced_input_keeps_maximum_overshoot(self):
+        """Advanced input should retain maximum overshoot."""
+        processed = process_advanced_input({CONF_MAXIMUM_OVERSHOOT: 1.2})
+
+        assert processed[CONF_MAXIMUM_OVERSHOOT] == 1.2

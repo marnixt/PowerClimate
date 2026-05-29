@@ -309,6 +309,8 @@ class SensorFormatter(TemperatureFormatter):
             return self._t("preset_away", "Away")
         elif preset_mode == "solar":
             return self._t("preset_solar", "Solar")
+        elif preset_mode == "mpc":
+            return self._t("preset_mpc", "MPC")
         else:
             return self._t("preset_none", "None")
 

@@ -43,5 +43,6 @@
   "preset_boost": "Boost",
   "preset_away": "Away",
   "preset_solar": "Solar",
+  "preset_mpc": "MPC",
   "preset_none": "None"
 }

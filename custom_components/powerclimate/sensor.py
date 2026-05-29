@@ -386,6 +386,8 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
             preset_value = self._t("preset_away", "Away")
         elif preset_mode == "solar":
             preset_value = self._t("preset_solar", "Solar")
+        elif preset_mode == "mpc":
+            preset_value = self._t("preset_mpc", "MPC")
         else:
             preset_value = self._t("preset_none", "None")
         parts.append(f"{preset_label}: {preset_value}")

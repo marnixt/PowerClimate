@@ -29,11 +29,13 @@
           "energy_sensor_entity_id": "Power sensor",
           "water_sensor_entity_id": "Water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)"
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {
           "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset."
+          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       },
       "air_device": {
@@ -100,11 +102,13 @@
           "energy_sensor_entity_id": "Power sensor",
           "water_sensor_entity_id": "Water temperature sensor",
           "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)"
+          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {
           "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset."
+          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       },
       "air_device": {

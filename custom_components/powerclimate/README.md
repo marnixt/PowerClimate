@@ -105,14 +105,30 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 
 | Preset | 💧 Water Heat Pump | 🌬️ Air Heat Pump(s) |
 |--------|-------------------|---------------------|
-| **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF |
+| **none** | Normal operation (HEAT mode, follows setpoint). If `Allow PowerClimate to turn device on and off` is enabled for the water device, sustained overshoot above `Maximum overshoot` can turn it OFF after the configured timer duration; it turns back ON as soon as there is any demand (room below target) | Setpoint-tracking if ON, untouched if OFF |
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) |
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
 | **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) |
+| **MPC** | Uses the configured external advised water temperature as the target temperature for the primary water device; falls back to normal setpoint logic if the sensor state is unavailable | Normal assist logic based on room demand |
 
 **Note:** Solar preset requires a configured house net power sensor. Budget allocation prioritizes the water-based device first; any remaining air-device budget rotates across assists to avoid starving the same device every cycle.
+MPC preset requires a configured experimental sensor that exposes an advised water temperature, such as `sensor.quatt_warmteanalyse_mpc_aanbevolen_aanvoertemperatuur` from Quatt Stooklijn. PowerClimate writes that value to the climate entity target temperature; if the underlying thermostat does not translate it into the actual heat-pump control setpoint, the effect depends on that integration.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
 Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
+When `Allow PowerClimate to turn device on and off` is enabled on the water device, PowerClimate may switch it OFF after a sustained overshoot above `Maximum overshoot`. It turns the water device back ON only when the regular `ON: ETA threshold` condition is met again.
+
+### MPC Control Logic
+
+MPC is a simple shadow-to-control mode that reuses the Quatt Stooklijn model output.
+
+- PowerClimate reads the configured sensor state as the advised water temperature.
+- If the sensor reports a valid numeric value, PowerClimate uses that value for the primary water-based heat pump.
+- The advised value is still clamped to the global min/max setpoint limits.
+- If the sensor is `unknown` or `unavailable`, PowerClimate falls back to the normal setpoint logic.
+- Assist pumps do not copy the MPC value directly; they continue to follow the usual room-demand logic.
+- The water device overshoot shutoff still applies independently when water on/off control is enabled.
+
+In practice this means the Quatt model decides the water temperature, while PowerClimate keeps doing orchestration and safety handling. That makes MPC useful when you want the flow temperature to follow the current heating demand more closely without letting the external sensor become a hard dependency.
 
 **Configuration Ranges:**
 - Lower setpoint offset: -5.0–0.0 °C
@@ -135,6 +151,7 @@ To access: **Settings → Devices & Services → Integrations → PowerClimate �
 | Anti-short-cycle: Min OFF time | 10 min | 0–180 min | Block turning assist ON until it has been OFF for at least this long |
 | Water Temperature Threshold | 40.0 °C | 30–55 °C | Turn assist ON when water reaches this temperature |
 | Stall Temperature Delta | 0.5 °C | 0.1–2 °C | Temperature difference for stall detection |
+| Maximum Overshoot | 0.5 °C | 0–5 °C | If room temperature exceeds target by more than this amount, an auto-controllable water device may be turned OFF after the timer duration |
 
 ## Experimental Options
 
@@ -143,6 +160,7 @@ Some features are intentionally marked experimental and live under **Options →
 To access: **Settings → Devices & Services → Integrations → PowerClimate → Options → Experimental**
 
 - **House net power sensor (signed)**: Configure a sensor that reports net active power in W (negative = export/surplus). This is required to enable/select the `Solar` preset.
+- **MPC advised water temperature sensor**: Configure a sensor that exposes an advised water temperature. When set, PowerClimate enables the `MPC` preset and uses the sensor state when available.
 
 **Notes:**
 - Changes take effect immediately (no restart required)

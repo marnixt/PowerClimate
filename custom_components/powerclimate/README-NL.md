@@ -92,14 +92,30 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 
 | Preset | Water warmtepomp | Lucht warmtepomp(en) |
 |--------|------------------|----------------------|
-| **none** | Normale werking (HEAT mode, volgt setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
+| **none** | Normale werking (HEAT mode, volgt setpoint). Als `Allow PowerClimate to turn device on and off` voor het water-apparaat aan staat, kan aanhoudende overshoot boven `Maximum overshoot` het apparaat na de ingestelde timerduur UIT zetten; het gaat meteen weer AAN zodra er enige warmtevraag is (kamer onder setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost mode (huidig + upper offset) | Boost mode (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
 | **Solar** | Vermogensgebudgetteerde setpoint (gebruik surplus) | Vermogensgebudgetteerde setpoint (prioriteit na water-HP) |
+| **MPC** | Gebruikt de geconfigureerde externe geadviseerde watertemperatuur als target temperature voor het primaire water-apparaat; valt terug op normale setpoint-logica als de sensorstate niet beschikbaar is | Normale assist-logica op basis van warmtevraag in de ruimte |
 
 **Let op:** Solar preset vereist een geconfigureerde house net power sensor. Budgetten geven eerst prioriteit aan het water-apparaat; resterend assist-budget roteert daarna over luchtpompen zodat niet steeds dezelfde assist achterblijft.
+MPC preset vereist een geconfigureerde experimentele sensor met een geadviseerde watertemperatuur, bijvoorbeeld `sensor.quatt_warmteanalyse_mpc_aanbevolen_aanvoertemperatuur` uit Quatt Stooklijn. PowerClimate schrijft die waarde naar de target temperature van de climate entity; als de onderliggende thermostaat dat niet omzet naar de echte warmtepomp-aanvoertemperatuur, hangt het effect af van die integratie.
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
 HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
+Wanneer `Allow PowerClimate to turn device on and off` op het water-apparaat is ingeschakeld, mag PowerClimate deze bij aanhoudende overshoot boven `Maximum overshoot` ook UIT schakelen. Terug inschakelen gebeurt zodra de ruimtetemperatuur weer onder het setpoint zakt (elk beetje vraag), ruim vóór de assistpompen zouden starten.
+
+### MPC-regellogica
+
+MPC is een eenvoudige shadow-to-control modus die de output van Quatt Stooklijn gebruikt.
+
+- PowerClimate leest de state van de geconfigureerde sensor als geadviseerde watertemperatuur.
+- Als de sensor een geldig numeriek getal teruggeeft, gebruikt PowerClimate die waarde voor de primaire water-heatpump.
+- De geadviseerde waarde wordt altijd nog begrensd door de globale min/max setpoint-limieten.
+- Als de sensor `unknown` of `unavailable` is, valt PowerClimate terug op de normale setpoint-logica.
+- Assistpompen kopiëren de MPC-waarde niet direct; die blijven op de gebruikelijke warmtevraag van de ruimte sturen.
+- De water-overshoot-afschakeling blijft hier los van actief wanneer water on/off control is ingeschakeld.
+
+In de praktijk bepaalt het Quatt-model dus de watertemperatuur, terwijl PowerClimate de orkestratie en veiligheid blijft doen. Daardoor is MPC handig als je de aanvoertemperatuur beter wilt laten volgen op de actuele warmtevraag, zonder dat de externe sensor een harde afhankelijkheid wordt.
 
 **Configuratie-ranges:**
 - Lower setpoint offset: -5.0–0.0 °C
@@ -122,6 +138,7 @@ Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerCli
 | Anti-short-cycle: Min OFF time | 10 min | 0–180 min | Blokkeert AAN totdat assist minimaal zo lang UIT was |
 | Water Temperature Threshold | 40.0 °C | 30–55 °C | Zet assist AAN wanneer water deze temperatuur bereikt |
 | Stall Temperature Delta | 0.5 °C | 0.1–2 °C | Temperatuurdelta voor stall-detectie |
+| Maximum Overshoot | 0.5 °C | 0–5 °C | Als de ruimtetemperatuur meer dan dit boven target komt, mag een automatisch schakelbaar water-apparaat na de timerduur UIT gaan |
 
 ## Experimentele opties
 
@@ -130,6 +147,7 @@ Sommige features zijn bewust experimenteel en staan onder **Opties -> Experiment
 Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerClimate -> Opties -> Experimental**
 
 - **House net power sensor (signed)**: kies een sensor die net active power in W rapporteert (negatief = export/surplus). Dit is vereist om de preset `Solar` te kunnen selecteren.
+- **MPC geadviseerde watertemperatuur sensor**: kies een sensor die een geadviseerde watertemperatuur exposeert. Als deze is ingesteld, wordt de preset `MPC` beschikbaar en gebruikt PowerClimate de sensorstate wanneer die beschikbaar is.
 
 **Notes:**
 - Wijzigingen werken direct (geen restart nodig)

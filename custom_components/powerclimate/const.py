@@ -63,6 +63,7 @@ MODE_BOOST = "boost"
 MODE_SETPOINT = "setpoint"
 MODE_MINIMAL = "minimal"
 MODE_POWER = "power"
+MODE_MPC = "mpc"
 MODE_OFF = "off"
 
 # Power mode configuration
@@ -76,6 +77,7 @@ DEFAULT_POWER_MODE_STEP_SIZE = 0.3
 # Power preset (orchestrator-level) configuration
 # House net active power sensor (negative when exporting/surplus).
 CONF_HOUSE_POWER_SENSOR = "house_power_sensor_entity_id"
+CONF_MPC_TEMPERATURE_SENSOR = "mpc_temperature_sensor_entity_id"
 # Keep some headroom to avoid oscillation due to household noise.
 DEFAULT_POWER_SURPLUS_RESERVE_W = 300.0
 # Update interval for recomputing per-HP budgets from the house power sensor.
@@ -119,6 +121,7 @@ CONF_ASSIST_MIN_ON_MINUTES = "assist_min_on_minutes"
 CONF_ASSIST_MIN_OFF_MINUTES = "assist_min_off_minutes"
 CONF_ASSIST_WATER_TEMP_THRESHOLD = "assist_water_temp_threshold"
 CONF_ASSIST_STALL_TEMP_DELTA = "assist_stall_temp_delta"
+CONF_MAXIMUM_OVERSHOOT = "maximum_overshoot"
 
 # Expert defaults (used when options not set)
 DEFAULT_ASSIST_TIMER_SECONDS = 300.0
@@ -130,6 +133,7 @@ DEFAULT_ASSIST_MIN_ON_MINUTES = 20.0
 DEFAULT_ASSIST_MIN_OFF_MINUTES = 10.0
 DEFAULT_ASSIST_WATER_TEMP_THRESHOLD = 40.0
 DEFAULT_ASSIST_STALL_TEMP_DELTA = 0.5
+DEFAULT_MAXIMUM_OVERSHOOT = 0.5
 
 # Sensor polling intervals
 SENSOR_POLL_INTERVAL_SECONDS = 30  # Thermal summary and HP2/HP3 behavior

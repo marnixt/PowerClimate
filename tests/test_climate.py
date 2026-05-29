@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.components.climate.const import HVACMode
 
 from custom_components.powerclimate.climate import PowerClimateClimate
-from custom_components.powerclimate.const import CONF_ALLOW_ON_OFF_CONTROL, CONF_CLIMATE_ENTITY
+from custom_components.powerclimate.const import (
+    CONF_ALLOW_ON_OFF_CONTROL,
+    CONF_CLIMATE_ENTITY,
+    MODE_MPC,
+)
 
 
 def make_entity() -> PowerClimateClimate:
@@ -74,17 +78,247 @@ def test_turn_off_water_device_forces_off_when_powerclimate_is_off() -> None:
 def test_async_set_preset_mode_accepts_legacy_case() -> None:
     """Preset setters should normalize legacy title-cased preset values."""
     entity = make_entity()
-    entity._config = SimpleNamespace(solar_enabled=True)
+    entity._config = SimpleNamespace(solar_enabled=True, mpc_enabled=True)
     entity._enter_boost_mode = AsyncMock()
     entity._enter_away_mode = AsyncMock()
     entity._enter_solar_mode = AsyncMock()
+    entity._enter_mpc_mode = AsyncMock()
     entity._exit_preset_mode = AsyncMock()
 
     asyncio.run(entity.async_set_preset_mode("Solar"))
     asyncio.run(entity.async_set_preset_mode("Away"))
+    asyncio.run(entity.async_set_preset_mode("MPC"))
 
     entity._enter_solar_mode.assert_awaited_once()
     entity._enter_away_mode.assert_awaited_once()
+    entity._enter_mpc_mode.assert_awaited_once()
+
+
+def test_preset_modes_include_mpc_when_sensor_configured() -> None:
+    """MPC preset should be exposed when an MPC sensor is configured."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(solar_enabled=False, mpc_enabled=True)
+
+    assert entity.preset_modes == ["none", "boost", "away", "mpc"]
+
+
+def test_determine_hp1_mode_returns_mpc_for_mpc_preset() -> None:
+    """HP1 should use dedicated MPC mode when the MPC preset is active."""
+    entity = make_entity()
+    entity._attr_preset_mode = "mpc"
+    entity._power_manager = SimpleNamespace(get_budget=lambda _entity_id: 0.0)
+
+    assert entity._determine_hp1_mode(False, "climate.hp1") == MODE_MPC
+
+
+def test_calculate_mode_target_uses_mpc_sensor_value() -> None:
+    """MPC mode should use the external advised temperature when available."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=35.0,
+        get_device_lower_offset=lambda _device, _index: 0.0,
+        get_device_upper_offset=lambda _device, _index: 0.0,
+    )
+    entity._read_mpc_temperature_state = MagicMock(return_value=32.5)
+
+    target = entity._calculate_mode_target(
+        MODE_MPC,
+        current_temp=28.0,
+        device={CONF_CLIMATE_ENTITY: "climate.hp1"},
+        index=0,
+    )
+
+    assert target == 32.5
+
+
+def test_calculate_mode_target_falls_back_when_mpc_sensor_unavailable() -> None:
+    """MPC mode should fall back to setpoint clamping when the sensor is unavailable."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=35.0,
+        get_device_lower_offset=lambda _device, _index: 0.0,
+        get_device_upper_offset=lambda _device, _index: 5.0,
+    )
+    entity._target_temperature = 21.0
+    entity._read_mpc_temperature_state = MagicMock(return_value=None)
+
+    target = entity._calculate_mode_target(
+        MODE_MPC,
+        current_temp=20.0,
+        device={CONF_CLIMATE_ENTITY: "climate.hp1"},
+        index=0,
+    )
+
+    assert target == 21.0
+
+
+def test_is_water_overshoot_condition_true_uses_maximum_overshoot() -> None:
+    """Water overshoot should only trigger above target plus configured margin."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(maximum_overshoot=0.5)
+    entity._target_temperature = 21.0
+    entity.coordinator = SimpleNamespace(data={"room_temperature": 21.6})
+
+    assert entity._is_water_overshoot_condition_true() is True
+
+
+def test_handle_water_overshoot_control_turns_off_after_timer() -> None:
+    """Auto-controllable water device should turn off after sustained overshoot."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(assist_timer_seconds=300.0)
+    entity._water_overshoot_since = None
+    entity._is_water_overshoot_condition_true = MagicMock(side_effect=[True, True])
+    entity._ensure_device_mode = AsyncMock()
+
+    with patch("custom_components.powerclimate.climate.datetime") as mock_datetime:
+        start = MagicMock()
+        later = MagicMock()
+        later.__sub__.return_value.total_seconds.return_value = 301.0
+        mock_datetime.now.side_effect = [start, later]
+
+        first = asyncio.run(
+            entity._handle_water_overshoot_control(
+                {CONF_ALLOW_ON_OFF_CONTROL: True},
+                "climate.hp1",
+                True,
+            )
+        )
+        second = asyncio.run(
+            entity._handle_water_overshoot_control(
+                {CONF_ALLOW_ON_OFF_CONTROL: True},
+                "climate.hp1",
+                True,
+            )
+        )
+
+    assert first is False
+    assert second is True
+    entity._ensure_device_mode.assert_awaited_once_with("climate.hp1", HVACMode.OFF)
+
+
+def test_is_water_turn_on_condition_true_on_any_demand() -> None:
+    """Water re-enable should trigger as soon as room is below target."""
+    entity = make_entity()
+    entity._target_temperature = 21.0
+    entity._room_eta_hours = None  # ETA unknown – should not block
+    entity.coordinator = SimpleNamespace(data={"room_temperature": 20.5})
+
+    assert entity._is_water_turn_on_condition_true() is True
+
+
+def test_is_water_turn_on_condition_false_when_at_or_above_target() -> None:
+    """Water re-enable should not trigger when room is at or above target."""
+    entity = make_entity()
+    entity._target_temperature = 21.0
+    entity._room_eta_hours = None
+    entity.coordinator = SimpleNamespace(data={"room_temperature": 21.0})
+
+    assert entity._is_water_turn_on_condition_true() is False
+
+
+def test_process_water_device_keeps_off_when_room_at_or_above_target() -> None:
+    """Water device should stay off when room is at or above target (no demand)."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(
+        get_water_device=lambda: (
+            {
+                CONF_CLIMATE_ENTITY: "climate.hp1",
+                CONF_ALLOW_ON_OFF_CONTROL: True,
+            },
+            0,
+        ),
+    )
+    entity._target_temperature = 21.0
+    entity._room_eta_hours = None
+    entity.coordinator = SimpleNamespace(data={"room_temperature": 21.0})  # at target
+    entity._handle_water_overshoot_control = AsyncMock(return_value=False)
+    entity._ensure_device_mode = AsyncMock()
+    entity._determine_hp1_mode = MagicMock(return_value="setpoint")
+    entity._calculate_mode_target = MagicMock(return_value=21.0)
+    entity._hp_modes = {}
+
+    desired_devices: set[str] = set()
+    desired_targets: dict[str, float] = {}
+    result = asyncio.run(
+        entity._process_water_device(
+            False,
+            {
+                "climate.hp1": {
+                    "hvac_mode": HVACMode.OFF.value,
+                    "current_temperature": 20.0,
+                    "target_temperature": 20.0,
+                    "energy": 0.0,
+                    "water_temperature": 35.0,
+                }
+            },
+            desired_devices,
+            desired_targets,
+        )
+    )
+
+    assert result == (35.0, "off")
+    assert desired_devices == set()
+    assert desired_targets == {}
+    entity._ensure_device_mode.assert_not_awaited()
+
+
+def test_process_water_device_turns_on_on_any_demand() -> None:
+    """Water device should re-enable as soon as room is below target."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(
+        get_water_device=lambda: (
+            {
+                CONF_CLIMATE_ENTITY: "climate.hp1",
+                CONF_ALLOW_ON_OFF_CONTROL: True,
+            },
+            0,
+        ),
+    )
+    entity._target_temperature = 21.0
+    entity._room_eta_hours = None  # ETA unknown – should not block
+    entity.coordinator = SimpleNamespace(data={"room_temperature": 20.0})
+    entity._handle_water_overshoot_control = AsyncMock(return_value=False)
+    entity._ensure_device_mode = AsyncMock()
+    entity._determine_hp1_mode = MagicMock(return_value="setpoint")
+    entity._calculate_mode_target = MagicMock(return_value=21.0)
+    entity._hp_modes = {}
+    entity._get_device_payloads = MagicMock(
+        return_value={
+            "climate.hp1": {
+                "hvac_mode": HVACMode.HEAT.value,
+                "current_temperature": 20.0,
+                "target_temperature": 20.0,
+                "energy": 0.0,
+                "water_temperature": 35.0,
+            }
+        }
+    )
+
+    desired_devices: set[str] = set()
+    desired_targets: dict[str, float] = {}
+    result = asyncio.run(
+        entity._process_water_device(
+            False,
+            {
+                "climate.hp1": {
+                    "hvac_mode": HVACMode.OFF.value,
+                    "current_temperature": 20.0,
+                    "target_temperature": 20.0,
+                    "energy": 0.0,
+                    "water_temperature": 35.0,
+                }
+            },
+            desired_devices,
+            desired_targets,
+        )
+    )
+
+    assert result == (35.0, "water_hp_only")
+    assert desired_devices == {"climate.hp1"}
+    assert desired_targets == {"climate.hp1": 21.0}
+    entity._ensure_device_mode.assert_awaited_once_with("climate.hp1", HVACMode.HEAT)
 
 
 def test_async_process_update_replays_pending_refresh() -> None:
