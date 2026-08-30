@@ -6,8 +6,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
+    CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSOR_VALUES,
     CONF_ROOM_SENSORS,
     CONF_ROOM_TEMPERATURE_KEY,
@@ -15,8 +17,10 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DERIVATIVE_WATER_WINDOW_SECONDS,
     DERIVATIVE_WINDOW_SECONDS,
+    DEVICE_ROLE_WATER,
 )
 from .helpers import merged_entry_data
+from .thermal_model import ThermalModel
 
 
 class OSDataUpdateCoordinator(DataUpdateCoordinator):
@@ -30,7 +34,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
 
     The derivative uses the oldest→newest slope over configurable time windows:
     - Room: DERIVATIVE_WINDOW_SECONDS (default: 900s / 15 minutes)
-    - Water: DERIVATIVE_WATER_WINDOW_SECONDS (default: 600s / 10 min)
+    - Water: DERIVATIVE_WATER_WINDOW_SECONDS (default: 900s / 15 min)
 
     Derivatives are returned in °C/hour units.
     """
@@ -49,6 +53,8 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             logger: Logger for debug/error output.
         """
         self.entry = entry
+        self.thermal_model = ThermalModel(hass, entry.entry_id)
+        self._model_cycle_count: int = 0
         self._room_temp_history: list[tuple[datetime, float]] = []
         self._device_temp_history: dict[
             str,
@@ -65,6 +71,10 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
 
+    async def async_setup(self) -> None:
+        """Load persistent state (thermal model). Call before first refresh."""
+        await self.thermal_model.async_load()
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from Home Assistant states.
 
@@ -73,6 +83,8 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             - room_temperature: Averaged room temperature from configured sensors
             - room_derivative: Room temperature change rate (°C/hour)
             - water_derivative: Water temperature change rate (°C/hour)
+            - outdoor_temperature: Outdoor temperature if sensor configured
+            - thermal_model_state: Current thermal model parameters
             - devices: List of device payloads with state and temps
         """
         data: dict[str, Any] = {
@@ -118,6 +130,9 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             device_payload: dict[str, Any] = dict(device)
             if climate_state:
                 device_payload["hvac_mode"] = climate_state.state
+                device_payload["hvac_modes"] = list(
+                    climate_state.attributes.get("hvac_modes") or []
+                )
                 device_payload[
                     "current_temperature"
                 ] = climate_state.attributes.get("current_temperature")
@@ -158,6 +173,36 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         if water_derivative is not None:
             water_derivative = round(water_derivative, 1)
         data["water_derivative"] = water_derivative
+
+        # --- Outdoor temperature ---
+        outdoor_temp = self._read_float(entry_data.get(CONF_OUTDOOR_TEMP_SENSOR))
+        data["outdoor_temperature"] = outdoor_temp
+
+        # --- Update thermal model ---
+        room_temp = data.get(CONF_ROOM_TEMPERATURE_KEY)
+        water_payload = next(
+            (
+                d for d in data["devices"]
+                if d.get(CONF_DEVICE_ROLE) == DEVICE_ROLE_WATER
+            ),
+            None,
+        )
+        if room_temp is not None and water_payload is not None:
+            self.thermal_model.update(
+                room_temp=room_temp,
+                water_temp=water_payload.get("water_temperature"),
+                hp_power=water_payload.get("energy"),
+                outdoor_temp=outdoor_temp,
+                room_derivative_per_hour=data.get("room_derivative"),
+            )
+
+        # Save model periodically (every _SAVE_INTERVAL cycles ≈ 10 min)
+        self._model_cycle_count += 1
+        from .thermal_model import _SAVE_INTERVAL
+        if self._model_cycle_count % _SAVE_INTERVAL == 0:
+            await self.thermal_model.async_save()
+
+        data["thermal_model_state"] = self.thermal_model.to_dict()
 
         return data
 

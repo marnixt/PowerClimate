@@ -44,5 +44,11 @@
   "preset_away": "Away",
   "preset_solar": "Solar",
   "preset_mpc": "MPC",
-  "preset_none": "None"
+  "preset_none": "None",
+  "preset_thermal": "Thermal",
+  "thermal_converged": "Converged",
+  "thermal_learning": "Learning",
+  "label_ua_emitter": "Emitter",
+  "label_u_building": "Building",
+  "label_suggested": "Suggested"
 }

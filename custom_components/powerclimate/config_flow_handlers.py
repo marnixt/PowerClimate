@@ -29,14 +29,17 @@ from .const import (
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_HOUSE_POWER_SENSOR,
-    CONF_LOWER_SETPOINT_OFFSET,
+    CONF_LOWER_SETPOINT_OFFSET_HEATING,
+    CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MPC_TEMPERATURE_SENSOR,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
-    CONF_UPPER_SETPOINT_OFFSET,
+    CONF_UPPER_SETPOINT_OFFSET_HEATING,
+    CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_WATER_SENSOR,
     DEFAULT_ASSIST_MIN_OFF_MINUTES,
     DEFAULT_ASSIST_MIN_ON_MINUTES,
@@ -46,10 +49,12 @@ from .const import (
     DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_ENTRY_NAME,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
+    DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
+    DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DEVICE_ROLE_AIR,
     DEVICE_ROLE_WATER,
@@ -75,12 +80,12 @@ def text_selector() -> Any:
 
 def lower_offset_selector() -> Any:
     """Create a selector for lower offset values (-5 to 0)."""
-    return selector({"number": {"min": -5, "max": 0, "step": 0.1}})
+    return selector({"number": {"min": -10, "max": 0, "step": 0.1}})
 
 
 def upper_offset_selector() -> Any:
     """Create a selector for upper offset values (0 to 5)."""
-    return selector({"number": {"min": 0, "max": 5, "step": 0.1}})
+    return selector({"number": {"min": 0, "max": 10, "step": 0.1}})
 
 
 def required_field(
@@ -404,15 +409,19 @@ def water_device_defaults(
         defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
             CONF_ALLOW_ON_OFF_CONTROL, False
         )
-        defaults[CONF_LOWER_SETPOINT_OFFSET] = existing_device.get(
-            CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1
-        )
-        defaults[CONF_UPPER_SETPOINT_OFFSET] = existing_device.get(
-            CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1
-        )
+        # Read new heating key, fall back to legacy key for existing configs
+        lower_h = existing_device.get(CONF_LOWER_SETPOINT_OFFSET_HEATING)
+        if lower_h is None:
+            lower_h = existing_device.get("lower_setpoint_offset", DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
+        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = lower_h
 
-    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
-    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
+        upper_h = existing_device.get(CONF_UPPER_SETPOINT_OFFSET_HEATING)
+        if upper_h is None:
+            upper_h = existing_device.get("upper_setpoint_offset", DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
+        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = upper_h
+
+    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
+    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
     defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
 
     if user_input:
@@ -438,13 +447,13 @@ def build_water_device_schema(defaults: dict[str, Any]) -> vol.Schema:
         entity_selector("sensor"),
     )
     optional_field(
-        CONF_LOWER_SETPOINT_OFFSET,
+        CONF_LOWER_SETPOINT_OFFSET_HEATING,
         defaults,
         schema_fields,
         lower_offset_selector(),
     )
     optional_field(
-        CONF_UPPER_SETPOINT_OFFSET,
+        CONF_UPPER_SETPOINT_OFFSET_HEATING,
         defaults,
         schema_fields,
         upper_offset_selector(),
@@ -478,23 +487,23 @@ def process_water_device_input(
         errors[CONF_WATER_SENSOR] = "required"
 
     lower_offset, lower_valid = parse_offset(
-        user_input.get(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_HP1),
+        user_input.get(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_HP1),
         DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     )
     if not lower_valid:
-        errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
+        errors[CONF_LOWER_SETPOINT_OFFSET_HEATING] = "invalid"
 
     upper_offset, upper_valid = parse_offset(
-        user_input.get(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_HP1),
+        user_input.get(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_HP1),
         DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     )
     if not upper_valid:
-        errors[CONF_UPPER_SETPOINT_OFFSET] = "invalid"
+        errors[CONF_UPPER_SETPOINT_OFFSET_HEATING] = "invalid"
 
     if lower_offset > upper_offset:
         errors["base"] = "invalid_offsets"
-        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
-        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
+        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, "invalid")
+        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, "invalid")
 
     if errors:
         return None, errors
@@ -510,8 +519,8 @@ def process_water_device_input(
         CONF_ALLOW_ON_OFF_CONTROL: bool(
             user_input.get(CONF_ALLOW_ON_OFF_CONTROL, False)
         ),
-        CONF_LOWER_SETPOINT_OFFSET: lower_offset,
-        CONF_UPPER_SETPOINT_OFFSET: upper_offset,
+        CONF_LOWER_SETPOINT_OFFSET_HEATING: lower_offset,
+        CONF_UPPER_SETPOINT_OFFSET_HEATING: upper_offset,
     }
 
     return device, {}
@@ -532,15 +541,29 @@ def air_device_defaults(
         defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
             CONF_ALLOW_ON_OFF_CONTROL, False
         )
-        defaults[CONF_LOWER_SETPOINT_OFFSET] = existing_device.get(
-            CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
+        # Heating offsets: new key first, fall back to legacy for existing configs
+        lower_h = existing_device.get(CONF_LOWER_SETPOINT_OFFSET_HEATING)
+        if lower_h is None:
+            lower_h = existing_device.get("lower_setpoint_offset", DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST)
+        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = lower_h
+
+        upper_h = existing_device.get(CONF_UPPER_SETPOINT_OFFSET_HEATING)
+        if upper_h is None:
+            upper_h = existing_device.get("upper_setpoint_offset", DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST)
+        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = upper_h
+
+        # Cooling offsets
+        defaults[CONF_LOWER_SETPOINT_OFFSET_COOLING] = existing_device.get(
+            CONF_LOWER_SETPOINT_OFFSET_COOLING, DEFAULT_LOWER_SETPOINT_OFFSET_COOLING
         )
-        defaults[CONF_UPPER_SETPOINT_OFFSET] = existing_device.get(
-            CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
+        defaults[CONF_UPPER_SETPOINT_OFFSET_COOLING] = existing_device.get(
+            CONF_UPPER_SETPOINT_OFFSET_COOLING, DEFAULT_UPPER_SETPOINT_OFFSET_COOLING
         )
 
-    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST)
-    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST)
+    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST)
+    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST)
+    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET_COOLING, DEFAULT_LOWER_SETPOINT_OFFSET_COOLING)
+    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET_COOLING, DEFAULT_UPPER_SETPOINT_OFFSET_COOLING)
     defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
 
     if user_input:
@@ -560,13 +583,25 @@ def build_air_device_schema(defaults: dict[str, Any]) -> vol.Schema:
         entity_selector("sensor"),
     )
     optional_field(
-        CONF_LOWER_SETPOINT_OFFSET,
+        CONF_LOWER_SETPOINT_OFFSET_HEATING,
         defaults,
         schema_fields,
         lower_offset_selector(),
     )
     optional_field(
-        CONF_UPPER_SETPOINT_OFFSET,
+        CONF_UPPER_SETPOINT_OFFSET_HEATING,
+        defaults,
+        schema_fields,
+        upper_offset_selector(),
+    )
+    optional_field(
+        CONF_LOWER_SETPOINT_OFFSET_COOLING,
+        defaults,
+        schema_fields,
+        lower_offset_selector(),
+    )
+    optional_field(
+        CONF_UPPER_SETPOINT_OFFSET_COOLING,
         defaults,
         schema_fields,
         upper_offset_selector(),
@@ -595,24 +630,45 @@ def process_air_device_input(
     if not energy_sensor:
         errors[CONF_ENERGY_SENSOR] = "required"
 
-    lower_offset, lower_valid = parse_offset(
-        user_input.get(CONF_LOWER_SETPOINT_OFFSET, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST),
+    # Heating offsets
+    lower_h, lower_h_valid = parse_offset(
+        user_input.get(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST),
         DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     )
-    if not lower_valid:
-        errors[CONF_LOWER_SETPOINT_OFFSET] = "invalid"
+    if not lower_h_valid:
+        errors[CONF_LOWER_SETPOINT_OFFSET_HEATING] = "invalid"
 
-    upper_offset, upper_valid = parse_offset(
-        user_input.get(CONF_UPPER_SETPOINT_OFFSET, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST),
+    upper_h, upper_h_valid = parse_offset(
+        user_input.get(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST),
         DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     )
-    if not upper_valid:
-        errors[CONF_UPPER_SETPOINT_OFFSET] = "invalid"
+    if not upper_h_valid:
+        errors[CONF_UPPER_SETPOINT_OFFSET_HEATING] = "invalid"
 
-    if lower_offset > upper_offset:
+    if lower_h_valid and upper_h_valid and lower_h > upper_h:
         errors["base"] = "invalid_offsets"
-        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET, "invalid")
-        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET, "invalid")
+        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, "invalid")
+        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, "invalid")
+
+    # Cooling offsets
+    lower_c, lower_c_valid = parse_offset(
+        user_input.get(CONF_LOWER_SETPOINT_OFFSET_COOLING, DEFAULT_LOWER_SETPOINT_OFFSET_COOLING),
+        DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
+    )
+    if not lower_c_valid:
+        errors[CONF_LOWER_SETPOINT_OFFSET_COOLING] = "invalid"
+
+    upper_c, upper_c_valid = parse_offset(
+        user_input.get(CONF_UPPER_SETPOINT_OFFSET_COOLING, DEFAULT_UPPER_SETPOINT_OFFSET_COOLING),
+        DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
+    )
+    if not upper_c_valid:
+        errors[CONF_UPPER_SETPOINT_OFFSET_COOLING] = "invalid"
+
+    if lower_c_valid and upper_c_valid and lower_c > upper_c:
+        errors.setdefault("base", "invalid_offsets")
+        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET_COOLING, "invalid")
+        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET_COOLING, "invalid")
 
     if errors:
         return None, errors
@@ -627,8 +683,10 @@ def process_air_device_input(
         CONF_ALLOW_ON_OFF_CONTROL: bool(
             user_input.get(CONF_ALLOW_ON_OFF_CONTROL, False)
         ),
-        CONF_LOWER_SETPOINT_OFFSET: lower_offset,
-        CONF_UPPER_SETPOINT_OFFSET: upper_offset,
+        CONF_LOWER_SETPOINT_OFFSET_HEATING: lower_h,
+        CONF_UPPER_SETPOINT_OFFSET_HEATING: upper_h,
+        CONF_LOWER_SETPOINT_OFFSET_COOLING: lower_c,
+        CONF_UPPER_SETPOINT_OFFSET_COOLING: upper_c,
     }
 
     return device, {}
@@ -756,6 +814,12 @@ def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
         schema_fields,
         entity_selector("sensor"),
     )
+    optional_field(
+        CONF_OUTDOOR_TEMP_SENSOR,
+        defaults,
+        schema_fields,
+        entity_selector("sensor"),
+    )
 
     return vol.Schema(schema_fields)
 
@@ -771,6 +835,7 @@ def experimental_form_defaults(
     return {
         CONF_HOUSE_POWER_SENSOR: base.get(CONF_HOUSE_POWER_SENSOR),
         CONF_MPC_TEMPERATURE_SENSOR: base.get(CONF_MPC_TEMPERATURE_SENSOR),
+        CONF_OUTDOOR_TEMP_SENSOR: base.get(CONF_OUTDOOR_TEMP_SENSOR),
     }
 
 
@@ -783,4 +848,7 @@ def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     if CONF_MPC_TEMPERATURE_SENSOR in user_input:
         sensor_entity_id = str(user_input.get(CONF_MPC_TEMPERATURE_SENSOR) or "").strip()
         data[CONF_MPC_TEMPERATURE_SENSOR] = sensor_entity_id or None
+    if CONF_OUTDOOR_TEMP_SENSOR in user_input:
+        sensor_entity_id = str(user_input.get(CONF_OUTDOOR_TEMP_SENSOR) or "").strip()
+        data[CONF_OUTDOOR_TEMP_SENSOR] = sensor_entity_id or None
     return data

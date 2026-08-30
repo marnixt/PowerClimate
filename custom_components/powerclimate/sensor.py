@@ -24,6 +24,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
@@ -126,6 +127,9 @@ async def async_setup_entry(
         entry,
     )
     power_budget_sensor = PowerClimatePowerBudgetSensor(hass, entry)
+    internal_mpc_sensor = PowerClimateInternalMPCSensor(coordinator, entry)
+    thermal_model_text_sensor = PowerClimateThermalModelTextSensor(hass, entry)
+    thermal_recommended_sensor = PowerClimateThermalRecommendedSensor(hass, entry)
 
     sensors: list[SensorEntity] = [
         derivative_sensor,
@@ -134,6 +138,9 @@ async def async_setup_entry(
         assist_summary_sensor,
         total_power_sensor,
         power_budget_sensor,
+        internal_mpc_sensor,
+        thermal_model_text_sensor,
+        thermal_recommended_sensor,
     ]
 
     sensors.extend(_build_behavior_sensors(hass, entry))
@@ -219,6 +226,54 @@ class PowerClimateWaterDerivativeSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         return self.coordinator.data.get("water_derivative")
+
+
+class PowerClimateInternalMPCSensor(CoordinatorEntity, SensorEntity):
+    """Diagnostic sensor exposing the internal thermal model state."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "W/K"
+    _attr_icon = "mdi:thermometer-auto"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the internal MPC sensor."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._entry_id = entry.entry_id
+        self._attr_unique_id = f"powerclimate_internal_mpc_{entry.entry_id}"
+        friendly = entry_friendly_name(entry)
+        self._attr_name = f"{friendly} Internal MPC"
+        self._attr_device_info = integration_device_info(entry)
+
+    @property
+    def native_value(self) -> float | None:
+        state = (self.coordinator.data or {}).get("thermal_model_state") or {}
+        value = state.get("ua_emitter")
+        return float(value) if isinstance(value, (int, float)) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        state = (self.coordinator.data or {}).get("thermal_model_state") or {}
+        outdoor_temp = (self.coordinator.data or {}).get("outdoor_temperature")
+        summary = (
+            (self.hass.data.get(DOMAIN, {}).get(self._entry_id) or {})
+            .get("summary_payload") or {}
+        )
+        return {
+            "ua_emitter": state.get("ua_emitter"),
+            "u_building": state.get("u_building"),
+            "ua_emitter_updates": state.get("ua_emitter_updates"),
+            "u_building_updates": state.get("u_building_updates"),
+            "is_converged": state.get("is_converged"),
+            "outdoor_temperature": outdoor_temp,
+            "thermal_recommended_temp": summary.get("thermal_recommended_temp"),
+            "preset_mode": summary.get("preset_mode"),
+        }
 
 
 def _snapshot_summary(
@@ -367,6 +422,19 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
             unique_id_prefix="powerclimate_text_thermal_summary",
         )
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        payload = _snapshot_summary(self.hass, self._entry_id) or {}
+        return {
+            "hvac_mode": payload.get("hvac_mode"),
+            "mode": payload.get("mode"),
+            "preset_mode": payload.get("preset_mode"),
+            "thermal_is_converged": payload.get("thermal_is_converged"),
+            "thermal_ua_emitter": payload.get("thermal_ua_emitter"),
+            "thermal_u_building": payload.get("thermal_u_building"),
+            "thermal_recommended_temp": payload.get("thermal_recommended_temp"),
+        }
+
     def _format_payload(self, payload: dict | None) -> str:
         return self._format_summary(payload)
 
@@ -376,8 +444,20 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
 
         parts: list[str] = []
 
+        # Add HVAC mode
+        hvac_mode = str(payload.get("hvac_mode") or "").strip().lower()
+        if hvac_mode == "heat":
+            hvac_label = self._t("hvac_heat", "Heat")
+        elif hvac_mode == "cool":
+            hvac_label = self._t("hvac_cool", "Cool")
+        elif hvac_mode == "off":
+            hvac_label = self._t("hvac_off", "Off")
+        else:
+            hvac_label = hvac_mode or self._t("hvac_off", "Off")
+        mode_key = self._t("label_mode", "Mode")
+        parts.append(f"{mode_key}: {hvac_label}")
+
         # Add preset mode at the beginning
-        preset_mode = payload.get("preset_mode", "none")
         preset_label = self._t("label_preset", "Preset")
         preset_mode = str(payload.get("preset_mode") or "none").strip().lower()
         if preset_mode == "boost":
@@ -388,9 +468,17 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
             preset_value = self._t("preset_solar", "Solar")
         elif preset_mode == "mpc":
             preset_value = self._t("preset_mpc", "MPC")
+        elif preset_mode == "thermal":
+            preset_value = self._t("preset_thermal", "Thermal")
         else:
             preset_value = self._t("preset_none", "None")
         parts.append(f"{preset_label}: {preset_value}")
+
+        # Show thermal model state when in thermal preset
+        if preset_mode == "thermal":
+            thermal_fragment = self._format_thermal_model_info(payload)
+            if thermal_fragment:
+                parts.append(thermal_fragment)
 
         avg_fragment = self._format_room_average(
             payload.get("room_sensor_values"),
@@ -419,6 +507,29 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
             parts.append(power_text)
 
         return " | ".join(parts)
+
+    def _format_thermal_model_info(self, payload: dict) -> str | None:
+        """Format thermal model info as a compact fragment."""
+        is_converged = payload.get("thermal_is_converged")
+        updates = int(payload.get("thermal_ua_emitter_updates") or 0)
+        recommended = payload.get("thermal_recommended_temp")
+        hvac_mode = str(payload.get("hvac_mode") or "").strip().lower()
+
+        info_parts: list[str] = []
+        if is_converged:
+            info_parts.append(self._t("thermal_converged", "Converged"))
+        else:
+            learning_label = self._t("thermal_learning", "Learning")
+            info_parts.append(f"{learning_label} ({updates}/10)")
+
+        if isinstance(recommended, (int, float)):
+            suggested_label = self._t("label_suggested", "Suggested")
+            if hvac_mode == "cool":
+                info_parts.append(f"{suggested_label} AC {recommended:.1f}\u00b0C")
+            else:
+                info_parts.append(f"{suggested_label} supply {recommended:.1f}\u00b0C")
+
+        return " ".join(info_parts) if info_parts else None
 
     def _aggregate_power(self, payload: dict | None) -> str | None:
         """Aggregate total power from all configured heat pumps."""
@@ -474,6 +585,137 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
         if isinstance(average, (int, float)):
             return f"{avg_label} = {average:.1f}°C"
         return f"{avg_label} = {none_text}"
+
+
+class PowerClimateThermalModelTextSensor(_SummaryPayloadTextSensor):
+    """Sensor providing a human-readable description of the internal thermal model state."""
+
+    _attr_icon = "mdi:thermometer-auto"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the thermal model text sensor."""
+        super().__init__(
+            hass,
+            entry,
+            name_suffix="Thermal Model Status",
+            unique_id_prefix="powerclimate_text_thermal_model",
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        payload = _snapshot_summary(self.hass, self._entry_id) or {}
+        return {
+            "ua_emitter": payload.get("thermal_ua_emitter"),
+            "u_building": payload.get("thermal_u_building"),
+            "ua_emitter_updates": payload.get("thermal_ua_emitter_updates"),
+            "u_building_updates": payload.get("thermal_u_building_updates"),
+            "is_converged": payload.get("thermal_is_converged"),
+            "recommended_temp": payload.get("thermal_recommended_temp"),
+            "preset_mode": payload.get("preset_mode"),
+            "hvac_mode": payload.get("hvac_mode"),
+        }
+
+    def _format_payload(self, payload: dict | None) -> str:
+        if not payload:
+            return self._t("unavailable", "unavailable")
+
+        parts: list[str] = []
+
+        # Convergence status
+        is_converged = payload.get("thermal_is_converged")
+        updates = int(payload.get("thermal_ua_emitter_updates") or 0)
+        if is_converged:
+            parts.append(self._t("thermal_converged", "Converged"))
+        else:
+            learning_label = self._t("thermal_learning", "Learning")
+            parts.append(f"{learning_label} ({updates}/10)")
+
+        # Learned parameters
+        ua_emitter = payload.get("thermal_ua_emitter")
+        u_building = payload.get("thermal_u_building")
+        if isinstance(ua_emitter, (int, float)):
+            emitter_label = self._t("label_ua_emitter", "Emitter")
+            parts.append(f"{emitter_label} {ua_emitter:.1f} W/K")
+        if isinstance(u_building, (int, float)):
+            building_label = self._t("label_u_building", "Building")
+            parts.append(f"{building_label} {u_building:.1f} W/K")
+
+        # Recommended temperature
+        recommended = payload.get("thermal_recommended_temp")
+        if isinstance(recommended, (int, float)):
+            suggested_label = self._t("label_suggested", "Suggested")
+            hvac_mode = str(payload.get("hvac_mode") or "").strip().lower()
+            if hvac_mode == "cool":
+                parts.append(f"{suggested_label} AC {recommended:.1f}\u00b0C")
+            else:
+                parts.append(f"{suggested_label} supply {recommended:.1f}\u00b0C")
+
+        return " | ".join(parts)
+
+
+class PowerClimateThermalRecommendedSensor(_TranslationMixin, SensorEntity):
+    """Numeric sensor exposing the thermal model's recommended setpoint."""
+
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:thermometer-chevron-up"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the thermal recommended temperature sensor."""
+        super().__init__()
+        _TranslationMixin.__init__(self)
+        self.hass = hass
+        self._entry = entry
+        self._entry_id = entry.entry_id
+        self._signal = summary_signal(self._entry_id)
+        self._unsub = None
+        friendly = entry_friendly_name(entry)
+        self._attr_name = f"{friendly} Thermal Advised Temperature"
+        self._attr_unique_id = f"powerclimate_thermal_recommended_{self._entry_id}"
+        self._attr_device_info = integration_device_info(entry)
+        self._payload: dict[str, Any] | None = _snapshot_summary(hass, self._entry_id)
+
+    @property
+    def native_value(self) -> float | None:
+        payload = self._payload
+        if not payload:
+            return None
+        value = payload.get("thermal_recommended_temp")
+        return float(value) if isinstance(value, (int, float)) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        payload = self._payload or {}
+        return {
+            "preset_mode": payload.get("preset_mode"),
+            "hvac_mode": payload.get("hvac_mode"),
+            "ua_emitter": payload.get("thermal_ua_emitter"),
+            "u_building": payload.get("thermal_u_building"),
+            "is_converged": payload.get("thermal_is_converged"),
+            "ua_emitter_updates": payload.get("thermal_ua_emitter_updates"),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._payload = _snapshot_summary(self.hass, self._entry_id)
+        self._unsub = async_dispatcher_connect(
+            self.hass,
+            self._signal,
+            self._handle_summary,
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+        await super().async_will_remove_from_hass()
+
+    def _handle_summary(self, payload: dict | None) -> None:
+        self._payload = payload
+        self.schedule_update_ha_state()
 
 
 class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
@@ -867,6 +1109,13 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         if mode:
             mode_label = self._t("label_mode", "Mode")
             parts.append(f"{mode_label}: {mode}")
+        # Show thermal recommended temp when in thermal MPC mode
+        if mode == "thermal_mpc":
+            payload = self._payload or {}
+            recommended = payload.get("thermal_recommended_temp")
+            if isinstance(recommended, (int, float)):
+                suggested_label = self._t("label_suggested", "Suggested")
+                parts.append(f"{suggested_label} {recommended:.1f}\u00b0C")
         return parts
 
 
@@ -910,6 +1159,14 @@ class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
         if mode:
             mode_label = self._t("label_mode", "Mode")
             parts.append(f"{mode_label}: {mode}")
+
+        # Show thermal recommended temp when in thermal MPC mode
+        if mode == "thermal_mpc":
+            payload = self._payload or {}
+            recommended = payload.get("thermal_recommended_temp")
+            if isinstance(recommended, (int, float)):
+                suggested_label = self._t("label_suggested", "Suggested")
+                parts.append(f"{suggested_label} {recommended:.1f}°C")
 
         water_label = self._t("label_water", "Water")
         d_label = self._t("label_derivative", "ΔT")

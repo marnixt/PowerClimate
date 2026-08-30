@@ -395,3 +395,106 @@ class TestDiagnostics:
         assert diag["power_budget_remaining_w"] == 300.0
         assert diag["power_budget_total_w"] == 1500.0
         assert diag["power_budget_by_entity_w"] == {"climate.hp1": 1500.0}
+
+
+# ---------------------------------------------------------------------------
+# Cooling mode: budget allocation skips water device
+# ---------------------------------------------------------------------------
+
+
+class TestBudgetAllocationCoolingMode:
+    """Tests that verify water HP is excluded from budget allocation in cooling mode."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.hass = MagicMock()
+        self.config = MockConfig()
+        self.manager = PowerBudgetManager(self.hass, self.config)
+
+    @patch("custom_components.powerclimate.power_budget.dt_util.utcnow")
+    def test_cooling_skips_water_device(self, mock_utcnow):
+        """In cooling mode the water HP should receive no budget."""
+        from datetime import datetime
+
+        mock_utcnow.return_value = datetime(2024, 6, 1, 12, 0, 0)
+        # Exporting 3000W = plenty of surplus
+        self.hass.states.get.return_value = MockState("-3000", "W")
+
+        devices = [
+            {CONF_CLIMATE_ENTITY: "climate.hp1"},  # index 0 → water HP
+            {CONF_CLIMATE_ENTITY: "climate.air1"},  # index 1 → air HP
+        ]
+
+        self.manager.update_budgets(devices, is_cooling=True)
+
+        # Water HP must not receive a budget
+        assert self.manager.get_budget("climate.hp1") == 0.0
+        # Air HP must receive a budget
+        assert self.manager.get_budget("climate.air1") > 0.0
+
+    @patch("custom_components.powerclimate.power_budget.dt_util.utcnow")
+    def test_heating_allocates_water_device_first(self, mock_utcnow):
+        """In heating mode the water HP should still receive first allocation."""
+        from datetime import datetime
+
+        mock_utcnow.return_value = datetime(2024, 6, 1, 12, 0, 0)
+        self.hass.states.get.return_value = MockState("-3000", "W")
+
+        devices = [
+            {CONF_CLIMATE_ENTITY: "climate.hp1"},
+            {CONF_CLIMATE_ENTITY: "climate.air1"},
+        ]
+
+        self.manager.update_budgets(devices, is_cooling=False)
+
+        # Both devices should get budgets; water HP gets priority (first allocation)
+        assert self.manager.get_budget("climate.hp1") > 0.0
+        assert self.manager.get_budget("climate.hp1") >= self.manager.get_budget("climate.air1")
+
+    @patch("custom_components.powerclimate.power_budget.dt_util.utcnow")
+    def test_cooling_all_surplus_goes_to_air_devices(self, mock_utcnow):
+        """All available budget must flow to air devices when cooling."""
+        from datetime import datetime
+
+        mock_utcnow.return_value = datetime(2024, 6, 1, 12, 0, 0)
+        # Small surplus that would normally only cover water HP
+        surplus = DEFAULT_POWER_MIN_BUDGET_W + 10.0
+        net_power = -(surplus + DEFAULT_POWER_SURPLUS_RESERVE_W)
+        self.hass.states.get.return_value = MockState(str(net_power), "W")
+
+        devices = [
+            {CONF_CLIMATE_ENTITY: "climate.hp1"},   # water HP
+            {CONF_CLIMATE_ENTITY: "climate.air1"},  # air HP
+        ]
+
+        self.manager.update_budgets(devices, is_cooling=True)
+
+        # Water HP skipped; air HP gets the small surplus
+        assert self.manager.get_budget("climate.hp1") == 0.0
+        assert self.manager.get_budget("climate.air1") > 0.0
+
+    def test_iter_budget_order_cooling_returns_only_air(self):
+        """_iter_budget_order(is_cooling=True) must return only air devices."""
+        devices = [
+            {CONF_CLIMATE_ENTITY: "climate.hp1"},   # index 0 → water
+            {CONF_CLIMATE_ENTITY: "climate.air1"},  # index 1 → air
+            {CONF_CLIMATE_ENTITY: "climate.air2"},  # index 2 → air
+        ]
+
+        result = self.manager._iter_budget_order(devices, is_cooling=True)
+
+        entity_ids = [d[CONF_CLIMATE_ENTITY] for d in result]
+        assert "climate.hp1" not in entity_ids
+        assert "climate.air1" in entity_ids
+        assert "climate.air2" in entity_ids
+
+    def test_iter_budget_order_heating_returns_water_first(self):
+        """_iter_budget_order(is_cooling=False) must include the water device first."""
+        devices = [
+            {CONF_CLIMATE_ENTITY: "climate.hp1"},
+            {CONF_CLIMATE_ENTITY: "climate.air1"},
+        ]
+
+        result = self.manager._iter_budget_order(devices, is_cooling=False)
+
+        assert result[0][CONF_CLIMATE_ENTITY] == "climate.hp1"

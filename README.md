@@ -11,6 +11,7 @@
 - 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
 - 0.5-beta — Separated mirror thermostats
 - 0.6.0 — Persistent timer state, refactored config flow, cleaned up codebase
+- 0.7.0 — Cooling (air conditioning) support, per-mode setpoint offsets
 
 Home Assistant custom integration to manage multiple heat-pump climate devices
 and coordinate their setpoints using per-device temperature offsets.
@@ -23,7 +24,8 @@ Not affiliated with Home Assistant.
 - **Multi-heatpump orchestration**: One virtual thermostat coordinates one optional water-based heat pump and any number of air-based assist heat pumps.
 
 ![PowerClimate dashboard climate device: Home Assistant UI showing the PowerClimate virtual thermostat with current temperature, setpoint, and mode controls.](custom_components/powerclimate/images/Dashboard%20Climate%20device.png)
-- **Per-device offsets + guardrails**: Lower/upper offsets per device, plus global min/max setpoint limits.
+- **Per-device offsets + guardrails**: Separate lower/upper offsets for heating and cooling per device, plus global min/max setpoint limits.
+- **Heating and cooling modes**: Air-based heat pumps that support both heat and cool can be used in either mode. The water-based heat pump (if configured) is automatically excluded from cooling.
 - **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
 - **Power-aware control (optional)**: `Solar` preset can allocate per-device power budgets from a signed house net power sensor.
 - **Thermostat mirroring**: Optionally mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off state is ignored.
@@ -71,6 +73,16 @@ Note: Set the lower setpoint offset so that the heat pump almost, but not comple
 
 ## Control Algorithm
 
+### HVAC modes
+
+PowerClimate exposes three HVAC modes:
+
+| Mode | Behaviour |
+|------|-----------|
+| **off** | All controlled devices are turned off. |
+| **heat** | Water HP (if configured) and air assists heat the room to the target temperature. |
+| **cool** | Air assists cool the room to the target temperature. The water HP is switched off because it cannot cool. |
+
 ### Water-based heat pump (optional)
 - If configured, PowerClimate owns the HVAC mode for the water-based device: it is forced to HEAT while the virtual
   climate entity is on and explicitly switched to OFF when PowerClimate is turned off.
@@ -94,14 +106,15 @@ Note: Set the lower setpoint offset so that the heat pump almost, but not comple
 
 PowerClimate presets control how heat pumps operate in different scenarios:
 
-| Preset | 💧 Water Heat Pump | 🌬️ Air Heat Pump(s) |
-|--------|-------------------|---------------------|
-| **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF |
-| **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) |
-| **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
-| **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) |
+| Preset | 💧 Water Heat Pump | 🌬️ Air Heat Pump(s) | ❄️ Cool mode |
+|--------|-------------------|---------------------|-------------|
+| **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF | Air HPs follow cooling setpoint |
+| **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) | Air HPs: aggressive cooling (current + lower offset) |
+| **Away** | Minimal mode (let temp drop to 16 °C) | OFF (if allow_on_off enabled), otherwise minimal | Target raised to max setpoint (disables cooling) |
+| **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) | Heating-only; no effect in cool mode |
+| **MPC** | MPC-advised setpoint | — | Heating-only; no effect in cool mode |
 
-**Note:** Solar preset requires a configured house net power sensor. Budget allocation prioritizes the water-based device first; any remaining air-device budget rotates across assists to avoid starving the same device every cycle.
+**Note:** Solar preset requires a configured house net power sensor. Budget allocation prioritises the water-based device first; any remaining air-device budget rotates across assists to avoid starving the same device every cycle.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
 Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
 
@@ -115,8 +128,10 @@ All control parameters are defined in `const.py` and can be adjusted:
 | `DEFAULT_MAX_SETPOINT` | 30.0 | Absolute maximum temperature sent to any pump. |
 | `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | -0.3 | HP1 minimal-mode offset relative to its own sensed temperature. |
 | `DEFAULT_UPPER_SETPOINT_OFFSET_HP1` | 1.5 | HP1 ceiling offset relative to its sensed temperature. |
-| `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Assist minimal-mode offset (room satisfied). |
-| `DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST` | 4.0 | Assist ceiling offset when chasing the room setpoint. |
+| `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Assist minimal-mode offset (room satisfied) — used as heating default. |
+| `DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST` | 4.0 | Assist ceiling offset when chasing the room setpoint — used as heating default. |
+| `DEFAULT_LOWER_SETPOINT_OFFSET_COOLING` | -4.0 | Assist lower offset in cooling mode (most aggressive cooling). |
+| `DEFAULT_UPPER_SETPOINT_OFFSET_COOLING` | 0.0 | Assist upper offset in cooling mode (least aggressive / minimal). |
 
 ## Sensors
 

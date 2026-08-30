@@ -14,6 +14,7 @@ from homeassistant.components.climate.const import (
     SERVICE_SET_HVAC_MODE,
     SERVICE_SET_TEMPERATURE,
     ClimateEntityFeature,
+    HVACAction,
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -45,6 +46,7 @@ from .const import (
     MODE_OFF,
     MODE_POWER,
     MODE_SETPOINT,
+    MODE_THERMAL_MPC,
     SERVICE_CALL_TIMEOUT_SECONDS,
     SETPOINT_COMPARISON_THRESHOLD,
     TEMPERATURE_CHANGE_THRESHOLD,
@@ -64,6 +66,7 @@ PRESET_BOOST = "boost"
 PRESET_SOLAR = "solar"
 PRESET_AWAY = "away"
 PRESET_MPC = "mpc"
+PRESET_THERMAL = "thermal"
 
 
 async def async_setup_entry(
@@ -89,8 +92,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.PRESET_MODE
     )
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_SOLAR, PRESET_MPC]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
+    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_SOLAR, PRESET_MPC, PRESET_THERMAL]
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, coordinator) -> None:
         """Initialize the PowerClimate climate entity."""
@@ -145,6 +148,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             modes.append(PRESET_SOLAR)
         if self._config.mpc_enabled:
             modes.append(PRESET_MPC)
+        modes.append(PRESET_THERMAL)
         return modes
 
     @property
@@ -188,12 +192,31 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         last_state = await self.async_get_last_state()
         if last_state is not None:
+            # Restore HVAC mode (the climate entity state IS the hvac_mode)
+            restored_hvac = last_state.state
+            if restored_hvac in (HVACMode.HEAT.value, HVACMode.COOL.value, HVACMode.OFF.value):
+                self._attr_hvac_mode = HVACMode(restored_hvac)
+
+            # Restore target temperature
             value = last_state.attributes.get(ATTR_TEMPERATURE)
             if value is not None:
                 try:
                     self._target_temperature = float(value)
                 except (TypeError, ValueError):
                     pass
+
+            # Restore preset mode — validate against currently available presets
+            restored_preset = last_state.attributes.get("preset_mode")
+            if restored_preset is not None:
+                available = self.preset_modes or []
+                if restored_preset in available:
+                    self._attr_preset_mode = restored_preset
+                else:
+                    _LOGGER.debug(
+                        "Preset '%s' from last state is no longer available; "
+                        "defaulting to none",
+                        restored_preset,
+                    )
         await self._apply_staging()
 
     async def async_will_remove_from_hass(self) -> None:
@@ -265,6 +288,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_solar_mode()
         elif preset_mode == PRESET_MPC:
             await self._enter_mpc_mode()
+        elif preset_mode == PRESET_THERMAL:
+            await self._enter_thermal_mode()
         elif preset_mode == PRESET_NONE:
             await self._exit_preset_mode()
 
@@ -279,7 +304,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return
 
         self._attr_preset_mode = PRESET_BOOST
-        self._attr_hvac_mode = HVACMode.HEAT
+        # Preserve current HVAC mode (HEAT or COOL) so boost works for cooling too
+        if self._attr_hvac_mode == HVACMode.OFF:
+            self._attr_hvac_mode = HVACMode.HEAT
         await self._apply_boost_mode()
 
     async def _enter_away_mode(self) -> None:
@@ -287,10 +314,16 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if self._attr_preset_mode == PRESET_AWAY:
             return
         self._previous_target = self._target_temperature
-        self._target_temperature = self._config.min_setpoint
+
+        if self._is_cooling():
+            # Away+Cool: stop cooling (set target to max so ACs stay off)
+            self._target_temperature = self._config.max_setpoint
+        else:
+            # Away+Heat: minimal heating
+            self._target_temperature = self._config.min_setpoint
+            self._attr_hvac_mode = HVACMode.HEAT
 
         self._attr_preset_mode = PRESET_AWAY
-        self._attr_hvac_mode = HVACMode.HEAT
         self._power_manager.clear_all()
 
         await self._apply_away_mode()
@@ -306,7 +339,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._previous_target = None
 
         self._attr_preset_mode = PRESET_SOLAR
-        self._attr_hvac_mode = HVACMode.HEAT
+        # Preserve current HVAC mode (solar works for both heating and cooling)
+        if self._attr_hvac_mode == HVACMode.OFF:
+            self._attr_hvac_mode = HVACMode.HEAT
         await self._apply_staging()
 
     async def _enter_mpc_mode(self) -> None:
@@ -319,7 +354,28 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._previous_target = None
 
         self._attr_preset_mode = PRESET_MPC
-        self._attr_hvac_mode = HVACMode.HEAT
+        # Preserve current HVAC mode — MPC works for both heat and cool.
+        # The external MPC sensor is expected to provide a suitable setpoint
+        # for whichever mode is active (water supply temp for heat,
+        # room setpoint for cool).
+        if self._attr_hvac_mode == HVACMode.OFF:
+            self._attr_hvac_mode = HVACMode.HEAT
+        self._power_manager.clear_all()
+        await self._apply_staging()
+
+    async def _enter_thermal_mode(self) -> None:
+        """Enter Thermal MPC preset mode (works for both heat and cool)."""
+        if self._attr_preset_mode == PRESET_THERMAL:
+            return
+
+        if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
+            self._target_temperature = self._previous_target
+        self._previous_target = None
+
+        self._attr_preset_mode = PRESET_THERMAL
+        # Preserve current HVAC mode — thermal MPC works for both heat and cool.
+        if self._attr_hvac_mode == HVACMode.OFF:
+            self._attr_hvac_mode = HVACMode.HEAT
         self._power_manager.clear_all()
         await self._apply_staging()
 
@@ -350,10 +406,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 self._attr_preset_mode = PRESET_NONE
                 self._power_manager.clear_all()
             else:
-                self._power_manager.update_budgets(devices)
+                self._power_manager.update_budgets(devices, is_cooling=self._is_cooling())
         elif self._attr_preset_mode == PRESET_MPC:
             if not self._config.mpc_enabled:
                 self._attr_preset_mode = PRESET_NONE
+            self._power_manager.clear_all()
+        elif self._attr_preset_mode == PRESET_THERMAL:
             self._power_manager.clear_all()
         else:
             self._power_manager.clear_all()
@@ -414,30 +472,52 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._water_temperature = water_temp
         self._mode_state = mode
 
+        # Set HVACAction so the UI shows heating/cooling/idle/off
+        if self._attr_hvac_mode == HVACMode.OFF:
+            self._attr_hvac_action = HVACAction.OFF
+        elif self._attr_hvac_mode == HVACMode.COOL:
+            self._attr_hvac_action = (
+                HVACAction.COOLING if self._active_devices else HVACAction.IDLE
+            )
+        else:
+            self._attr_hvac_action = (
+                HVACAction.HEATING if self._active_devices else HVACAction.IDLE
+            )
+
         self.async_write_ha_state()
         self._emit_summary(devices, device_payloads)
 
     def _update_room_state(self, room_temp: float | None) -> None:
         """Update room temperature state and ETA."""
+        room_derivative = safe_float(self.coordinator.data.get("room_derivative"))
+
         if room_temp is not None and self._target_temperature is not None:
             self._delta = room_temp - self._target_temperature
-            delta_to_target = self._target_temperature - room_temp
+
+            if self._is_cooling():
+                # Cooling: ETA = (room - target) / cooling_rate
+                # Cooling rate is |derivative| when derivative < 0 (room getting cooler)
+                delta_to_target = room_temp - self._target_temperature
+                cooling_rate = -room_derivative if room_derivative is not None else None
+                self._room_eta_hours = compute_eta_hours(delta_to_target, cooling_rate)
+            else:
+                delta_to_target = self._target_temperature - room_temp
+                self._room_eta_hours = compute_eta_hours(delta_to_target, room_derivative)
         else:
             self._delta = None
-            delta_to_target = None
-
-        self._room_eta_hours = compute_eta_hours(
-            delta_to_target,
-            safe_float(self.coordinator.data.get("room_derivative")),
-        )
+            self._room_eta_hours = None
 
     def _is_room_at_target(self, room_temp: float | None) -> bool:
-        """Check if room temperature is at or above target."""
-        return (
-            room_temp is not None
-            and self._target_temperature is not None
-            and room_temp >= self._target_temperature
-        )
+        """Check if room temperature has reached the target.
+
+        In heat mode: room is at or above target.
+        In cool mode: room is at or below target.
+        """
+        if room_temp is None or self._target_temperature is None:
+            return False
+        if self._is_cooling():
+            return room_temp <= self._target_temperature
+        return room_temp >= self._target_temperature
 
     async def _handle_no_devices(
         self,
@@ -463,6 +543,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     ) -> tuple[float | None, str] | None:
         """Process water-based heat pump.
 
+        In cool mode the water HP is turned off (water HPs cannot cool).
+
         Returns:
             Tuple of (water_temp, mode) or None if no water device.
         """
@@ -474,11 +556,21 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         entity_id = device.get(CONF_CLIMATE_ENTITY)
         if not entity_id:
             return None
+
         payload = device_payloads.get(entity_id, {})
+        water_temp = safe_float(payload.get("water_temperature"))
+
+        # Water HP cannot cool; turn it off while cooling mode is active
+        if self._is_cooling():
+            hvac_mode = str(payload.get("hvac_mode") or "").lower()
+            if device.get(CONF_ALLOW_ON_OFF_CONTROL) and hvac_mode != HVACMode.OFF.value:
+                await self._ensure_device_mode(entity_id, HVACMode.OFF)
+            self._hp_modes[entity_id] = MODE_OFF
+            return water_temp, "off"
+
         current_temp = safe_float(payload.get("current_temperature"))
         current_target = safe_float(payload.get("target_temperature"))
         current_power = safe_float(payload.get("energy"))
-        water_temp = safe_float(payload.get("water_temperature"))
         hvac_mode = str(payload.get("hvac_mode") or "").lower()
         is_running = hvac_mode == HVACMode.HEAT.value
 
@@ -559,7 +651,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         return True
 
     def _is_water_overshoot_condition_true(self) -> bool:
-        """Return true when room overshoot exceeds the configured maximum."""
+        """Return true when room overshoot exceeds the configured maximum (heating only)."""
+        if self._is_cooling():
+            return False
         room_temp = self.current_temperature
         target_temp = self._target_temperature
         if room_temp is None or target_temp is None:
@@ -573,7 +667,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         there is any demand — well before the assist pumps.  Applying the same
         ETA threshold used for assist would cause the water HP to turn on at the
         same time as the assist, which is incorrect.
+
+        In cooling mode this always returns False because water HPs cannot cool.
         """
+        if self._is_cooling():
+            return False
         room_temp = self.current_temperature
         target_temp = self._target_temperature
         if room_temp is None or target_temp is None:
@@ -616,6 +714,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
 
             # Update assist controller timers
+            current_hvac_mode = self._attr_hvac_mode.value if self._attr_hvac_mode else "heat"
             self._assist_controller.update_timers(
                 entity_id,
                 room_temp,
@@ -624,6 +723,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 water_temp,
                 room_derivative,
                 is_running,
+                hvac_mode=current_hvac_mode,
             )
 
             # Handle ON/OFF control if enabled
@@ -690,11 +790,49 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         Returns:
             Updated is_running state.
         """
-        action, reason = self._assist_controller.evaluate_action(entity_id, is_running)
+        current_hvac_mode = self._attr_hvac_mode.value if self._attr_hvac_mode else "heat"
+        payload = device_payloads.get(entity_id, {}) or {}
+        device_hvac_mode = str(payload.get("hvac_mode") or "").lower()
+        supported_modes: list[str] = list(payload.get("hvac_modes") or [])
 
-        if action == "heat" and not is_running:
-            _LOGGER.info("Turning ON %s: condition=%s", entity_id, reason)
-            await self._ensure_device_mode(entity_id, HVACMode.HEAT)
+        # Handle mode mismatch: device is running but in the wrong mode.
+        # This happens e.g. when the user switches HEAT→COOL or COOL→HEAT.
+        # Switch to the desired mode if supported; otherwise turn the device off.
+        if is_running and device_hvac_mode not in (HVACMode.OFF.value, current_hvac_mode):
+            if not supported_modes or current_hvac_mode in supported_modes:
+                target_mode = HVACMode.COOL if current_hvac_mode == "cool" else HVACMode.HEAT
+                _LOGGER.info(
+                    "Switching %s from %s to %s due to mode change",
+                    entity_id, device_hvac_mode, current_hvac_mode,
+                )
+                await self._ensure_device_mode(entity_id, target_mode, force=True)
+                device_payloads.update(self._get_device_payloads())
+                return True
+            else:
+                _LOGGER.info(
+                    "Turning OFF %s: mode %s not supported (supported: %s)",
+                    entity_id, current_hvac_mode, supported_modes,
+                )
+                await self._ensure_device_mode(entity_id, HVACMode.OFF)
+                self._assist_controller.record_turn_off(entity_id)
+                device_payloads.update(self._get_device_payloads())
+                return False
+
+        action, reason = self._assist_controller.evaluate_action(
+            entity_id, is_running, hvac_mode=current_hvac_mode
+        )
+
+        if action in ("heat", "cool") and not is_running:
+            # Don't turn on if the device doesn't support the requested mode.
+            if supported_modes and action not in supported_modes:
+                _LOGGER.debug(
+                    "Not turning on %s: mode %s not in supported modes %s",
+                    entity_id, action, supported_modes,
+                )
+                return False
+            target_mode = HVACMode.COOL if action == "cool" else HVACMode.HEAT
+            _LOGGER.info("Turning ON %s (mode=%s): condition=%s", entity_id, action, reason)
+            await self._ensure_device_mode(entity_id, target_mode)
             self._assist_controller.record_turn_on(entity_id)
             # Refresh payload
             device_payloads.update(self._get_device_payloads())
@@ -711,12 +849,17 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     def _determine_hp1_mode(self, room_at_target: bool, entity_id: str) -> str:
         """Determine operating mode for HP1 (water-based heat pump)."""
+        # Water HP cannot cool; should not be called in cool mode (handled upstream)
+        if self._is_cooling():
+            return MODE_OFF
         if self._attr_preset_mode == PRESET_BOOST:
             return MODE_BOOST
         if self._attr_preset_mode == PRESET_AWAY:
             return MODE_MINIMAL
         if self._attr_preset_mode == PRESET_MPC:
             return MODE_MPC
+        if self._attr_preset_mode == PRESET_THERMAL:
+            return MODE_THERMAL_MPC
         if self._power_manager.get_budget(entity_id) > 0:
             return MODE_POWER
         return MODE_SETPOINT
@@ -738,6 +881,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """
         if self._attr_preset_mode == PRESET_BOOST:
             return MODE_BOOST
+        if self._attr_preset_mode == PRESET_MPC:
+            return MODE_MPC
+        if self._attr_preset_mode == PRESET_THERMAL and self._is_cooling():
+            return MODE_THERMAL_MPC
         if self._power_manager.get_budget(entity_id) > 0:
             return MODE_POWER
         # For automatic pumps, check off_timer to keep running briefly after target is reached
@@ -746,6 +893,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if room_at_target:
             return MODE_MINIMAL
         return MODE_SETPOINT
+
+    def _is_cooling(self) -> bool:
+        """Return True when the integration is in cooling mode."""
+        return getattr(self, "_attr_hvac_mode", HVACMode.HEAT) == HVACMode.COOL
 
     def _calculate_mode_target(
         self,
@@ -769,15 +920,32 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             if mpc_target is not None:
                 return max(min_sp, min(mpc_target, max_sp))
 
-        lower_offset = self._config.get_device_lower_offset(device, index)
-        upper_offset = self._config.get_device_upper_offset(device, index)
+        if mode == MODE_THERMAL_MPC:
+            thermal_target = self._compute_thermal_mpc_target(min_sp, max_sp)
+            if thermal_target is not None:
+                return thermal_target
+
+        if self._is_cooling():
+            lower_offset = self._config.get_device_lower_offset_cooling(device, index)
+            upper_offset = self._config.get_device_upper_offset_cooling(device, index)
+        else:
+            lower_offset = self._config.get_device_lower_offset(device, index)
+            upper_offset = self._config.get_device_upper_offset(device, index)
 
         if mode == MODE_BOOST:
-            target = current_temp + upper_offset
+            if self._is_cooling():
+                # Maximum cooling → lowest setpoint (most aggressive cooling)
+                target = current_temp + lower_offset
+            else:
+                target = current_temp + upper_offset
             return max(min_sp, min(target, max_sp))
 
         elif mode == MODE_MINIMAL:
-            target = current_temp + lower_offset
+            if self._is_cooling():
+                # Minimal cooling → highest setpoint (least cooling)
+                target = current_temp + upper_offset
+            else:
+                target = current_temp + lower_offset
             return clamp_setpoint(target, current_temp, lower_offset, upper_offset, min_sp, max_sp)
 
         elif mode == MODE_SETPOINT:
@@ -799,8 +967,57 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 self._target_temperature, current_temp,
                 lower_offset, upper_offset, min_sp, max_sp
             )
+        elif mode == MODE_THERMAL_MPC:
+            return clamp_setpoint(
+                self._target_temperature, current_temp,
+                lower_offset, upper_offset, min_sp, max_sp
+            )
 
         return min_sp
+
+    def _compute_thermal_mpc_target(
+        self,
+        min_sp: float,
+        max_sp: float,
+    ) -> float | None:
+        """Compute setpoint from the internal thermal model.
+
+        For heating: returns the recommended water supply temperature.
+        For cooling: returns the recommended AC setpoint.
+
+        Returns None when coordinator data or model is unavailable so that
+        ``_calculate_mode_target`` can fall back to the offset-based path.
+        """
+        thermal_model = getattr(self.coordinator, "thermal_model", None)
+        if thermal_model is None:
+            return None
+
+        target_room = self._target_temperature
+        current_room = self.current_temperature
+        if target_room is None or current_room is None:
+            return None
+
+        outdoor_temp = self.coordinator.data.get("outdoor_temperature")
+        horizon = self._config.internal_mpc_horizon_minutes
+
+        if self._is_cooling():
+            return thermal_model.recommended_setpoint_cooling(
+                target_room=target_room,
+                current_room=current_room,
+                outdoor_temp=outdoor_temp,
+                horizon_minutes=horizon,
+                min_setpoint=min_sp,
+                max_setpoint=max_sp,
+            )
+        else:
+            return thermal_model.recommended_supply_temp_heating(
+                target_room=target_room,
+                current_room=current_room,
+                outdoor_temp=outdoor_temp,
+                horizon_minutes=horizon,
+                min_supply=min_sp,
+                max_supply=max_sp,
+            )
 
     def _read_mpc_sensor_state(self) -> tuple[float | None, Any, dict[str, Any]]:
         """Read the configured external MPC sensor state and attributes."""
@@ -824,24 +1041,35 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         devices = self._config.devices
         device_payloads = self._get_device_payloads()
 
-        # Turn on controllable devices
-        for device in devices:
-            if device.get(CONF_ALLOW_ON_OFF_CONTROL) and device.get(CONF_CLIMATE_ENTITY):
-                await self._ensure_device_mode(device.get(CONF_CLIMATE_ENTITY), HVACMode.HEAT)
+        # Target HVAC mode depends on current heat/cool selection
+        active_hvac = self._attr_hvac_mode if self._attr_hvac_mode != HVACMode.OFF else HVACMode.HEAT
+
+        # Turn on controllable devices (skip water HP in cooling mode)
+        for index, device in enumerate(devices):
+            if not device.get(CONF_ALLOW_ON_OFF_CONTROL) or not device.get(CONF_CLIMATE_ENTITY):
+                continue
+            if self._is_cooling() and self._config.is_water_device(device, index):
+                continue
+            await self._ensure_device_mode(device.get(CONF_CLIMATE_ENTITY), active_hvac)
 
         # Refresh payloads
         device_payloads = self._get_device_payloads()
 
-        # Set boost targets for all heating devices
+        # Set boost targets for all active devices
         for index, device in enumerate(devices):
             entity_id = device.get(CONF_CLIMATE_ENTITY)
             if not entity_id:
                 continue
 
-            payload = device_payloads.get(entity_id, {}) or {}
-            hvac_mode = str(payload.get("hvac_mode") or "").lower()
+            # Water HP cannot cool; skip in cooling mode
+            if self._is_cooling() and self._config.is_water_device(device, index):
+                self._hp_modes[entity_id] = MODE_OFF
+                continue
 
-            if hvac_mode != HVACMode.HEAT.value:
+            payload = device_payloads.get(entity_id, {}) or {}
+            device_hvac_mode = str(payload.get("hvac_mode") or "").lower()
+
+            if device_hvac_mode not in (HVACMode.HEAT.value, HVACMode.COOL.value):
                 self._hp_modes[entity_id] = MODE_OFF
                 continue
 
@@ -863,7 +1091,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._emit_summary(devices, device_payloads)
 
     async def _apply_away_mode(self) -> None:
-        """Apply away preset behavior."""
+        """Apply away preset behavior.
+
+        In heating mode: water HP runs at minimum, assist pumps turn off.
+        In cooling mode: all devices turn off (no cooling while away).
+        """
         # Turn off assist pumps with control enabled
         for _index, device in self._config.get_air_devices():
             if not device.get(CONF_ALLOW_ON_OFF_CONTROL):
@@ -941,11 +1173,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             payload = device_payloads.get(entity_id, {}) or {}
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
 
-            if hvac_mode == HVACMode.HEAT.value:
+            if hvac_mode in (HVACMode.HEAT.value, HVACMode.COOL.value):
                 await self._ensure_device_temperature(entity_id, target)
             else:
                 _LOGGER.debug(
-                    "Skip setpoint for %s because mode=%s (not heating)",
+                    "Skip setpoint for %s because mode=%s (not active)",
                     entity_id, hvac_mode,
                 )
 
@@ -1164,6 +1396,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         payload = {
             "mode": self._mode_state,
+            "hvac_mode": self._attr_hvac_mode.value if self._attr_hvac_mode else None,
             "stage_count": len(self._active_devices),
             "active_devices": sorted(self._active_devices),
             "delta": self._delta,
@@ -1186,6 +1419,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "assist_min_off_minutes": self._config.assist_min_off_minutes,
             "maximum_overshoot": self._config.maximum_overshoot,
             **self._build_mpc_summary(),
+            **self._build_thermal_summary(),
             **self._power_manager.get_diagnostics(),
         }
 
@@ -1224,6 +1458,22 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "mpc_flow_lph": safe_float(attrs.get("flow_lph")),
             "mpc_return_temp": safe_float(attrs.get("return_temp")),
             "mpc_forecast_6h": forecast_6h if isinstance(forecast_6h, list) else None,
+        }
+
+    def _build_thermal_summary(self) -> dict[str, Any]:
+        """Build diagnostics for the internal thermal MPC model."""
+        thermal_state = (self.coordinator.data or {}).get("thermal_model_state") or {}
+        recommended_temp = self._compute_thermal_mpc_target(
+            self._config.min_setpoint,
+            self._config.max_setpoint,
+        )
+        return {
+            "thermal_ua_emitter": thermal_state.get("ua_emitter"),
+            "thermal_u_building": thermal_state.get("u_building"),
+            "thermal_ua_emitter_updates": thermal_state.get("ua_emitter_updates"),
+            "thermal_u_building_updates": thermal_state.get("u_building_updates"),
+            "thermal_is_converged": thermal_state.get("is_converged"),
+            "thermal_recommended_temp": recommended_temp,
         }
 
     def _build_hp_status(

@@ -64,6 +64,7 @@ MODE_SETPOINT = "setpoint"
 MODE_MINIMAL = "minimal"
 MODE_POWER = "power"
 MODE_MPC = "mpc"
+MODE_THERMAL_MPC = "thermal_mpc"  # Internal thermal-model MPC preset
 MODE_OFF = "off"
 
 # Power mode configuration
@@ -78,6 +79,11 @@ DEFAULT_POWER_MODE_STEP_SIZE = 0.3
 # House net active power sensor (negative when exporting/surplus).
 CONF_HOUSE_POWER_SENSOR = "house_power_sensor_entity_id"
 CONF_MPC_TEMPERATURE_SENSOR = "mpc_temperature_sensor_entity_id"
+# Outdoor temperature sensor — optional, used by the internal thermal MPC preset.
+CONF_OUTDOOR_TEMP_SENSOR = "outdoor_temp_sensor_entity_id"
+# MPC prediction horizon in minutes (how aggressively to pull room toward target).
+CONF_INTERNAL_MPC_HORIZON_MINUTES = "internal_mpc_horizon_minutes"
+DEFAULT_INTERNAL_MPC_HORIZON_MINUTES = 30.0
 # Keep some headroom to avoid oscillation due to household noise.
 DEFAULT_POWER_SURPLUS_RESERVE_W = 300.0
 # Update interval for recomputing per-HP budgets from the house power sensor.
@@ -87,19 +93,35 @@ DEFAULT_POWER_MIN_BUDGET_W = 200.0
 # Cap per-device budget so we don't slam a single HP.
 DEFAULT_POWER_MAX_BUDGET_PER_DEVICE_W = 1200.0
 
-# Setpoint offset configuration (replaces keep-on threshold)
+# Setpoint offset configuration
 # Floor = current_temp + lower_offset (lower is typically negative or zero)
 # Ceiling = current_temp + upper_offset
+
+# Heating-specific offset keys (new; replaces legacy keys below)
+CONF_LOWER_SETPOINT_OFFSET_HEATING = "lower_setpoint_offset_heating"
+CONF_UPPER_SETPOINT_OFFSET_HEATING = "upper_setpoint_offset_heating"
+
+# Cooling-specific offset keys (air devices only)
+CONF_LOWER_SETPOINT_OFFSET_COOLING = "lower_setpoint_offset_cooling"
+CONF_UPPER_SETPOINT_OFFSET_COOLING = "upper_setpoint_offset_cooling"
+
+# Legacy keys kept for backward compatibility with existing config entries
 CONF_LOWER_SETPOINT_OFFSET = "lower_setpoint_offset"
 CONF_UPPER_SETPOINT_OFFSET = "upper_setpoint_offset"
 
-# HP1 (water-based heat pump) defaults
+# HP1 (water-based heat pump) heating defaults
 DEFAULT_LOWER_SETPOINT_OFFSET_HP1 = -0.3
 DEFAULT_UPPER_SETPOINT_OFFSET_HP1 = 1.5
 
-# Assist heat pumps (HP2, HP3, etc.) defaults
+# Assist heat pumps (HP2, HP3, etc.) heating defaults
 DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST = -4.0
 DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST = 4.0
+
+# Assist heat pumps (HP2, HP3, etc.) cooling defaults
+# Floor = current_temp - 4 (aggressive cooling)
+# Ceiling = current_temp + 0 (do not cool below current temp on startup)
+DEFAULT_LOWER_SETPOINT_OFFSET_COOLING = -4.0
+DEFAULT_UPPER_SETPOINT_OFFSET_COOLING = 0.0
 
 # Absolute floor/ceiling for any heat pump setpoint
 DEFAULT_MIN_SETPOINT = 16.0

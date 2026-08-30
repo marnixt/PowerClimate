@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .config_accessor import ConfigAccessor
 
+# HVAC mode strings (duplicated here to avoid circular imports with HA)
+_HVAC_COOL = "cool"
+_HVAC_HEAT = "heat"
+
 
 @dataclass
 class ConditionResult:
@@ -29,8 +33,22 @@ class AssistConditionChecker:
         self, room_temp: float | None, target_temp: float | None,
         room_eta_minutes: float | None, water_temp: float | None,
         room_derivative: float | None,
+        hvac_mode: str = _HVAC_HEAT,
     ) -> ConditionResult:
-        """Check if any assist ON condition is met (eta_high, water_hot, stalled_below)."""
+        """Check if any assist ON condition is met.
+
+        For heating: eta_high, water_hot, stalled_below_target.
+        For cooling: eta_high (room too warm), stalled_above_target.
+        """
+        if hvac_mode == _HVAC_COOL:
+            result = self._check_eta_high_cool(room_temp, target_temp, room_eta_minutes)
+            if result.met:
+                return result
+            result = self._check_stalled_above_target(room_temp, target_temp, room_derivative)
+            if result.met:
+                return result
+            return ConditionResult.not_met()
+
         result = self._check_eta_high(room_temp, target_temp, room_eta_minutes)
         if result.met:
             return result
@@ -45,8 +63,25 @@ class AssistConditionChecker:
     def check_off_conditions(
         self, room_temp: float | None, target_temp: float | None,
         room_eta_minutes: float | None, room_derivative: float | None,
+        hvac_mode: str = _HVAC_HEAT,
     ) -> ConditionResult:
-        """Check if any assist OFF condition is met (eta_low, overshoot, stalled_at_target)."""
+        """Check if any assist OFF condition is met.
+
+        For heating: eta_low, overshoot, stalled_at_target.
+        For cooling: eta_low (room nearly cool enough), undershoot, stalled_at_target_cool.
+        """
+        if hvac_mode == _HVAC_COOL:
+            result = self._check_eta_low(room_eta_minutes)
+            if result.met:
+                return result
+            result = self._check_undershoot(room_temp, target_temp)
+            if result.met:
+                return result
+            result = self._check_stalled_at_target_cool(room_temp, target_temp, room_derivative)
+            if result.met:
+                return result
+            return ConditionResult.not_met()
+
         result = self._check_eta_low(room_eta_minutes)
         if result.met:
             return result
@@ -57,6 +92,8 @@ class AssistConditionChecker:
         if result.met:
             return result
         return ConditionResult.not_met()
+
+    # --- Heating ON conditions ---
 
     def _check_eta_high(self, room_temp: float | None, target_temp: float | None,
                         room_eta_minutes: float | None) -> ConditionResult:
@@ -85,6 +122,30 @@ class AssistConditionChecker:
             return ConditionResult(met=True, name="stalled_below_target")
         return ConditionResult.not_met()
 
+    # --- Cooling ON conditions ---
+
+    def _check_eta_high_cool(self, room_temp: float | None, target_temp: float | None,
+                             room_eta_minutes: float | None) -> ConditionResult:
+        """ETA high in cooling: room is too warm and won't cool fast enough."""
+        eta_threshold = self._config.assist_on_eta_threshold_minutes
+        if (room_eta_minutes is not None and room_eta_minutes > eta_threshold
+            and room_temp is not None and target_temp is not None
+            and room_temp > target_temp):
+            return ConditionResult(met=True, name="eta_high")
+        return ConditionResult.not_met()
+
+    def _check_stalled_above_target(self, room_temp: float | None, target_temp: float | None,
+                                    room_derivative: float | None) -> ConditionResult:
+        """Room is above target and not cooling (stalled in cooling mode)."""
+        stall_delta = self._config.assist_stall_temp_delta
+        if (room_derivative is not None and room_derivative >= 0.0
+            and room_temp is not None and target_temp is not None
+            and room_temp > (target_temp + stall_delta)):
+            return ConditionResult(met=True, name="stalled_above_target")
+        return ConditionResult.not_met()
+
+    # --- Shared / Heating OFF conditions ---
+
     def _check_eta_low(self, room_eta_minutes: float | None) -> ConditionResult:
         eta_threshold = self._config.assist_off_eta_threshold_minutes
         if room_eta_minutes is not None and room_eta_minutes < eta_threshold:
@@ -106,5 +167,27 @@ class AssistConditionChecker:
         if (room_derivative is not None and room_derivative <= 0.0
             and room_temp is not None and target_temp is not None
             and (target_temp - room_temp) <= stall_delta):
+            return ConditionResult(met=True, name="stalled_at_target")
+        return ConditionResult.not_met()
+
+    # --- Cooling OFF conditions ---
+
+    def _check_undershoot(
+        self,
+        room_temp: float | None,
+        target_temp: float | None,
+    ) -> ConditionResult:
+        """Room has cooled to or below target (cooling analogue of overshoot)."""
+        if room_temp is not None and target_temp is not None and room_temp <= target_temp:
+            return ConditionResult(met=True, name="undershoot")
+        return ConditionResult.not_met()
+
+    def _check_stalled_at_target_cool(self, room_temp: float | None, target_temp: float | None,
+                                      room_derivative: float | None) -> ConditionResult:
+        """Room is near target and not warming back up (no longer needs cooling)."""
+        stall_delta = self._config.assist_stall_temp_delta
+        if (room_derivative is not None and room_derivative >= 0.0
+            and room_temp is not None and target_temp is not None
+            and (room_temp - target_temp) <= stall_delta):
             return ConditionResult(met=True, name="stalled_at_target")
         return ConditionResult.not_met()

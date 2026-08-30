@@ -28,13 +28,13 @@
         "data": {
           "energy_sensor_entity_id": "Power sensor",
           "water_sensor_entity_id": "Water temperature sensor",
-          "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
           "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
           "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       },
@@ -43,13 +43,17 @@
         "description": "Configure air heat pump {device_index} of {total_air_devices}.",
         "data": {
           "energy_sensor_entity_id": "Power sensor",
-          "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
+          "lower_setpoint_offset_cooling": "Lower setpoint offset — cooling (°C)",
+          "upper_setpoint_offset_cooling": "Upper setpoint offset — cooling (°C)",
           "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
+          "lower_setpoint_offset_cooling": "Max-cool mode target = current temp + lower offset (e.g. −4 °C). Most aggressive cooling.",
+          "upper_setpoint_offset_cooling": "Min-cool mode target = current temp + upper offset (e.g. 0 °C). Least cooling.",
           "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       }
@@ -101,13 +105,13 @@
         "data": {
           "energy_sensor_entity_id": "Power sensor",
           "water_sensor_entity_id": "Water temperature sensor",
-          "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
           "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
           "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       },
@@ -116,13 +120,17 @@
         "description": "Configure air heat pump {device_index} of {total_air_devices}.",
         "data": {
           "energy_sensor_entity_id": "Power sensor",
-          "lower_setpoint_offset": "Lower setpoint offset (°C)",
-          "upper_setpoint_offset": "Upper setpoint offset (°C)",
+          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
+          "lower_setpoint_offset_cooling": "Lower setpoint offset — cooling (°C)",
+          "upper_setpoint_offset_cooling": "Upper setpoint offset — cooling (°C)",
           "allow_on_off_control": "Allow PowerClimate to turn device on and off"
         },
         "data_description": {
-          "lower_setpoint_offset": "Minimal mode target = current temp + lower offset.",
-          "upper_setpoint_offset": "Setpoint mode ceiling = current temp + upper offset.",
+          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
+          "lower_setpoint_offset_cooling": "Max-cool mode target = current temp + lower offset (e.g. −4 °C). Most aggressive cooling.",
+          "upper_setpoint_offset_cooling": "Min-cool mode target = current temp + upper offset (e.g. 0 °C). Least cooling.",
           "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
         }
       },

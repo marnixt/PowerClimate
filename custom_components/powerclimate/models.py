@@ -37,7 +37,6 @@ class AssistTimerState:
     target_hvac_mode: str | None = None
     target_reason: str = ""
 
-
     @classmethod
     def no_condition(cls) -> AssistTimerState:
         """Return a default timer state with no active condition."""

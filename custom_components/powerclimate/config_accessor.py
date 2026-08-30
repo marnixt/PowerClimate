@@ -18,14 +18,20 @@ from .const import (
     CONF_ASSIST_WATER_TEMP_THRESHOLD,
     CONF_DEVICES,
     CONF_HOUSE_POWER_SENSOR,
+    CONF_INTERNAL_MPC_HORIZON_MINUTES,
     CONF_LOWER_SETPOINT_OFFSET,
+    CONF_LOWER_SETPOINT_OFFSET_COOLING,
+    CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MPC_TEMPERATURE_SENSOR,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET,
+    CONF_UPPER_SETPOINT_OFFSET_COOLING,
+    CONF_UPPER_SETPOINT_OFFSET_HEATING,
     DEFAULT_ASSIST_MIN_OFF_MINUTES,
     DEFAULT_ASSIST_MIN_ON_MINUTES,
     DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
@@ -33,12 +39,15 @@ from .const import (
     DEFAULT_ASSIST_STALL_TEMP_DELTA,
     DEFAULT_ASSIST_TIMER_SECONDS,
     DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
+    DEFAULT_INTERNAL_MPC_HORIZON_MINUTES,
     DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
+    DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
+    DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DEVICE_ROLE_AIR,
     DEVICE_ROLE_WATER,
@@ -118,6 +127,22 @@ class ConfigAccessor:
     def mpc_enabled(self) -> bool:
         """Check if MPC preset is available."""
         return bool(self.mpc_temperature_sensor)
+
+    @property
+    def outdoor_temp_sensor(self) -> str | None:
+        """Get the outdoor temperature sensor entity ID."""
+        sensor = str(self._get_config().get(CONF_OUTDOOR_TEMP_SENSOR) or "").strip()
+        return sensor if sensor else None
+
+    @property
+    def internal_mpc_horizon_minutes(self) -> float:
+        """Get the internal MPC prediction horizon in minutes."""
+        return float(
+            self._get_config().get(
+                CONF_INTERNAL_MPC_HORIZON_MINUTES,
+                DEFAULT_INTERNAL_MPC_HORIZON_MINUTES,
+            )
+        )
 
     @property
     def mirror_thermostats(self) -> list[str]:
@@ -209,26 +234,26 @@ class ConfigAccessor:
         """Get list of device configurations."""
         return self._get_config().get(CONF_DEVICES) or []
 
-    def get_device_role(self, device: dict[str, Any], index: int) -> str:
-        """Get device role with backward compatibility.
+    def get_device_role(self, device: dict[str, Any], index: int) -> str | None:
+        """Get device role from explicit configuration.
 
-        If device_role is explicitly set, use it. Otherwise, treat first device
-        as water (primary) and rest as air (assist).
+        Returns the configured role ("water" or "air"), or None if the device
+        has no valid role set. Devices without a role are ignored until
+        reconfigured via the options flow.
 
         Args:
             device: Device configuration dictionary.
             index: Device index in the list.
 
         Returns:
-            Device role: "water" or "air".
+            Device role: "water", "air", or None.
         """
         from .const import CONF_DEVICE_ROLE
 
         role = device.get(CONF_DEVICE_ROLE)
         if role in (DEVICE_ROLE_WATER, DEVICE_ROLE_AIR):
             return role
-        # Backward compatibility: index 0 = water, rest = air
-        return DEVICE_ROLE_WATER if index == 0 else DEVICE_ROLE_AIR
+        return None
 
     def is_water_device(self, device: dict[str, Any], index: int) -> bool:
         """Check if device is a water-based heat pump."""
@@ -254,26 +279,43 @@ class ConfigAccessor:
         ]
 
     def get_device_lower_offset(self, device: dict[str, Any], index: int) -> float:
-        """Get lower setpoint offset for a device."""
-        return self._get_device_offset(device, index, "lower")
+        """Get lower setpoint offset for a device (heating mode)."""
+        return self._get_device_heating_offset(device, index, "lower")
 
     def get_device_upper_offset(self, device: dict[str, Any], index: int) -> float:
-        """Get upper setpoint offset for a device."""
-        return self._get_device_offset(device, index, "upper")
+        """Get upper setpoint offset for a device (heating mode)."""
+        return self._get_device_heating_offset(device, index, "upper")
 
-    def _get_device_offset(
+    def get_device_lower_offset_cooling(self, device: dict[str, Any], index: int) -> float:
+        """Get lower setpoint offset for a device (cooling mode, air devices only)."""
+        return self._get_device_cooling_offset(device, "lower")
+
+    def get_device_upper_offset_cooling(self, device: dict[str, Any], index: int) -> float:
+        """Get upper setpoint offset for a device (cooling mode, air devices only)."""
+        return self._get_device_cooling_offset(device, "upper")
+
+    def _get_device_heating_offset(
         self,
         device: dict[str, Any],
         index: int,
         offset_type: str,
     ) -> float:
-        """Calculate device offset with defaults based on role."""
+        """Calculate device heating offset with backward-compat fallback.
+
+        Reads new ``_heating`` keys first; falls back to legacy key for
+        existing config entries that predate the heating/cooling split.
+        """
         if offset_type == "lower":
-            value = device.get(CONF_LOWER_SETPOINT_OFFSET)
+            # New key first, then legacy key for backward compat
+            value = device.get(CONF_LOWER_SETPOINT_OFFSET_HEATING)
+            if value is None:
+                value = device.get(CONF_LOWER_SETPOINT_OFFSET)
             default_water = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
             default_air = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
         else:  # upper
-            value = device.get(CONF_UPPER_SETPOINT_OFFSET)
+            value = device.get(CONF_UPPER_SETPOINT_OFFSET_HEATING)
+            if value is None:
+                value = device.get(CONF_UPPER_SETPOINT_OFFSET)
             default_water = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
             default_air = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
 
@@ -281,9 +323,24 @@ class ConfigAccessor:
         if parsed is not None:
             return parsed
 
-        # Use device role to determine default
         is_water = self.is_water_device(device, index)
         return default_water if is_water else default_air
+
+    def _get_device_cooling_offset(
+        self,
+        device: dict[str, Any],
+        offset_type: str,
+    ) -> float:
+        """Calculate device cooling offset (air devices only)."""
+        if offset_type == "lower":
+            value = device.get(CONF_LOWER_SETPOINT_OFFSET_COOLING)
+            default = DEFAULT_LOWER_SETPOINT_OFFSET_COOLING
+        else:  # upper
+            value = device.get(CONF_UPPER_SETPOINT_OFFSET_COOLING)
+            default = DEFAULT_UPPER_SETPOINT_OFFSET_COOLING
+
+        parsed = parse_device_offset(value)
+        return parsed if parsed is not None else default
 
     def to_dict(self) -> dict[str, Any]:
         """Export all configuration as a dictionary."""

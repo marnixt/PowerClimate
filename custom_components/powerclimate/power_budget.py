@@ -135,14 +135,16 @@ class PowerBudgetManager:
         self._power_budget_remaining_w = None
         self._air_budget_rotation = 0
 
-    def update_budgets(self, devices: list[dict[str, Any]]) -> None:
+    def update_budgets(self, devices: list[dict[str, Any]], *, is_cooling: bool = False) -> None:
         """Update per-device power budgets from house net power.
 
         Budgets are allocated in device order (HP1 -> HP2 -> ...) until
-        available power is exhausted.
+        available power is exhausted. When ``is_cooling`` is True the water
+        heat pump is skipped because it cannot cool.
 
         Args:
             devices: List of device configurations.
+            is_cooling: When True, skip the water heat pump in allocation.
         """
         from .const import CONF_CLIMATE_ENTITY
 
@@ -173,7 +175,7 @@ class PowerBudgetManager:
 
         # Keep the primary water device first, but rotate assist devices so
         # partial surplus does not starve the same air device every cycle.
-        for device in self._iter_budget_order(devices):
+        for device in self._iter_budget_order(devices, is_cooling=is_cooling):
             entity_id = str(device.get(CONF_CLIMATE_ENTITY) or "").strip()
             if not entity_id:
                 continue
@@ -197,8 +199,14 @@ class PowerBudgetManager:
 
         self._power_budget_remaining_w = float(max(0.0, remaining_w))
 
-    def _iter_budget_order(self, devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Return device order for budget allocation."""
+    def _iter_budget_order(
+        self, devices: list[dict[str, Any]], *, is_cooling: bool = False
+    ) -> list[dict[str, Any]]:
+        """Return device order for budget allocation.
+
+        When ``is_cooling`` is True the water heat pump is excluded because it
+        cannot cool and any budget allocated to it would be wasted.
+        """
         water_devices: list[dict[str, Any]] = []
         air_devices: list[dict[str, Any]] = []
 
@@ -213,7 +221,11 @@ class PowerBudgetManager:
                 air_devices.append(device)
 
         if not air_devices:
-            return water_devices
+            return [] if is_cooling else water_devices
+
+        if is_cooling:
+            # Water HP cannot cool; allocate budget only to air devices
+            return air_devices
 
         start_index = self._air_budget_rotation % len(air_devices)
         rotated_air = air_devices[start_index:] + air_devices[:start_index]

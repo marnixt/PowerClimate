@@ -131,6 +131,7 @@ class AssistPumpController:
         water_temp: float | None,
         room_derivative: float | None,
         is_running: bool,
+        hvac_mode: str = "heat",
     ) -> AssistTimerState:
         """Update timer state based on current conditions.
 
@@ -173,10 +174,12 @@ class AssistPumpController:
 
         # Check conditions
         on_result = self._condition_checker.check_on_conditions(
-            room_temp, target_temp, room_eta_minutes, water_temp, room_derivative
+            room_temp, target_temp, room_eta_minutes, water_temp, room_derivative,
+            hvac_mode=hvac_mode,
         )
         off_result = self._condition_checker.check_off_conditions(
-            room_temp, target_temp, room_eta_minutes, room_derivative
+            room_temp, target_temp, room_eta_minutes, room_derivative,
+            hvac_mode=hvac_mode,
         )
 
         # Update timers based on conditions (mutually exclusive)
@@ -202,16 +205,18 @@ class AssistPumpController:
         self,
         entity_id: str,
         is_running: bool,
+        hvac_mode: str = "heat",
     ) -> tuple[str | None, str]:
         """Evaluate what action should be taken for an assist pump.
 
         Args:
             entity_id: Climate entity ID.
             is_running: Whether the device is currently running.
+            hvac_mode: Current HVAC mode ("heat" or "cool").
 
         Returns:
             Tuple of (target_hvac_mode, reason) where target_hvac_mode
-            is "heat", "off", or None if no action needed.
+            is "heat"/"cool", "off", or None if no action needed.
         """
         state = self.get_timer_state(entity_id)
         timer_threshold = self._config.assist_timer_seconds
@@ -221,16 +226,19 @@ class AssistPumpController:
         state.target_hvac_mode = None
         state.target_reason = ""
 
+        # The "active" mode to request when turning the device on
+        active_mode = hvac_mode if hvac_mode in ("heat", "cool") else "heat"
+
         # Check if ON action should be taken
         if not is_running and state.on_timer_seconds >= timer_threshold:
-            state.target_hvac_mode = "heat"
+            state.target_hvac_mode = active_mode
             state.target_reason = state.active_condition
 
             # Check anti-short-cycle
             if self._is_off_blocked(entity_id, state, now):
                 return None, ""
 
-            return "heat", state.active_condition
+            return active_mode, state.active_condition
 
         # Check if OFF action should be taken
         if is_running and state.off_timer_seconds >= timer_threshold:

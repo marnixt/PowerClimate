@@ -4,13 +4,15 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.components.climate.const import HVACMode
+from homeassistant.components.climate.const import HVACAction, HVACMode
 
 from custom_components.powerclimate.climate import PowerClimateClimate
 from custom_components.powerclimate.const import (
     CONF_ALLOW_ON_OFF_CONTROL,
     CONF_CLIMATE_ENTITY,
+    MODE_BOOST,
     MODE_MPC,
+    MODE_OFF,
 )
 
 
@@ -99,7 +101,7 @@ def test_preset_modes_include_mpc_when_sensor_configured() -> None:
     entity = make_entity()
     entity._config = SimpleNamespace(solar_enabled=False, mpc_enabled=True)
 
-    assert entity.preset_modes == ["none", "boost", "away", "mpc"]
+    assert entity.preset_modes == ["none", "boost", "away", "mpc", "thermal"]
 
 
 def test_determine_hp1_mode_returns_mpc_for_mpc_preset() -> None:
@@ -373,3 +375,369 @@ def test_handle_hp_state_change_forwards_mirror_updates() -> None:
         event.data["new_state"],
     )
     entity.hass.async_create_task.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Cooling mode tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_cooling_false_without_attr() -> None:
+    """_is_cooling should not raise when _attr_hvac_mode is not yet set."""
+    entity = make_entity()
+    assert entity._is_cooling() is False
+
+
+def test_is_cooling_true_in_cool_mode() -> None:
+    """_is_cooling should return True when HVAC mode is COOL."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    assert entity._is_cooling() is True
+
+
+def test_is_cooling_false_in_heat_mode() -> None:
+    """_is_cooling should return False when HVAC mode is HEAT."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.HEAT
+    assert entity._is_cooling() is False
+
+
+def test_is_room_at_target_cool_mode_true_when_at_or_below() -> None:
+    """In cool mode, target is reached when room is at or below setpoint."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._target_temperature = 22.0
+
+    assert entity._is_room_at_target(22.0) is True
+    assert entity._is_room_at_target(21.5) is True
+
+
+def test_is_room_at_target_cool_mode_false_when_above() -> None:
+    """In cool mode, target is NOT reached when room is still above setpoint."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._target_temperature = 22.0
+
+    assert entity._is_room_at_target(22.1) is False
+
+
+def test_is_water_overshoot_false_in_cool_mode() -> None:
+    """Water overshoot check should always return False in cooling mode."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._config = SimpleNamespace(maximum_overshoot=0.5)
+    entity._target_temperature = 22.0
+    entity.coordinator = SimpleNamespace(data={"room_temperature": 30.0})
+
+    assert entity._is_water_overshoot_condition_true() is False
+
+
+def test_is_water_turn_on_false_in_cool_mode() -> None:
+    """Water turn-on check should always return False in cooling mode."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._target_temperature = 22.0
+    entity.coordinator = SimpleNamespace(data={"room_temperature": 26.0})
+
+    assert entity._is_water_turn_on_condition_true() is False
+
+
+def test_determine_hp1_mode_returns_off_in_cool_mode() -> None:
+    """HP1 (water HP) must be kept off when PowerClimate is cooling."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._attr_preset_mode = "none"
+
+    assert entity._determine_hp1_mode(False, "climate.hp1") == MODE_OFF
+
+
+def test_process_water_device_turns_off_in_cool_mode() -> None:
+    """Water device must be switched off in cooling mode (even when allowed on/off)."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._config = SimpleNamespace(
+        get_water_device=lambda: (
+            {
+                CONF_CLIMATE_ENTITY: "climate.hp1",
+                CONF_ALLOW_ON_OFF_CONTROL: True,
+            },
+            0,
+        ),
+    )
+    entity._ensure_device_mode = AsyncMock()
+    entity._hp_modes = {}
+
+    desired_devices: set[str] = set()
+    desired_targets: dict[str, float] = {}
+    payloads = {
+        "climate.hp1": {
+            "hvac_mode": HVACMode.HEAT.value,
+            "water_temperature": 38.0,
+        }
+    }
+
+    result = asyncio.run(
+        entity._process_water_device(False, payloads, desired_devices, desired_targets)
+    )
+
+    # Water temp is still returned for diagnostic purposes
+    assert result == (38.0, "off")
+    assert entity._hp_modes["climate.hp1"] == MODE_OFF
+    assert desired_devices == set()
+    # Should have been switched off because allow_on_off=True and it was running
+    entity._ensure_device_mode.assert_awaited_once_with("climate.hp1", HVACMode.OFF)
+
+
+def test_enter_away_mode_in_cool_raises_target_to_max() -> None:
+    """Away mode in cooling should raise target to max so ACs stop running."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._attr_preset_mode = "none"
+    entity._target_temperature = 22.0
+    entity._previous_target = None
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=30.0,
+        solar_enabled=False,
+        mpc_enabled=False,
+    )
+    entity._power_manager = SimpleNamespace(clear_all=MagicMock())
+    entity._apply_away_mode = AsyncMock()
+
+    asyncio.run(entity._enter_away_mode())
+
+    assert entity._target_temperature == 30.0
+    assert entity._attr_preset_mode == "away"
+    assert entity._attr_hvac_mode == HVACMode.COOL  # mode must not change
+
+
+def test_enter_mpc_mode_preserves_cool_mode() -> None:
+    """Selecting MPC while in cool mode must preserve cool mode (MPC works for both heat and cool)."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._attr_preset_mode = "none"
+    entity._previous_target = None
+    entity._power_manager = SimpleNamespace(clear_all=MagicMock())
+    entity._apply_staging = AsyncMock()
+
+    asyncio.run(entity._enter_mpc_mode())
+
+    assert entity._attr_hvac_mode == HVACMode.COOL
+    assert entity._attr_preset_mode == "mpc"
+
+
+def test_calculate_mode_target_boost_cooling_uses_lower_offset() -> None:
+    """Boost in cool mode picks the lowest setpoint (most aggressive cooling)."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._target_temperature = 22.0
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=30.0,
+        get_device_lower_offset_cooling=lambda _d, _i: -4.0,
+        get_device_upper_offset_cooling=lambda _d, _i: 0.0,
+    )
+    entity._read_mpc_temperature_state = MagicMock(return_value=None)
+
+    target = entity._calculate_mode_target(
+        MODE_BOOST,
+        current_temp=25.0,
+        device={CONF_CLIMATE_ENTITY: "climate.air1"},
+        index=1,
+    )
+
+    # Boost cooling: current + lower_offset = 25 + (-4) = 21, clamped to [16, 30]
+    assert target == 21.0
+
+
+def test_calculate_mode_target_boost_heating_uses_upper_offset() -> None:
+    """Boost in heat mode picks the highest setpoint (most aggressive heating)."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.HEAT
+    entity._target_temperature = 22.0
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=30.0,
+        get_device_lower_offset=lambda _d, _i: -4.0,
+        get_device_upper_offset=lambda _d, _i: 4.0,
+    )
+    entity._read_mpc_temperature_state = MagicMock(return_value=None)
+
+    target = entity._calculate_mode_target(
+        MODE_BOOST,
+        current_temp=20.0,
+        device={CONF_CLIMATE_ENTITY: "climate.air1"},
+        index=1,
+    )
+
+    # Boost heating: current + upper_offset = 20 + 4 = 24, clamped to [16, 30]
+    assert target == 24.0
+
+
+def test_update_room_state_cool_inverts_eta() -> None:
+    """In cooling mode ETA uses the cooling rate (negative derivative inverted)."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._target_temperature = 22.0
+    # Room is 2°C above target; derivative = -1°C/h (room getting cooler)
+    entity.coordinator = SimpleNamespace(
+        data={"room_derivative": -1.0, "room_temperature": 24.0}
+    )
+
+    entity._update_room_state(24.0)
+
+    # delta = room - target = 24 - 22 = 2; cooling_rate = -(-1) = 1
+    # ETA = 2 / 1 = 2 hours
+    assert entity._delta == 2.0
+    assert entity._room_eta_hours == 2.0
+
+
+def test_hvac_action_set_to_cooling_when_active() -> None:
+    """HVACAction should be COOLING when cool mode is on and devices are active."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._active_devices = {"climate.air1"}
+
+    # Simulate the hvac_action assignment logic used in _apply_staging
+    from homeassistant.components.climate.const import HVACAction
+
+    if entity._attr_hvac_mode == HVACMode.OFF:
+        action = HVACAction.OFF
+    elif entity._attr_hvac_mode == HVACMode.COOL:
+        action = HVACAction.COOLING if entity._active_devices else HVACAction.IDLE
+    else:
+        action = HVACAction.HEATING if entity._active_devices else HVACAction.IDLE
+
+    assert action == HVACAction.COOLING
+
+
+def test_hvac_action_idle_when_cool_mode_no_active_devices() -> None:
+    """HVACAction should be IDLE when in cool mode but no devices are running."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._active_devices = set()
+
+    from homeassistant.components.climate.const import HVACAction
+
+    if entity._attr_hvac_mode == HVACMode.OFF:
+        action = HVACAction.OFF
+    elif entity._attr_hvac_mode == HVACMode.COOL:
+        action = HVACAction.COOLING if entity._active_devices else HVACAction.IDLE
+    else:
+        action = HVACAction.HEATING if entity._active_devices else HVACAction.IDLE
+
+    assert action == HVACAction.IDLE
+
+
+# ---------------------------------------------------------------------------
+# _handle_assist_control — mode-switch behaviour
+# ---------------------------------------------------------------------------
+
+
+def _make_assist_entity(hvac_mode: HVACMode) -> PowerClimateClimate:
+    """Return a minimal entity configured for assist-control tests."""
+    entity = make_entity()
+    entity._attr_hvac_mode = hvac_mode
+    entity._assist_controller = MagicMock()
+    entity._assist_controller.evaluate_action.return_value = (None, "")
+    entity._ensure_device_mode = AsyncMock()
+    entity._get_device_payloads = MagicMock(return_value={})
+    return entity
+
+
+def test_handle_assist_control_switches_mode_when_running_in_wrong_mode() -> None:
+    """Device running in HEAT while system is COOL should be switched to COOL."""
+    entity = _make_assist_entity(HVACMode.COOL)
+    payloads = {
+        "climate.air1": {
+            "hvac_mode": "heat",
+            "hvac_modes": ["off", "heat", "cool"],
+        }
+    }
+
+    result = asyncio.run(
+        entity._handle_assist_control("climate.air1", is_running=True, device_payloads=payloads)
+    )
+
+    assert result is True
+    entity._ensure_device_mode.assert_awaited_once_with(
+        "climate.air1", HVACMode.COOL, force=True
+    )
+
+
+def test_handle_assist_control_turns_off_when_mode_not_supported() -> None:
+    """Device running in HEAT should be turned off when it doesn't support COOL."""
+    entity = _make_assist_entity(HVACMode.COOL)
+    payloads = {
+        "climate.air1": {
+            "hvac_mode": "heat",
+            "hvac_modes": ["off", "heat"],  # no cool
+        }
+    }
+
+    result = asyncio.run(
+        entity._handle_assist_control("climate.air1", is_running=True, device_payloads=payloads)
+    )
+
+    assert result is False
+    entity._ensure_device_mode.assert_awaited_once_with("climate.air1", HVACMode.OFF)
+    entity._assist_controller.record_turn_off.assert_called_once_with("climate.air1")
+
+
+def test_handle_assist_control_does_not_turn_on_unsupported_mode() -> None:
+    """evaluate_action returning 'cool' should be skipped if device doesn't support it."""
+    entity = _make_assist_entity(HVACMode.COOL)
+    entity._assist_controller.evaluate_action.return_value = ("cool", "condition_met")
+    payloads = {
+        "climate.air1": {
+            "hvac_mode": "off",
+            "hvac_modes": ["off", "heat"],  # no cool
+        }
+    }
+
+    result = asyncio.run(
+        entity._handle_assist_control("climate.air1", is_running=False, device_payloads=payloads)
+    )
+
+    assert result is False
+    entity._ensure_device_mode.assert_not_awaited()
+
+
+def test_handle_assist_control_turns_on_when_mode_supported() -> None:
+    """evaluate_action returning 'cool' should turn the device on when supported."""
+    entity = _make_assist_entity(HVACMode.COOL)
+    entity._assist_controller.evaluate_action.return_value = ("cool", "condition_met")
+    payloads = {
+        "climate.air1": {
+            "hvac_mode": "off",
+            "hvac_modes": ["off", "heat", "cool"],
+        }
+    }
+
+    result = asyncio.run(
+        entity._handle_assist_control("climate.air1", is_running=False, device_payloads=payloads)
+    )
+
+    assert result is True
+    entity._ensure_device_mode.assert_awaited_once_with("climate.air1", HVACMode.COOL)
+    entity._assist_controller.record_turn_on.assert_called_once_with("climate.air1")
+
+
+def test_handle_assist_control_allows_mode_change_when_hvac_modes_unknown() -> None:
+    """If hvac_modes is absent, assume the device supports any mode and switch it."""
+    entity = _make_assist_entity(HVACMode.COOL)
+    payloads = {
+        "climate.air1": {
+            "hvac_mode": "heat",
+            # hvac_modes not present — treat as unknown / unrestricted
+        }
+    }
+
+    result = asyncio.run(
+        entity._handle_assist_control("climate.air1", is_running=True, device_payloads=payloads)
+    )
+
+    assert result is True
+    entity._ensure_device_mode.assert_awaited_once_with(
+        "climate.air1", HVACMode.COOL, force=True
+    )

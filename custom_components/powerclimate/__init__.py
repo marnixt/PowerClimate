@@ -68,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = OSDataUpdateCoordinator(hass, entry, LOGGER)
+    await coordinator.async_setup()
 
     await coordinator.async_config_entry_first_refresh()
 
