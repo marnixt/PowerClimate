@@ -122,6 +122,7 @@ def test_calculate_mode_target_uses_mpc_sensor_value() -> None:
         get_device_lower_offset=lambda _device, _index: 0.0,
         get_device_upper_offset=lambda _device, _index: 0.0,
     )
+    entity._target_temperature = 21.0
     entity._read_mpc_temperature_state = MagicMock(return_value=32.5)
 
     target = entity._calculate_mode_target(
@@ -804,7 +805,12 @@ def test_handle_assist_control_does_not_record_failed_turn_on() -> None:
 def test_calculate_mode_target_keeps_device_setpoint_without_temperature() -> None:
     """Without a device temperature the current device setpoint is kept."""
     entity = make_entity()
-    entity._config = SimpleNamespace(min_setpoint=16.0, max_setpoint=30.0)
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=30.0,
+        get_device_lower_offset=lambda _d, _i: -2.0,
+        get_device_upper_offset=lambda _d, _i: 2.0,
+    )
     entity._target_temperature = 21.0
 
     target = entity._calculate_mode_target(

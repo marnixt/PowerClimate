@@ -50,8 +50,9 @@ from .helpers import (
     integration_device_info,
     summary_signal,
 )
+from .mode_targets import SetpointLimits, calculate_mode_target
 from .power_budget import PowerBudgetManager
-from .utils import clamp_setpoint, compute_eta_hours, safe_float
+from .utils import compute_eta_hours, safe_float
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -926,79 +927,36 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         current_power: float | None = None,
         current_target: float | None = None,
     ) -> float:
-        """Calculate target temperature for a given mode."""
-        min_sp = self._config.min_setpoint
-        max_sp = self._config.max_setpoint
-        entity_id = device.get(CONF_CLIMATE_ENTITY, "")
-
-        if current_temp is None:
-            fallback = safe_float(current_target)
-            if fallback is None:
-                fallback = safe_float(self._target_temperature)
-            if fallback is None:
-                return min_sp
-            return max(min_sp, min(fallback, max_sp))
-
-        if mode == MODE_MPC:
-            mpc_target = self._read_mpc_temperature_state()
-            if mpc_target is not None:
-                return max(min_sp, min(mpc_target, max_sp))
-
-        if mode == MODE_THERMAL_MPC:
-            thermal_target = self._compute_thermal_mpc_target(min_sp, max_sp)
-            if thermal_target is not None:
-                return thermal_target
-
-        if self._is_cooling():
+        """Calculate target temperature for a given mode; see calculate_mode_target."""
+        cooling = self._is_cooling()
+        if cooling:
             lower_offset = self._config.get_device_lower_offset_cooling(device, index)
             upper_offset = self._config.get_device_upper_offset_cooling(device, index)
         else:
             lower_offset = self._config.get_device_lower_offset(device, index)
             upper_offset = self._config.get_device_upper_offset(device, index)
+        min_sp = self._config.min_setpoint
+        max_sp = self._config.max_setpoint
+        limits = SetpointLimits(min_sp, max_sp, lower_offset, upper_offset)
 
-        if mode == MODE_BOOST:
-            if self._is_cooling():
-                # Maximum cooling → lowest setpoint (most aggressive cooling)
-                target = current_temp + lower_offset
-            else:
-                target = current_temp + upper_offset
-            return max(min_sp, min(target, max_sp))
-
-        elif mode == MODE_MINIMAL:
-            if self._is_cooling():
-                # Minimal cooling → highest setpoint (least cooling)
-                target = current_temp + upper_offset
-            else:
-                target = current_temp + lower_offset
-            return clamp_setpoint(target, current_temp, lower_offset, upper_offset, min_sp, max_sp)
-
-        elif mode == MODE_SETPOINT:
-            return clamp_setpoint(
-                self._target_temperature, current_temp,
-                lower_offset, upper_offset, min_sp, max_sp
-            )
-
-        elif mode == MODE_POWER:
-            return self._power_manager.calculate_setpoint(
-                entity_id,
+        return calculate_mode_target(
+            mode,
+            current_temp,
+            limits,
+            target_temperature=self._target_temperature,
+            is_cooling=cooling,
+            current_target=current_target,
+            mpc_target=self._read_mpc_temperature_state,
+            thermal_target=lambda: self._compute_thermal_mpc_target(min_sp, max_sp),
+            power_target=lambda: self._power_manager.calculate_setpoint(
+                device.get(CONF_CLIMATE_ENTITY, ""),
                 current_power,
                 min_sp,
                 max_sp,
                 current_target_setpoint=current_target,
-                is_cooling=self._is_cooling(),
-            )
-        elif mode == MODE_MPC:
-            return clamp_setpoint(
-                self._target_temperature, current_temp,
-                lower_offset, upper_offset, min_sp, max_sp
-            )
-        elif mode == MODE_THERMAL_MPC:
-            return clamp_setpoint(
-                self._target_temperature, current_temp,
-                lower_offset, upper_offset, min_sp, max_sp
-            )
-
-        return min_sp
+                is_cooling=cooling,
+            ),
+        )
 
     def _compute_thermal_mpc_target(
         self,
