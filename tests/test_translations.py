@@ -50,8 +50,12 @@ def test_translations_keep_placeholders():
 
 def test_entity_translation_keys_exist():
     entity = _load("en")["entity"]
-    for platform in ("sensor", "climate"):
-        source = (COMPONENT / f"{platform}.py").read_text(encoding="utf-8")
+    sources = {
+        "sensor": [COMPONENT / "sensor.py", *(COMPONENT / "sensors").glob("*.py")],
+        "climate": [COMPONENT / "climate.py"],
+    }
+    for platform, files in sources.items():
+        source = "\n".join(path.read_text(encoding="utf-8") for path in files)
         keys = set(re.findall(r'translation_key(?: =|=) ?"(\w+)"', source))
         assert keys, platform
         for key in keys:
