@@ -51,6 +51,7 @@ from .helpers import (
     merged_entry_data,
     summary_signal,
 )
+from .utils import power_to_watts
 
 
 class _TranslationMixin:
@@ -795,7 +796,7 @@ class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
 
         # Assist pump status
         hp_status = payload.get("hp_status", [])
-        assist_pumps = [hp for hp in hp_status if hp.get("role") not in ["hp1"]]
+        assist_pumps = [hp for hp in hp_status if hp.get("assist_mode") is not None]
 
         if not assist_pumps:
             parts.append(self._t("assist_no_pumps", "No assist pumps configured"))
@@ -1204,7 +1205,7 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"{friendly} Total Power"
         self._attr_unique_id = f"powerclimate_total_power_{entry.entry_id}"
         self._attr_extra_state_attributes = {}
-        self._attr_native_unit_of_measurement = None
+        self._attr_native_unit_of_measurement = "W"
         self._energy_sensors = self._configured_energy_sensors()
         self._sensor_unsubs: list[Callable[[], None]] = []
         self._attr_device_info = integration_device_info(entry)
@@ -1231,7 +1232,6 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        self._ensure_unit()
         config = merged_entry_data(self._entry)
         devices = config.get(CONF_DEVICES, [])
         total = 0.0
@@ -1305,15 +1305,7 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
         value = state.state
         if value in (None, "unknown", "unavailable"):
             return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            normalized = (
-                value.replace(",", ".")
-                if isinstance(value, str)
-                else value
-            )
-            try:
-                return float(normalized)
-            except (TypeError, ValueError):
-                return None
+        return power_to_watts(
+            value,
+            getattr(state, "attributes", {}).get("unit_of_measurement"),
+        )

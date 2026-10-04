@@ -345,6 +345,33 @@ class TestSetpointCalculation:
 
         assert adjusted <= initial
 
+    def test_calculate_cooling_changes_setpoint_in_correct_direction(self):
+        """Cooling should use lower setpoints for more power and higher for less."""
+        self.manager.set_budget("climate.hp1", 1000.0)
+
+        under_budget = self.manager.calculate_setpoint(
+            "climate.hp1",
+            current_power=500.0,
+            min_setpoint=16.0,
+            max_setpoint=30.0,
+            current_target_setpoint=22.0,
+            is_cooling=True,
+        )
+
+        self.manager.clear_budget("climate.hp1")
+        self.manager.set_budget("climate.hp2", 1000.0)
+        over_budget = self.manager.calculate_setpoint(
+            "climate.hp2",
+            current_power=1500.0,
+            min_setpoint=16.0,
+            max_setpoint=30.0,
+            current_target_setpoint=22.0,
+            is_cooling=True,
+        )
+
+        assert under_budget == 21.7
+        assert over_budget == 22.3
+
     def test_calculate_respects_min_max(self):
         """Should clamp setpoint to min/max bounds."""
         self.manager.set_budget("climate.hp1", 1000.0)

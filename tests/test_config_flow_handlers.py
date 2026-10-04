@@ -16,6 +16,7 @@ from custom_components.powerclimate.config_flow_handlers import (
     generate_device_id,
     generate_device_name,
     entry_name_from_input,
+    validate_advanced_input,
 )
 from custom_components.powerclimate.const import (
     CONF_ALLOW_ON_OFF_CONTROL,
@@ -227,7 +228,16 @@ class TestExperimentalOptions:
         assert processed == {
             CONF_HOUSE_POWER_SENSOR: "sensor.house_net",
             CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
+            "outdoor_temp_sensor_entity_id": None,
         }
+
+    def test_process_experimental_input_clears_missing_optional_sensors(self):
+        """Missing optional sensor fields should clear stored selections."""
+        processed = process_experimental_input({})
+
+        assert processed[CONF_HOUSE_POWER_SENSOR] is None
+        assert processed[CONF_MPC_TEMPERATURE_SENSOR] is None
+        assert processed["outdoor_temp_sensor_entity_id"] is None
 
 
 class TestWaterDeviceOptions:
@@ -272,3 +282,23 @@ class TestAdvancedOptions:
         processed = process_advanced_input({CONF_MAXIMUM_OVERSHOOT: 1.2})
 
         assert processed[CONF_MAXIMUM_OVERSHOOT] == 1.2
+
+    def test_validate_advanced_input_rejects_reversed_setpoint_range(self):
+        """Minimum setpoint must not exceed maximum setpoint."""
+        errors = validate_advanced_input(
+            {
+                "min_setpoint_override": 25.0,
+                "max_setpoint_override": 20.0,
+            }
+        )
+
+        assert errors["base"] == "invalid_setpoint_range"
+
+    def test_validate_advanced_input_accepts_valid_setpoint_range(self):
+        """A normal minimum/maximum pair should pass validation."""
+        assert validate_advanced_input(
+            {
+                "min_setpoint_override": 20.0,
+                "max_setpoint_override": 25.0,
+            }
+        ) == {}

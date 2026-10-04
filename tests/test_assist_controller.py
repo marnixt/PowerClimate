@@ -1,7 +1,7 @@
 """Tests for PowerClimate assist controller."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from custom_components.powerclimate.assist_controller import AssistPumpController
 from custom_components.powerclimate.models import AssistTimerState
@@ -215,6 +215,36 @@ def test_update_timers_resets_both_timers_when_no_condition() -> None:
     assert state.on_timer_seconds == 0.0
     assert state.off_timer_seconds == 0.0
     assert state.active_condition == "none"
+
+
+def test_update_timers_tracks_elapsed_time_per_entity() -> None:
+    """Each assist pump should accumulate time from its own update cadence."""
+    controller = _make_controller()
+    start = datetime(2026, 10, 4, tzinfo=timezone.utc)
+    timestamps = [
+        start,
+        start,
+        start + timedelta(seconds=30),
+        start + timedelta(seconds=30),
+        start + timedelta(seconds=60),
+        start + timedelta(seconds=60),
+    ]
+
+    with patch("custom_components.powerclimate.assist_controller.datetime") as mock_datetime:
+        mock_datetime.now.side_effect = timestamps
+        for entity_id in ("climate.hp1", "climate.hp2") * 3:
+            controller.update_timers(
+                entity_id,
+                room_temp=18.0,
+                target_temp=21.0,
+                room_eta_hours=2.0,
+                water_temp=25.0,
+                room_derivative=0.1,
+                is_running=False,
+            )
+
+    assert controller.get_timer_state("climate.hp1").on_timer_seconds == 60.0
+    assert controller.get_timer_state("climate.hp2").on_timer_seconds == 60.0
 
 
 # ---------------------------------------------------------------------------

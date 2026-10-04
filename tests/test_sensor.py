@@ -3,11 +3,18 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from custom_components.powerclimate.const import CONF_CLIMATE_ENTITY, CONF_DEVICES, DOMAIN
+from custom_components.powerclimate.const import (
+    CONF_CLIMATE_ENTITY,
+    CONF_DEVICES,
+    CONF_ENERGY_SENSOR,
+    DOMAIN,
+)
 from custom_components.powerclimate.sensor import (
     PowerClimateThermalModelTextSensor,
     PowerClimateThermalRecommendedSensor,
     PowerClimateThermalSummarySensor,
+    PowerClimateAssistSummarySensor,
+    PowerClimateTotalPowerSensor,
     _build_behavior_sensors,
 )
 
@@ -120,6 +127,70 @@ def test_build_behavior_sensors_single_device_creates_hp1_sensor() -> None:
     assert len(sensors) == 1
     assert "hp1" in created
     assert "hpN" not in created
+
+
+def test_total_power_sensor_normalizes_mixed_units_to_watts() -> None:
+    """Total power should add W and kW sources in one unit."""
+    hass = MagicMock()
+    states = {
+        "sensor.hp1_power": SimpleNamespace(
+            state="1000",
+            attributes={"unit_of_measurement": "W"},
+        ),
+        "sensor.hp2_power": SimpleNamespace(
+            state="1.5",
+            attributes={"unit_of_measurement": "kW"},
+        ),
+    }
+    hass.states.get.side_effect = states.get
+    entry = make_entry(
+        [
+            {
+                CONF_CLIMATE_ENTITY: "climate.hp1",
+                CONF_ENERGY_SENSOR: "sensor.hp1_power",
+            },
+            {
+                CONF_CLIMATE_ENTITY: "climate.hp2",
+                CONF_ENERGY_SENSOR: "sensor.hp2_power",
+            },
+        ]
+    )
+    sensor = PowerClimateTotalPowerSensor(hass, MagicMock(), entry)
+
+    assert sensor.native_value == 2500
+    assert sensor.native_unit_of_measurement == "W"
+    assert sensor.extra_state_attributes["sources"] == [
+        {"sensor": "sensor.hp1_power", "value": 1000},
+        {"sensor": "sensor.hp2_power", "value": 1500},
+    ]
+
+
+def test_assist_summary_includes_first_air_device_without_water_device() -> None:
+    """An air-only installation must not hide its first assist pump."""
+    hass = SimpleNamespace(
+        data={DOMAIN: {}},
+        config=SimpleNamespace(language="en", path=lambda *parts: ""),
+    )
+    sensor = PowerClimateAssistSummarySensor(hass, make_entry([]))
+    sensor._strings = {}
+
+    text = sensor._format_payload(
+        {
+            "room_temperature": 21.0,
+            "target_temperature": 21.0,
+            "hp_status": [
+                {
+                    "role": "hp1",
+                    "name": "Living Room",
+                    "assist_mode": "off",
+                    "hvac_mode": "off",
+                }
+            ],
+        }
+    )
+
+    assert "No assist pumps configured" not in text
+    assert "Living" in text
 
 
 # ---------------------------------------------------------------------------

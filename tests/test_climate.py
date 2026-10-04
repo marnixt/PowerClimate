@@ -11,6 +11,7 @@ from custom_components.powerclimate.const import (
     CONF_ALLOW_ON_OFF_CONTROL,
     CONF_CLIMATE_ENTITY,
     MODE_BOOST,
+    MODE_MINIMAL,
     MODE_MPC,
     MODE_OFF,
 )
@@ -113,6 +114,26 @@ def test_determine_hp1_mode_returns_mpc_for_mpc_preset() -> None:
     assert entity._determine_hp1_mode(False, "climate.hp1") == MODE_MPC
 
 
+def test_build_hp_status_marks_first_air_device_as_assist() -> None:
+    """HP status should use configured role instead of positional HP number."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(is_water_device=lambda _device, _index: False)
+    entity.coordinator = SimpleNamespace(data={})
+    entity._active_devices = set()
+    entity._assist_modes = {}
+    entity._hp_modes = {}
+    entity._assist_controller = MagicMock()
+    entity._assist_controller.get_hp_status_info.return_value = {}
+
+    status = entity._build_hp_status(
+        [{CONF_CLIMATE_ENTITY: "climate.air1"}],
+        {"climate.air1": {"hvac_mode": "off"}},
+    )
+
+    assert status[0]["assist_mode"] == "off"
+    assert status[0]["allow_on_off_control"] is False
+
+
 def test_calculate_mode_target_uses_mpc_sensor_value() -> None:
     """MPC mode should use the external advised temperature when available."""
     entity = make_entity()
@@ -154,6 +175,57 @@ def test_calculate_mode_target_falls_back_when_mpc_sensor_unavailable() -> None:
     )
 
     assert target == 21.0
+
+
+def test_calculate_mode_target_preserves_existing_target_without_current_temperature() -> None:
+    """Missing device temperature must not force the most aggressive setpoint."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.COOL
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=30.0,
+        get_device_lower_offset_cooling=lambda _device, _index: -4.0,
+        get_device_upper_offset_cooling=lambda _device, _index: 0.0,
+    )
+    entity._target_temperature = 22.0
+
+    target = entity._calculate_mode_target(
+        MODE_MINIMAL,
+        current_temp=None,
+        device={CONF_CLIMATE_ENTITY: "climate.air1"},
+        index=0,
+        current_target=24.0,
+    )
+
+    assert target == 24.0
+
+
+def test_ensure_device_mode_does_not_cache_failed_service_call() -> None:
+    """A failed mode call must remain retryable."""
+    entity = make_entity()
+    entity._device_modes = {}
+    entity._last_mode_call = {}
+    entity._call_climate_service = AsyncMock(return_value=False)
+
+    result = asyncio.run(entity._ensure_device_mode("climate.air1", HVACMode.COOL))
+
+    assert result is False
+    assert entity._device_modes == {}
+    assert entity._last_mode_call == {}
+
+
+def test_ensure_device_temperature_does_not_cache_failed_service_call() -> None:
+    """A failed temperature call must remain retryable."""
+    entity = make_entity()
+    entity._device_targets = {}
+    entity._last_temp_call = {}
+    entity._call_climate_service = AsyncMock(return_value=False)
+
+    result = asyncio.run(entity._ensure_device_temperature("climate.air1", 22.0))
+
+    assert result is False
+    assert entity._device_targets == {}
+    assert entity._last_temp_call == {}
 
 
 def test_is_water_overshoot_condition_true_uses_maximum_overshoot() -> None:
@@ -721,6 +793,46 @@ def test_handle_assist_control_turns_on_when_mode_supported() -> None:
     assert result is True
     entity._ensure_device_mode.assert_awaited_once_with("climate.air1", HVACMode.COOL)
     entity._assist_controller.record_turn_on.assert_called_once_with("climate.air1")
+
+
+def test_handle_assist_control_does_not_record_failed_turn_on() -> None:
+    """A failed ON command must leave the pump state recorded as off."""
+    entity = _make_assist_entity(HVACMode.COOL)
+    entity._assist_controller.evaluate_action.return_value = ("cool", "condition_met")
+    entity._ensure_device_mode = AsyncMock(return_value=False)
+    payloads = {
+        "climate.air1": {
+            "hvac_mode": "off",
+            "hvac_modes": ["off", "heat", "cool"],
+        }
+    }
+
+    result = asyncio.run(
+        entity._handle_assist_control("climate.air1", is_running=False, device_payloads=payloads)
+    )
+
+    assert result is False
+    entity._assist_controller.record_turn_on.assert_not_called()
+
+
+def test_handle_assist_control_does_not_record_failed_turn_off() -> None:
+    """A failed OFF command must leave the pump state recorded as running."""
+    entity = _make_assist_entity(HVACMode.COOL)
+    entity._assist_controller.evaluate_action.return_value = ("off", "condition_met")
+    entity._ensure_device_mode = AsyncMock(return_value=False)
+    payloads = {
+        "climate.air1": {
+            "hvac_mode": "cool",
+            "hvac_modes": ["off", "heat", "cool"],
+        }
+    }
+
+    result = asyncio.run(
+        entity._handle_assist_control("climate.air1", is_running=True, device_payloads=payloads)
+    )
+
+    assert result is True
+    entity._assist_controller.record_turn_off.assert_not_called()
 
 
 def test_handle_assist_control_allows_mode_change_when_hvac_modes_unknown() -> None:

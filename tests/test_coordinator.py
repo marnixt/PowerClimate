@@ -84,6 +84,15 @@ class TestReadFloat:
         self.coordinator.hass.states.get.return_value = state
         assert self.coordinator._read_float("sensor.x") == 20.0
 
+    def test_read_power_converts_kw_to_watts(self) -> None:
+        state = SimpleNamespace(
+            state="1.5",
+            attributes={"unit_of_measurement": "kW"},
+        )
+        self.coordinator.hass.states.get.return_value = state
+
+        assert self.coordinator._read_power("sensor.power") == 1500.0
+
 
 # ---------------------------------------------------------------------------
 # _compute_derivative

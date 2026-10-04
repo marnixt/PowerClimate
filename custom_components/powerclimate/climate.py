@@ -805,7 +805,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                     "Switching %s from %s to %s due to mode change",
                     entity_id, device_hvac_mode, current_hvac_mode,
                 )
-                await self._ensure_device_mode(entity_id, target_mode, force=True)
+                success = await self._ensure_device_mode(entity_id, target_mode, force=True)
+                if not success:
+                    return True
                 device_payloads.update(self._get_device_payloads())
                 return True
             else:
@@ -813,7 +815,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                     "Turning OFF %s: mode %s not supported (supported: %s)",
                     entity_id, current_hvac_mode, supported_modes,
                 )
-                await self._ensure_device_mode(entity_id, HVACMode.OFF)
+                success = await self._ensure_device_mode(entity_id, HVACMode.OFF)
+                if not success:
+                    return True
                 self._assist_controller.record_turn_off(entity_id)
                 device_payloads.update(self._get_device_payloads())
                 return False
@@ -832,7 +836,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 return False
             target_mode = HVACMode.COOL if action == "cool" else HVACMode.HEAT
             _LOGGER.info("Turning ON %s (mode=%s): condition=%s", entity_id, action, reason)
-            await self._ensure_device_mode(entity_id, target_mode)
+            success = await self._ensure_device_mode(entity_id, target_mode)
+            if not success:
+                return False
             self._assist_controller.record_turn_on(entity_id)
             # Refresh payload
             device_payloads.update(self._get_device_payloads())
@@ -840,7 +846,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         elif action == "off" and is_running:
             _LOGGER.info("Turning OFF %s: condition=%s", entity_id, reason)
-            await self._ensure_device_mode(entity_id, HVACMode.OFF)
+            success = await self._ensure_device_mode(entity_id, HVACMode.OFF)
+            if not success:
+                return True
             self._assist_controller.record_turn_off(entity_id)
             device_payloads.update(self._get_device_payloads())
             return False
@@ -913,7 +921,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         entity_id = device.get(CONF_CLIMATE_ENTITY, "")
 
         if current_temp is None:
-            return min_sp
+            fallback_target = safe_float(current_target)
+            if fallback_target is None:
+                fallback_target = safe_float(self._target_temperature)
+            if fallback_target is None:
+                return min_sp
+            return max(min_sp, min(fallback_target, max_sp))
 
         if mode == MODE_MPC:
             mpc_target = self._read_mpc_temperature_state()
@@ -961,6 +974,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 min_sp,
                 max_sp,
                 current_target_setpoint=current_target,
+                is_cooling=self._is_cooling(),
             )
         elif mode == MODE_MPC:
             return clamp_setpoint(
@@ -1286,14 +1300,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         action_description: str,
         *,
         allow_when_off: bool = False,
-    ) -> None:
-        """Call a climate service with error handling."""
+    ) -> bool:
+        """Call a climate service and report whether it succeeded."""
         if self.hvac_mode == HVACMode.OFF and not allow_when_off:
             _LOGGER.debug(
                 "PowerClimate is OFF; skipping %s for %s",
                 action_description, entity_id,
             )
-            return
+            return False
 
         try:
             await asyncio.wait_for(
@@ -1306,6 +1320,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 ),
                 timeout=SERVICE_CALL_TIMEOUT_SECONDS,
             )
+            return True
         except asyncio.TimeoutError:
             _LOGGER.warning(
                 "%s for %s timed out after %ss",
@@ -1318,6 +1333,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             )
         except HomeAssistantError as err:
             _LOGGER.warning("Failed %s for %s: %s", action_description, entity_id, err)
+        return False
 
     async def _ensure_device_mode(
         self,
@@ -1326,43 +1342,49 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         *,
         allow_when_off: bool = False,
         force: bool = False,
-    ) -> None:
+    ) -> bool:
         """Ensure device is in the specified HVAC mode."""
         if self._device_modes.get(entity_id) == mode:
-            return
+            return True
         if not force and self._recent_call(self._last_mode_call, entity_id):
             _LOGGER.debug("Skipping HVAC mode set for %s due to cooldown", entity_id)
-            return
+            return False
 
-        await self._call_climate_service(
+        success = await self._call_climate_service(
             entity_id,
             SERVICE_SET_HVAC_MODE,
             {ATTR_ENTITY_ID: entity_id, ATTR_HVAC_MODE: mode},
             "mode change",
             allow_when_off=allow_when_off,
         )
+        if not success:
+            return False
         self._device_modes[entity_id] = mode
         self._mark_call(self._last_mode_call, entity_id)
+        return True
 
     async def _ensure_device_temperature(
         self, entity_id: str, temperature: float
-    ) -> None:
+    ) -> bool:
         """Ensure device has the specified target temperature."""
         previous = self._device_targets.get(entity_id)
         if previous is not None and abs(previous - temperature) < SETPOINT_COMPARISON_THRESHOLD:
-            return
+            return True
         if self._recent_call(self._last_temp_call, entity_id):
             _LOGGER.debug("Skipping temperature set for %s due to cooldown", entity_id)
-            return
+            return False
 
-        await self._call_climate_service(
+        success = await self._call_climate_service(
             entity_id,
             SERVICE_SET_TEMPERATURE,
             {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: temperature},
             "temperature set",
         )
+        if not success:
+            return False
         self._device_targets[entity_id] = temperature
         self._mark_call(self._last_temp_call, entity_id)
+        return True
 
     def _recent_call(self, store: dict[str, datetime], entity_id: str) -> bool:
         """Check if a recent call was made for an entity."""
@@ -1494,8 +1516,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
             is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
 
+            is_water_device = self._config.is_water_device(device, index)
+
             # Water derivative
-            if index == 0:
+            if is_water_device:
                 water_derivative = safe_float(coordinator_data.get("water_derivative"))
             else:
                 water_derivative = safe_float(payload.get("water_derivative"))
@@ -1507,7 +1531,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 "entity_id": entity_id,
                 "active": entity_id in self._active_devices or is_running,
                 "hvac_mode": payload.get("hvac_mode"),
-                "assist_mode": self._assist_modes.get(entity_id, "off") if index > 0 else None,
+                "assist_mode": (
+                    self._assist_modes.get(entity_id, "off")
+                    if not is_water_device
+                    else None
+                ),
                 "powerclimate_mode": self._hp_modes.get(entity_id, MODE_OFF),
                 "current_temperature": safe_float(payload.get("current_temperature")),
                 "target_temperature": safe_float(payload.get("target_temperature")),
@@ -1528,7 +1556,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             }
 
             # Assist-specific info
-            if index > 0:
+            if not is_water_device:
                 hp_info["allow_on_off_control"] = device.get(CONF_ALLOW_ON_OFF_CONTROL, False)
                 hp_info.update(self._assist_controller.get_hp_status_info(entity_id))
 

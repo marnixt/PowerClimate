@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -129,8 +131,22 @@ class TimerStorage:
     def _write_file(self, data: dict[str, Any]) -> None:
         """Write storage file (blocking)."""
         self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._storage_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        temp_fd, temp_name = tempfile.mkstemp(
+            prefix=f".{self._storage_path.name}.",
+            dir=self._storage_path.parent,
+        )
+        try:
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_name, self._storage_path)
+        except Exception:
+            try:
+                os.unlink(temp_name)
+            except OSError:
+                pass
+            raise
 
     def _delete_file(self) -> None:
         """Delete storage file (blocking)."""

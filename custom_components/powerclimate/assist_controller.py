@@ -57,7 +57,7 @@ class AssistPumpController:
 
         # Timer state by entity_id
         self._timer_states: dict[str, AssistTimerState] = {}
-        self._last_timer_update: datetime | None = None
+        self._last_timer_update: dict[str, datetime] = {}
         self._last_persist_time: datetime | None = None
         self._states_loaded = False
 
@@ -152,9 +152,10 @@ class AssistPumpController:
 
         # Calculate time delta
         delta_seconds = 0.0
-        if self._last_timer_update is not None:
-            delta_seconds = (now - self._last_timer_update).total_seconds()
-        self._last_timer_update = now
+        last_timer_update = self._last_timer_update.get(entity_id)
+        if last_timer_update is not None:
+            delta_seconds = (now - last_timer_update).total_seconds()
+        self._last_timer_update[entity_id] = now
 
         # Track state transitions
         if state.running_state != is_running:

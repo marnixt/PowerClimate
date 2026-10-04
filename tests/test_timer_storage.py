@@ -224,3 +224,20 @@ class TestTimerStorageInit:
 
         assert storage._loaded is False
         assert storage._data == {}
+
+    def test_write_failure_preserves_existing_file(self, tmp_path):
+        """A failed write must not destroy the previous timer snapshot."""
+        hass = MagicMock()
+        hass.config.path = MagicMock(return_value=str(tmp_path / "timers.json"))
+        storage = TimerStorage(hass, "entry1")
+        previous = '{"version": 1, "timers": {"climate.hp1": {}}}'
+        storage._storage_path.write_text(previous, encoding="utf-8")
+
+        with patch(
+            "custom_components.powerclimate.timer_storage.json.dump",
+            side_effect=OSError("disk full"),
+        ), pytest.raises(OSError):
+            storage._write_file({"version": STORAGE_VERSION, "timers": {}})
+
+        assert storage._storage_path.read_text(encoding="utf-8") == previous
+        assert not list(tmp_path.glob(".timers.json.*"))

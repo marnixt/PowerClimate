@@ -32,6 +32,7 @@ from .config_flow_handlers import (
     select_devices_defaults,
     slugify,
     split_devices_by_role,
+    validate_advanced_input,
     water_device_defaults,
 )
 from .const import (
@@ -446,9 +447,13 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
         """Handle advanced/expert configuration options."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            advanced_data = process_advanced_input(user_input)
-            self._entry_data.update(advanced_data)
-            return await self._create_options_entry()
+            validation_data = dict(self._base)
+            validation_data.update(user_input)
+            errors = validate_advanced_input(validation_data)
+            if not errors:
+                advanced_data = process_advanced_input(user_input)
+                self._entry_data.update(advanced_data)
+                return await self._create_options_entry()
 
         defaults = advanced_form_defaults(self._base, user_input)
         schema = build_advanced_schema(defaults)
