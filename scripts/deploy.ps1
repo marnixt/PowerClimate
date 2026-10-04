@@ -102,7 +102,8 @@ function Get-GitBlobBytes([string]$Commit, [string]$Path) {
 }
 
 function Get-TargetFiles([string]$Root) {
-    $rootFull = (Resolve-Path $Root).Path.TrimEnd('\')
+    # ProviderPath drops the "FileSystem::" prefix that Path carries for UNC paths.
+    $rootFull = (Resolve-Path $Root).ProviderPath.TrimEnd('\')
     Get-ChildItem -Path $rootFull -Recurse -File -Force | Where-Object {
         $relative = $_.FullName.Substring($rootFull.Length + 1)
         $parts = $relative -split '\\'
