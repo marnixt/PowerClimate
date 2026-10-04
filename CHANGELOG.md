@@ -2,7 +2,7 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
-## 0.7.0 — (upcoming)
+## 0.7.0 — 2026-10-04
 
 **Summary**
 Adds cooling (air conditioning) support for air-based heat pumps.
