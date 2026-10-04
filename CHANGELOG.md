@@ -2,7 +2,10 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
-## Unreleased
+## 0.8.0 — 2026-10-04
+
+**Summary**
+Dutch translation, diagnostics download, translated entity names and an options flow fix.
 
 **Highlights**
 - **Dutch translation** of the config flow, options and entity names.
@@ -16,6 +19,9 @@ This file consolidates release notes and highlights useful for HACS and users.
 **Internal**
 - Device commands, mode target calculation and summary building moved out of the climate entity into separately tested modules; `sensor.py` is split into a `sensors` package.
 - Config and options flows are tested end to end.
+
+**Compatibility**
+- Target Home Assistant: 2024.11.0+
 
 ## 0.7.0 — 2026-10-04
 
