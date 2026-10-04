@@ -48,7 +48,6 @@ from .const import (
 )
 from .helpers import (
     async_get_strings,
-    entry_friendly_name,
     integration_device_info,
     merged_entry_data,
     summary_signal,
@@ -200,8 +199,8 @@ class PowerClimateDerivativeSensor(CoordinatorEntity, SensorEntity):
         """Initialize the derivative sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"powerclimate_derivative_{entry.entry_id}"
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} Temperature Derivative"
+        self._attr_translation_key = "temperature_derivative"
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
 
     @property
@@ -226,8 +225,8 @@ class PowerClimateWaterDerivativeSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = (
             f"powerclimate_water_derivative_{entry.entry_id}"
         )
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} Water Derivative"
+        self._attr_translation_key = "water_derivative"
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
 
     @property
@@ -253,8 +252,8 @@ class PowerClimateInternalMPCSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._entry_id = entry.entry_id
         self._attr_unique_id = f"powerclimate_internal_mpc_{entry.entry_id}"
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} Internal MPC"
+        self._attr_translation_key = "internal_mpc"
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
 
     @property
@@ -305,7 +304,7 @@ class _SummaryPayloadTextSensor(_TranslationMixin, SensorEntity):
         hass: HomeAssistant,
         entry: ConfigEntry,
         *,
-        name_suffix: str,
+        translation_key: str,
         unique_id_prefix: str,
     ) -> None:
         super().__init__()
@@ -315,9 +314,9 @@ class _SummaryPayloadTextSensor(_TranslationMixin, SensorEntity):
         self._entry_id = entry.entry_id
         self._signal = summary_signal(self._entry_id)
         self._unsub = None
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} {name_suffix}"
+        self._attr_translation_key = translation_key
         self._attr_unique_id = f"{unique_id_prefix}_{self._entry_id}"
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
         self._value = self._format_payload(_snapshot_summary(hass, self._entry_id))
 
@@ -369,9 +368,9 @@ class PowerClimatePowerBudgetSensor(_TranslationMixin, SensorEntity):
         self._entry_id = entry.entry_id
         self._signal = summary_signal(self._entry_id)
         self._unsub = None
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} Power Budget"
+        self._attr_translation_key = "power_budget"
         self._attr_unique_id = f"powerclimate_power_budget_{self._entry_id}"
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
         self._payload: dict[str, Any] | None = _snapshot_summary(hass, self._entry_id)
 
@@ -425,7 +424,7 @@ class PowerClimateThermalSummarySensor(_SummaryPayloadTextSensor):
         super().__init__(
             hass,
             entry,
-            name_suffix="Thermal Summary",
+            translation_key="thermal_summary",
             unique_id_prefix="powerclimate_text_thermal_summary",
         )
 
@@ -604,7 +603,7 @@ class PowerClimateThermalModelTextSensor(_SummaryPayloadTextSensor):
         super().__init__(
             hass,
             entry,
-            name_suffix="Thermal Model Status",
+            translation_key="thermal_model_status",
             unique_id_prefix="powerclimate_text_thermal_model",
         )
 
@@ -679,9 +678,9 @@ class PowerClimateThermalRecommendedSensor(_TranslationMixin, SensorEntity):
         self._entry_id = entry.entry_id
         self._signal = summary_signal(self._entry_id)
         self._unsub = None
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} Thermal Advised Temperature"
+        self._attr_translation_key = "thermal_advised_temperature"
         self._attr_unique_id = f"powerclimate_thermal_recommended_{self._entry_id}"
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
         self._payload: dict[str, Any] | None = _snapshot_summary(hass, self._entry_id)
 
@@ -735,7 +734,7 @@ class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
         super().__init__(
             hass,
             entry,
-            name_suffix="Assist Summary",
+            translation_key="assist_summary",
             unique_id_prefix="powerclimate_text_assist_summary",
         )
 
@@ -1008,8 +1007,9 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         self._attr_unique_id = (
             f"powerclimate_text_{prefix}_behavior_{self._entry_id}"
         )
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} {label} Behavior"
+        self._attr_translation_key = "hp_behavior"
+        self._attr_translation_placeholders = {"label": label}
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
 
     @property
@@ -1220,12 +1220,12 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self.hass = hass
         self._entry = entry
-        friendly = entry_friendly_name(entry)
-        self._attr_name = f"{friendly} Total Power"
+        self._attr_translation_key = "total_power"
         self._attr_unique_id = f"powerclimate_total_power_{entry.entry_id}"
         self._attr_extra_state_attributes = {}
         self._energy_sensors = self._configured_energy_sensors()
         self._sensor_unsubs: list[Callable[[], None]] = []
+        self._attr_has_entity_name = True
         self._attr_device_info = integration_device_info(entry)
 
     async def async_added_to_hass(self) -> None:

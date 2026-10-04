@@ -52,7 +52,6 @@ from .const import (
     TEMPERATURE_CHANGE_THRESHOLD,
 )
 from .helpers import (
-    entry_friendly_name,
     integration_device_info,
     summary_signal,
 )
@@ -111,7 +110,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         super().__init__(coordinator)
         self.hass = hass
         self._entry = entry
-        self._attr_name = entry_friendly_name(entry)
+        # The climate entity is the device's main feature and takes its name.
+        self._attr_has_entity_name = True
+        self._attr_name = None
+        self._attr_translation_key = "powerclimate"
         self._attr_unique_id = f"powerclimate_{entry.entry_id}"
         self._attr_device_info = integration_device_info(entry)
         self._attr_hvac_mode = HVACMode.HEAT

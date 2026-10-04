@@ -322,6 +322,56 @@
       "invalid_eta_thresholds": "The OFF ETA threshold must be lower than the ON ETA threshold."
     }
   },
+  "entity": {
+    "climate": {
+      "powerclimate": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "none": "None",
+              "boost": "Boost",
+              "away": "Away",
+              "solar": "Solar",
+              "mpc": "MPC",
+              "thermal": "Thermal"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "temperature_derivative": {
+        "name": "Temperature Derivative"
+      },
+      "water_derivative": {
+        "name": "Water Derivative"
+      },
+      "internal_mpc": {
+        "name": "Internal MPC"
+      },
+      "power_budget": {
+        "name": "Power Budget"
+      },
+      "thermal_advised_temperature": {
+        "name": "Thermal Advised Temperature"
+      },
+      "total_power": {
+        "name": "Total Power"
+      },
+      "thermal_summary": {
+        "name": "Thermal Summary"
+      },
+      "thermal_model_status": {
+        "name": "Thermal Model Status"
+      },
+      "assist_summary": {
+        "name": "Assist Summary"
+      },
+      "hp_behavior": {
+        "name": "{label} Behavior"
+      }
+    }
+  },
   "exceptions": {
     "unknown_target": {
       "message": "No PowerClimate entry manages {entity_id}."
