@@ -270,7 +270,7 @@ class PowerClimateConfigFlow(_DeviceFlowMixin, config_entries.ConfigFlow, domain
         return PowerClimateOptionsFlowHandler(config_entry)
 
 
-class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
+class PowerClimateOptionsFlowHandler(_DeviceFlowMixin, config_entries.OptionsFlow):
     """Handle options for PowerClimate."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
