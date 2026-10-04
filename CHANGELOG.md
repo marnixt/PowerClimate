@@ -2,6 +2,21 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
+## Unreleased
+
+**Highlights**
+- **Dutch translation** of the config flow, options and entity names.
+- **Diagnostics download**: "Download diagnostics" now includes the configuration, effective settings, coordinator data, thermal model, climate state and assist timers.
+- **Translated entity names**: entities use Home Assistant's entity naming, so names follow device renames and can be translated. Existing entity IDs do not change.
+
+**Fixes**
+- Editing an existing PowerClimate entry ("Configure" → "Edit setup") no longer fails with "Unknown error occurred".
+- A non-numeric heat pump temperature no longer breaks the ETA in the heat pump status.
+
+**Internal**
+- Device commands, mode target calculation and summary building moved out of the climate entity into separately tested modules; `sensor.py` is split into a `sensors` package.
+- Config and options flows are tested end to end.
+
 ## 0.7.0 — 2026-10-04
 
 **Summary**
