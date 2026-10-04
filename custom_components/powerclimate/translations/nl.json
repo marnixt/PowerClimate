@@ -1,0 +1,383 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "PowerClimate",
+        "description": "Geef de integratie een naam, kies de ruimtetemperatuursensoren en kies eventueel thermostaten om te spiegelen.",
+        "sections": {
+          "general": {
+            "name": "Algemene instellingen",
+            "data": {
+              "entry_name": "Naam van de integratie",
+              "room_sensor_entity_ids": "Kies een of meer ruimtetemperatuursensoren"
+            }
+          },
+          "mirrors": {
+            "name": "Gespiegelde thermostaten",
+            "data": {
+              "mirror_climate_entity_ids": "Kies de thermostaten die PowerClimate moet spiegelen"
+            }
+          }
+        }
+      },
+      "select_devices": {
+        "title": "Warmtepompen kiezen",
+        "description": "Kies welke warmtepompen je wilt instellen. Je kunt één optionele water-warmtepomp en een willekeurig aantal lucht-warmtepompen instellen.",
+        "sections": {
+          "water_device": {
+            "name": "💧 Water-warmtepomp",
+            "data": {
+              "water_climate_entity_id": "Water-warmtepomp (optioneel)"
+            },
+            "data_description": {
+              "water_climate_entity_id": "Kies een water-warmtepomp (hydronisch) als je die hebt. Dit apparaat regelt de aanvoertemperatuur."
+            }
+          },
+          "air_devices": {
+            "name": "🌬️ Lucht-warmtepompen",
+            "data": {
+              "air_climate_entity_ids": "Lucht-warmtepompen (optioneel)"
+            },
+            "data_description": {
+              "air_climate_entity_ids": "Kies een of meer lucht-luchtwarmtepompen. Deze springen bij als assist-apparaat."
+            }
+          }
+        }
+      },
+      "water_device": {
+        "title": "💧 Instellingen water-warmtepomp",
+        "description": "Stel de sensoren en offsets van de water-warmtepomp in.",
+        "sections": {
+          "sensors": {
+            "name": "Sensoren",
+            "data": {
+              "energy_sensor_entity_id": "Vermogenssensor",
+              "water_sensor_entity_id": "Watertemperatuursensor"
+            }
+          },
+          "control": {
+            "name": "Regelgedrag",
+            "data": {
+              "lower_setpoint_offset_heating": "Onderste setpoint-offset — verwarmen (°C)",
+              "upper_setpoint_offset_heating": "Bovenste setpoint-offset — verwarmen (°C)",
+              "allow_on_off_control": "PowerClimate mag het apparaat aan- en uitzetten"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Doel in minimaal-verwarmen-modus = huidige temperatuur + onderste offset (meestal negatief).",
+              "upper_setpoint_offset_heating": "Maximum in setpoint-verwarmen-modus = huidige temperatuur + bovenste offset.",
+              "allow_on_off_control": "Als dit aan staat, zet PowerClimate deze warmtepomp automatisch aan of uit wanneer het systeem dat nodig heeft."
+            }
+          }
+        }
+      },
+      "air_device": {
+        "title": "🌬️ {hp_label}: {device_name}",
+        "description": "Stel lucht-warmtepomp {device_index} van {total_air_devices} in.",
+        "sections": {
+          "energy": {
+            "name": "Energiemeting",
+            "data": {
+              "energy_sensor_entity_id": "Vermogenssensor"
+            }
+          },
+          "heating": {
+            "name": "Offsets verwarmen",
+            "data": {
+              "lower_setpoint_offset_heating": "Onderste setpoint-offset — verwarmen (°C)",
+              "upper_setpoint_offset_heating": "Bovenste setpoint-offset — verwarmen (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Doel in minimaal-verwarmen-modus = huidige temperatuur + onderste offset (meestal negatief).",
+              "upper_setpoint_offset_heating": "Maximum in setpoint-verwarmen-modus = huidige temperatuur + bovenste offset."
+            }
+          },
+          "cooling": {
+            "name": "Offsets koelen",
+            "data": {
+              "lower_setpoint_offset_cooling": "Onderste setpoint-offset — koelen (°C)",
+              "upper_setpoint_offset_cooling": "Bovenste setpoint-offset — koelen (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_cooling": "Doel in maximaal-koelen-modus = huidige temperatuur + onderste offset (bijv. −4 °C). Koelt het sterkst.",
+              "upper_setpoint_offset_cooling": "Doel in minimaal-koelen-modus = huidige temperatuur + bovenste offset (bijv. 0 °C). Koelt het minst."
+            }
+          },
+          "control": {
+            "name": "Regelgedrag",
+            "data": {
+              "allow_on_off_control": "PowerClimate mag het apparaat aan- en uitzetten"
+            },
+            "data_description": {
+              "allow_on_off_control": "Als dit aan staat, zet PowerClimate deze warmtepomp automatisch aan of uit wanneer het systeem dat nodig heeft."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "room_sensor_required": "Kies een of meer ruimtetemperatuursensoren.",
+      "no_devices": "Kies ten minste één warmtepomp.",
+      "required": "Dit veld is verplicht.",
+      "duplicate": "Een apparaat kan niet zowel water- als luchttype zijn.",
+      "invalid": "Kies een geldige waarde.",
+      "invalid_offsets": "De onderste offset moet kleiner dan of gelijk aan de bovenste offset zijn.",
+      "invalid_setpoint_range": "De minimumtemperatuur moet lager zijn dan de maximumtemperatuur.",
+      "invalid_eta_thresholds": "De ETA-drempel voor UIT moet lager zijn dan de ETA-drempel voor AAN."
+    },
+    "abort": {
+      "already_configured": "Er is al een PowerClimate-integratie met deze naam."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "PowerClimate-opties",
+        "description": "Wat wil je wijzigen?",
+        "menu_options": {
+          "edit_setup": "Instellingen wijzigen (naam, ruimtesensoren, apparaten)",
+          "advanced": "Geavanceerde opties",
+          "experimental": "Experimenteel"
+        }
+      },
+      "edit_setup": {
+        "title": "PowerClimate bijwerken",
+        "description": "Hernoem de integratie, wijzig de ruimtetemperatuursensoren of pas de gespiegelde thermostaten aan.",
+        "sections": {
+          "general": {
+            "name": "Algemene instellingen",
+            "data": {
+              "entry_name": "Naam van de integratie",
+              "room_sensor_entity_ids": "Kies een of meer ruimtetemperatuursensoren"
+            }
+          },
+          "mirrors": {
+            "name": "Gespiegelde thermostaten",
+            "data": {
+              "mirror_climate_entity_ids": "Kies de thermostaten die PowerClimate moet spiegelen"
+            }
+          }
+        }
+      },
+      "select_devices": {
+        "title": "Warmtepompen kiezen",
+        "description": "Kies welke warmtepompen je wilt instellen. Je kunt één optionele water-warmtepomp en een willekeurig aantal lucht-warmtepompen instellen.",
+        "sections": {
+          "water_device": {
+            "name": "💧 Water-warmtepomp",
+            "data": {
+              "water_climate_entity_id": "Water-warmtepomp (optioneel)"
+            },
+            "data_description": {
+              "water_climate_entity_id": "Kies een water-warmtepomp (hydronisch) als je die hebt. Dit apparaat regelt de aanvoertemperatuur."
+            }
+          },
+          "air_devices": {
+            "name": "🌬️ Lucht-warmtepompen",
+            "data": {
+              "air_climate_entity_ids": "Lucht-warmtepompen (optioneel)"
+            },
+            "data_description": {
+              "air_climate_entity_ids": "Kies een of meer lucht-luchtwarmtepompen. Deze springen bij als assist-apparaat."
+            }
+          }
+        }
+      },
+      "water_device": {
+        "title": "💧 Instellingen water-warmtepomp",
+        "description": "Stel de sensoren en offsets van de water-warmtepomp in.",
+        "sections": {
+          "sensors": {
+            "name": "Sensoren",
+            "data": {
+              "energy_sensor_entity_id": "Vermogenssensor",
+              "water_sensor_entity_id": "Watertemperatuursensor"
+            }
+          },
+          "control": {
+            "name": "Regelgedrag",
+            "data": {
+              "lower_setpoint_offset_heating": "Onderste setpoint-offset — verwarmen (°C)",
+              "upper_setpoint_offset_heating": "Bovenste setpoint-offset — verwarmen (°C)",
+              "allow_on_off_control": "PowerClimate mag het apparaat aan- en uitzetten"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Doel in minimaal-verwarmen-modus = huidige temperatuur + onderste offset (meestal negatief).",
+              "upper_setpoint_offset_heating": "Maximum in setpoint-verwarmen-modus = huidige temperatuur + bovenste offset.",
+              "allow_on_off_control": "Als dit aan staat, zet PowerClimate deze warmtepomp automatisch aan of uit wanneer het systeem dat nodig heeft."
+            }
+          }
+        }
+      },
+      "air_device": {
+        "title": "🌬️ {hp_label}: {device_name}",
+        "description": "Stel lucht-warmtepomp {device_index} van {total_air_devices} in.",
+        "sections": {
+          "energy": {
+            "name": "Energiemeting",
+            "data": {
+              "energy_sensor_entity_id": "Vermogenssensor"
+            }
+          },
+          "heating": {
+            "name": "Offsets verwarmen",
+            "data": {
+              "lower_setpoint_offset_heating": "Onderste setpoint-offset — verwarmen (°C)",
+              "upper_setpoint_offset_heating": "Bovenste setpoint-offset — verwarmen (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Doel in minimaal-verwarmen-modus = huidige temperatuur + onderste offset (meestal negatief).",
+              "upper_setpoint_offset_heating": "Maximum in setpoint-verwarmen-modus = huidige temperatuur + bovenste offset."
+            }
+          },
+          "cooling": {
+            "name": "Offsets koelen",
+            "data": {
+              "lower_setpoint_offset_cooling": "Onderste setpoint-offset — koelen (°C)",
+              "upper_setpoint_offset_cooling": "Bovenste setpoint-offset — koelen (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_cooling": "Doel in maximaal-koelen-modus = huidige temperatuur + onderste offset (bijv. −4 °C). Koelt het sterkst.",
+              "upper_setpoint_offset_cooling": "Doel in minimaal-koelen-modus = huidige temperatuur + bovenste offset (bijv. 0 °C). Koelt het minst."
+            }
+          },
+          "control": {
+            "name": "Regelgedrag",
+            "data": {
+              "allow_on_off_control": "PowerClimate mag het apparaat aan- en uitzetten"
+            },
+            "data_description": {
+              "allow_on_off_control": "Als dit aan staat, zet PowerClimate deze warmtepomp automatisch aan of uit wanneer het systeem dat nodig heeft."
+            }
+          }
+        }
+      },
+      "advanced": {
+        "title": "Geavanceerde opties",
+        "description": "Stem het gedrag van PowerClimate fijn af. Laat velden leeg om de standaardwaarden te gebruiken. Wijzigingen gaan direct in.",
+        "sections": {
+          "setpoints": {
+            "name": "Setpoint-grenzen",
+            "data": {
+              "min_setpoint_override": "Minimumtemperatuur",
+              "max_setpoint_override": "Maximumtemperatuur",
+              "maximum_overshoot": "Maximale doorschot"
+            },
+            "data_description": {
+              "min_setpoint_override": "Absolute minimumtemperatuur die naar een pomp wordt gestuurd (standaard: 16°C).",
+              "max_setpoint_override": "Absolute maximumtemperatuur die naar een pomp wordt gestuurd (standaard: 30°C).",
+              "maximum_overshoot": "Maximaal toegestane doorschot boven de doeltemperatuur."
+            }
+          },
+          "assist": {
+            "name": "Assist-gedrag",
+            "data": {
+              "assist_timer_seconds": "Duur assist-timer",
+              "assist_on_eta_threshold_minutes": "ETA-drempel inschakelen",
+              "assist_off_eta_threshold_minutes": "ETA-drempel uitschakelen",
+              "assist_min_on_minutes": "Minimale AAN-tijd",
+              "assist_min_off_minutes": "Minimale UIT-tijd",
+              "assist_water_temp_threshold": "Watertemperatuurdrempel",
+              "assist_stall_temp_delta": "Temperatuurverschil voor stilstand"
+            },
+            "data_description": {
+              "assist_timer_seconds": "Hoe lang een voorwaarde waar moet blijven voordat er actie volgt (standaard: 300 seconden).",
+              "assist_on_eta_threshold_minutes": "Zet assist-pompen aan als de ETA boven deze waarde komt (standaard: 60 minuten).",
+              "assist_off_eta_threshold_minutes": "Zet assist-pompen uit als de ETA onder deze waarde zakt (standaard: 15 minuten).",
+              "assist_min_on_minutes": "Houd assist-pompen minstens zo lang aan (standaard: 20 minuten).",
+              "assist_min_off_minutes": "Houd assist-pompen minstens zo lang uit (standaard: 10 minuten).",
+              "assist_water_temp_threshold": "Zet assist-pompen aan als het water deze temperatuur bereikt (standaard: 40°C).",
+              "assist_stall_temp_delta": "Drempel voor het temperatuurverschil waarbij stilstand wordt gedetecteerd (standaard: 0,5°C)."
+            }
+          }
+        }
+      },
+      "experimental": {
+        "title": "Experimenteel",
+        "description": "Experimentele functies. Deze instellingen kunnen zonder aankondiging veranderen.",
+        "sections": {
+          "sensors": {
+            "name": "Experimentele sensoren",
+            "data": {
+              "house_power_sensor_entity_id": "Netto vermogenssensor van het huis (W, negatief = teruglevering)",
+              "mpc_temperature_sensor_entity_id": "MPC-temperatuursensor",
+              "outdoor_temp_sensor_entity_id": "Buitentemperatuursensor"
+            },
+            "data_description": {
+              "house_power_sensor_entity_id": "Netto actief vermogen met teken. Bij een negatieve waarde ziet PowerClimate dit als teruglevering/overschot en verdeelt het budgetten in de Solar-preset.",
+              "mpc_temperature_sensor_entity_id": "Optionele sensor die als regeltemperatuur voor MPC wordt gebruikt.",
+              "outdoor_temp_sensor_entity_id": "Optionele buitentemperatuursensor voor experimentele regellogica."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "room_sensor_required": "Kies een of meer ruimtetemperatuursensoren.",
+      "no_devices": "Kies ten minste één warmtepomp.",
+      "required": "Dit veld is verplicht.",
+      "duplicate": "Een apparaat kan niet zowel water- als luchttype zijn.",
+      "invalid": "Kies een geldige waarde.",
+      "invalid_offsets": "De onderste offset moet kleiner dan of gelijk aan de bovenste offset zijn.",
+      "invalid_setpoint_range": "De minimumtemperatuur moet lager zijn dan de maximumtemperatuur.",
+      "invalid_eta_thresholds": "De ETA-drempel voor UIT moet lager zijn dan de ETA-drempel voor AAN."
+    }
+  },
+  "entity": {
+    "climate": {
+      "powerclimate": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "none": "Geen",
+              "boost": "Boost",
+              "away": "Afwezig",
+              "solar": "Zon",
+              "mpc": "MPC",
+              "thermal": "Thermisch"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "temperature_derivative": {
+        "name": "Temperatuurverloop"
+      },
+      "water_derivative": {
+        "name": "Waterverloop"
+      },
+      "internal_mpc": {
+        "name": "Interne MPC"
+      },
+      "power_budget": {
+        "name": "Vermogensbudget"
+      },
+      "thermal_advised_temperature": {
+        "name": "Thermisch geadviseerde temperatuur"
+      },
+      "total_power": {
+        "name": "Totaal vermogen"
+      },
+      "thermal_summary": {
+        "name": "Thermisch overzicht"
+      },
+      "thermal_model_status": {
+        "name": "Status thermisch model"
+      },
+      "assist_summary": {
+        "name": "Assist-overzicht"
+      },
+      "hp_behavior": {
+        "name": "{label} gedrag"
+      }
+    }
+  },
+  "exceptions": {
+    "unknown_target": {
+      "message": "Geen enkele PowerClimate-integratie beheert {entity_id}."
+    },
+    "ambiguous_target": {
+      "message": "Meerdere PowerClimate-integraties beheren {entity_id}; het doel is niet eenduidig."
+    }
+  }
+}
