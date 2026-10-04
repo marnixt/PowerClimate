@@ -8,11 +8,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 
-from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    ATTR_HVAC_MODE,
-    SERVICE_SET_HVAC_MODE,
     SERVICE_SET_TEMPERATURE,
     ClimateEntityFeature,
     HVACAction,
@@ -20,8 +17,7 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import Context, HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
@@ -40,7 +36,6 @@ from .const import (
     DEFAULT_TARGET_TEMPERATURE,
     DOMAIN,
     ETA_THRESHOLD_MET_DURATION_MINUTES,
-    MIN_SET_CALL_INTERVAL_SECONDS,
     MODE_BOOST,
     MODE_MINIMAL,
     MODE_MPC,
@@ -48,10 +43,9 @@ from .const import (
     MODE_POWER,
     MODE_SETPOINT,
     MODE_THERMAL_MPC,
-    SERVICE_CALL_TIMEOUT_SECONDS,
-    SETPOINT_COMPARISON_THRESHOLD,
     TEMPERATURE_CHANGE_THRESHOLD,
 )
+from .device_commands import DeviceCommander
 from .helpers import (
     integration_device_info,
     summary_signal,
@@ -133,9 +127,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         )
 
         self._active_devices: set[str] = set()
-        self._device_modes: dict[str, HVACMode] = {}
-        self._device_targets: dict[str, float] = {}
-        self._device_reported_targets: dict[str, float | None] = {}
         self._hp_modes: dict[str, str] = {}  # entity_id -> MODE_*
         self._hp_state_unsubs: dict[str, Callable[[], None]] = {}
         self._assist_modes: dict[str, str] = {}
@@ -146,10 +137,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._summary_payload: dict[str, Any] | None = None
         self._summary_signal = summary_signal(entry.entry_id)
         self._pending_state_refresh = False
-        self._last_mode_call: dict[str, datetime] = {}
-        self._last_temp_call: dict[str, datetime] = {}
         self._mirror_entities: set[str] = set()
-        self._integration_context = Context()
+        self._commands = DeviceCommander(
+            hass, lambda: self.hvac_mode == HVACMode.OFF
+        )
         self._eta_exceeded_since: datetime | None = None
         self._water_overshoot_since: datetime | None = None
         self._coordinator_update_pending = False
@@ -1279,9 +1270,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     def _state_context_is_integration(self, state) -> bool:
         """Check if state change originated from this integration."""
-        if not state or not state.context:
-            return False
-        return state.context.id == self._integration_context.id
+        return self._commands.is_own_state(state)
 
     def _has_temperature_change(
         self, old_state, new_state
@@ -1323,44 +1312,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         *,
         allow_when_off: bool = False,
     ) -> bool:
-        """Call a climate service with error handling.
-
-        Returns:
-            True when the call completed successfully.
-        """
-        if self.hvac_mode == HVACMode.OFF and not allow_when_off:
-            _LOGGER.debug(
-                "PowerClimate is OFF; skipping %s for %s",
-                action_description, entity_id,
-            )
-            return False
-
-        try:
-            await asyncio.wait_for(
-                self.hass.services.async_call(
-                    CLIMATE_DOMAIN,
-                    service_name,
-                    service_data,
-                    blocking=True,
-                    context=self._integration_context,
-                ),
-                timeout=SERVICE_CALL_TIMEOUT_SECONDS,
-            )
-        except TimeoutError:
-            _LOGGER.warning(
-                "%s for %s timed out after %ss",
-                action_description.capitalize(), entity_id, SERVICE_CALL_TIMEOUT_SECONDS,
-            )
-        except ServiceNotFound:
-            _LOGGER.error(
-                "Service %s.%s not found for %s",
-                CLIMATE_DOMAIN, service_name, entity_id,
-            )
-        except HomeAssistantError as err:
-            _LOGGER.warning("Failed %s for %s: %s", action_description, entity_id, err)
-        else:
-            return True
-        return False
+        """Call a climate service; see DeviceCommander.call_service."""
+        return await self._commands.call_service(
+            entity_id,
+            service_name,
+            service_data,
+            action_description,
+            allow_when_off=allow_when_off,
+        )
 
     async def _ensure_device_mode(
         self,
@@ -1370,91 +1329,16 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         allow_when_off: bool = False,
         force: bool = False,
     ) -> bool:
-        """Ensure device is in the specified HVAC mode.
-
-        Compares against the device's actual state so that external changes
-        (manual switching, device resets) are corrected; the cache is only a
-        fallback when the state is unavailable.
-
-        Returns:
-            True when the device is (now) in the requested mode.
-        """
-        state = self.hass.states.get(entity_id)
-        if state is not None:
-            if state.state == mode:
-                return True
-        elif self._device_modes.get(entity_id) == mode:
-            return True
-        if not force and self._recent_call(self._last_mode_call, entity_id):
-            _LOGGER.debug("Skipping HVAC mode set for %s due to cooldown", entity_id)
-            return False
-
-        success = await self._call_climate_service(
-            entity_id,
-            SERVICE_SET_HVAC_MODE,
-            {ATTR_ENTITY_ID: entity_id, ATTR_HVAC_MODE: mode},
-            "mode change",
-            allow_when_off=allow_when_off,
+        """Ensure device is in the given HVAC mode; see DeviceCommander.ensure_mode."""
+        return await self._commands.ensure_mode(
+            entity_id, mode, allow_when_off=allow_when_off, force=force
         )
-        self._mark_call(self._last_mode_call, entity_id)
-        if success:
-            self._device_modes[entity_id] = mode
-        return success
 
     async def _ensure_device_temperature(
         self, entity_id: str, temperature: float
     ) -> None:
-        """Ensure device has the specified target temperature.
-
-        Skips the call when the device already reports the target, or when we
-        already sent this target and the device's setpoint has not changed
-        since (devices may round, e.g. to 0.5 °C steps). A setpoint changed
-        externally is therefore re-applied.
-        """
-        reported = self._reported_setpoint(entity_id)
-        if reported is not None and abs(reported - temperature) < SETPOINT_COMPARISON_THRESHOLD:
-            return
-        previous = self._device_targets.get(entity_id)
-        if (
-            previous is not None
-            and abs(previous - temperature) < SETPOINT_COMPARISON_THRESHOLD
-            and reported == self._device_reported_targets.get(entity_id)
-        ):
-            return
-        if self._recent_call(self._last_temp_call, entity_id):
-            _LOGGER.debug("Skipping temperature set for %s due to cooldown", entity_id)
-            return
-
-        success = await self._call_climate_service(
-            entity_id,
-            SERVICE_SET_TEMPERATURE,
-            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: temperature},
-            "temperature set",
-        )
-        self._mark_call(self._last_temp_call, entity_id)
-        if success:
-            self._device_targets[entity_id] = temperature
-            self._device_reported_targets[entity_id] = self._reported_setpoint(entity_id)
-
-    def _reported_setpoint(self, entity_id: str) -> float | None:
-        """Return the setpoint a climate entity currently reports."""
-        state = self.hass.states.get(entity_id)
-        if state is None:
-            return None
-        return safe_float(state.attributes.get(ATTR_TEMPERATURE))
-
-    def _recent_call(self, store: dict[str, datetime], entity_id: str) -> bool:
-        """Check if a recent call was made for an entity."""
-        last_call = store.get(entity_id)
-        if not last_call:
-            return False
-        return (
-            datetime.now(timezone.utc) - last_call
-        ).total_seconds() < MIN_SET_CALL_INTERVAL_SECONDS
-
-    def _mark_call(self, store: dict[str, datetime], entity_id: str) -> None:
-        """Mark a call timestamp for an entity."""
-        store[entity_id] = datetime.now(timezone.utc)
+        """Ensure device has the given setpoint; see DeviceCommander.ensure_temperature."""
+        await self._commands.ensure_temperature(entity_id, temperature)
 
     async def async_set_power_budget(self, entity_id: str, power_watts: float) -> None:
         """Set a manual power budget for a device (service API)."""
