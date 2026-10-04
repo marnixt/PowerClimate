@@ -1,60 +1,116 @@
 {
   "config": {
-      "step": {
-        "user": {
-          "title": "PowerClimate",
-          "description": "Start by naming the integration, selecting room temperature sensors, and optionally choosing thermostats to mirror.",
-        "data": {
-          "entry_name": "Integration name",
-          "room_sensor_entity_ids": "Select one or more room temperature sensors",
-          "mirror_climate_entity_ids": "Select thermostats that PowerClimate should mirror"
+    "step": {
+      "user": {
+        "title": "PowerClimate",
+        "description": "Start by naming the integration, selecting room temperature sensors, and optionally choosing thermostats to mirror.",
+        "sections": {
+          "general": {
+            "name": "General setup",
+            "data": {
+              "entry_name": "Integration name",
+              "room_sensor_entity_ids": "Select one or more room temperature sensors"
+            }
+          },
+          "mirrors": {
+            "name": "Mirrored thermostats",
+            "data": {
+              "mirror_climate_entity_ids": "Select thermostats that PowerClimate should mirror"
+            }
+          }
         }
       },
       "select_devices": {
         "title": "Select heat pumps",
         "description": "Select which heat pumps to configure. You can configure one optional water-based heat pump and any number of air heat pumps.",
-        "data": {
-          "water_climate_entity_id": "💧 Water-based heat pump (optional)",
-          "air_climate_entity_ids": "🌬️ Air heat pumps (optional)"
-        },
-        "data_description": {
-          "water_climate_entity_id": "Select a water/hydronic heat pump if you have one. This device controls flow temperature.",
-          "air_climate_entity_ids": "Select one or more air-to-air heat pumps. These act as assist devices."
+        "sections": {
+          "water_device": {
+            "name": "💧 Water heat pump",
+            "data": {
+              "water_climate_entity_id": "Water-based heat pump (optional)"
+            },
+            "data_description": {
+              "water_climate_entity_id": "Select a water/hydronic heat pump if you have one. This device controls flow temperature."
+            }
+          },
+          "air_devices": {
+            "name": "🌬️ Air heat pumps",
+            "data": {
+              "air_climate_entity_ids": "Air heat pumps (optional)"
+            },
+            "data_description": {
+              "air_climate_entity_ids": "Select one or more air-to-air heat pumps. These act as assist devices."
+            }
+          }
         }
       },
       "water_device": {
         "title": "💧 Water heat pump configuration",
         "description": "Configure the water-based heat pump sensors and offsets.",
-        "data": {
-          "energy_sensor_entity_id": "Power sensor",
-          "water_sensor_entity_id": "Water temperature sensor",
-          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
-          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
-          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
-        },
-        "data_description": {
-          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
-          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
-          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+        "sections": {
+          "sensors": {
+            "name": "Sensors",
+            "data": {
+              "energy_sensor_entity_id": "Power sensor",
+              "water_sensor_entity_id": "Water temperature sensor"
+            }
+          },
+          "control": {
+            "name": "Control behavior",
+            "data": {
+              "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+              "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
+              "allow_on_off_control": "Allow PowerClimate to turn device on and off"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+              "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
+              "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+            }
+          }
         }
       },
       "air_device": {
         "title": "🌬️ {hp_label}: {device_name}",
         "description": "Configure air heat pump {device_index} of {total_air_devices}.",
-        "data": {
-          "energy_sensor_entity_id": "Power sensor",
-          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
-          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
-          "lower_setpoint_offset_cooling": "Lower setpoint offset — cooling (°C)",
-          "upper_setpoint_offset_cooling": "Upper setpoint offset — cooling (°C)",
-          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
-        },
-        "data_description": {
-          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
-          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
-          "lower_setpoint_offset_cooling": "Max-cool mode target = current temp + lower offset (e.g. −4 °C). Most aggressive cooling.",
-          "upper_setpoint_offset_cooling": "Min-cool mode target = current temp + upper offset (e.g. 0 °C). Least cooling.",
-          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+        "sections": {
+          "energy": {
+            "name": "Energy monitoring",
+            "data": {
+              "energy_sensor_entity_id": "Power sensor"
+            }
+          },
+          "heating": {
+            "name": "Heating offsets",
+            "data": {
+              "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+              "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+              "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset."
+            }
+          },
+          "cooling": {
+            "name": "Cooling offsets",
+            "data": {
+              "lower_setpoint_offset_cooling": "Lower setpoint offset — cooling (°C)",
+              "upper_setpoint_offset_cooling": "Upper setpoint offset — cooling (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_cooling": "Max-cool mode target = current temp + lower offset (e.g. −4 °C). Most aggressive cooling.",
+              "upper_setpoint_offset_cooling": "Min-cool mode target = current temp + upper offset (e.g. 0 °C). Least cooling."
+            }
+          },
+          "control": {
+            "name": "Control behavior",
+            "data": {
+              "allow_on_off_control": "Allow PowerClimate to turn device on and off"
+            },
+            "data_description": {
+              "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+            }
+          }
         }
       }
     },
@@ -81,93 +137,172 @@
       "edit_setup": {
         "title": "Update PowerClimate",
         "description": "Rename the integration, change room temperature sensors, or update mirrored thermostats.",
-        "data": {
-          "entry_name": "Integration name",
-          "room_sensor_entity_ids": "Select one or more room temperature sensors",
-          "mirror_climate_entity_ids": "Select thermostats that PowerClimate should mirror"
+        "sections": {
+          "general": {
+            "name": "General setup",
+            "data": {
+              "entry_name": "Integration name",
+              "room_sensor_entity_ids": "Select one or more room temperature sensors"
+            }
+          },
+          "mirrors": {
+            "name": "Mirrored thermostats",
+            "data": {
+              "mirror_climate_entity_ids": "Select thermostats that PowerClimate should mirror"
+            }
+          }
         }
       },
       "select_devices": {
         "title": "Select heat pumps",
         "description": "Select which heat pumps to configure. You can configure one optional water-based heat pump and any number of air heat pumps.",
-        "data": {
-          "water_climate_entity_id": "💧 Water-based heat pump (optional)",
-          "air_climate_entity_ids": "🌬️ Air heat pumps (optional)"
-        },
-        "data_description": {
-          "water_climate_entity_id": "Select a water/hydronic heat pump if you have one. This device controls flow temperature.",
-          "air_climate_entity_ids": "Select one or more air-to-air heat pumps. These act as assist devices."
+        "sections": {
+          "water_device": {
+            "name": "💧 Water heat pump",
+            "data": {
+              "water_climate_entity_id": "Water-based heat pump (optional)"
+            },
+            "data_description": {
+              "water_climate_entity_id": "Select a water/hydronic heat pump if you have one. This device controls flow temperature."
+            }
+          },
+          "air_devices": {
+            "name": "🌬️ Air heat pumps",
+            "data": {
+              "air_climate_entity_ids": "Air heat pumps (optional)"
+            },
+            "data_description": {
+              "air_climate_entity_ids": "Select one or more air-to-air heat pumps. These act as assist devices."
+            }
+          }
         }
       },
       "water_device": {
         "title": "💧 Water heat pump configuration",
         "description": "Configure the water-based heat pump sensors and offsets.",
-        "data": {
-          "energy_sensor_entity_id": "Power sensor",
-          "water_sensor_entity_id": "Water temperature sensor",
-          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
-          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
-          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
-        },
-        "data_description": {
-          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
-          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
-          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+        "sections": {
+          "sensors": {
+            "name": "Sensors",
+            "data": {
+              "energy_sensor_entity_id": "Power sensor",
+              "water_sensor_entity_id": "Water temperature sensor"
+            }
+          },
+          "control": {
+            "name": "Control behavior",
+            "data": {
+              "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+              "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
+              "allow_on_off_control": "Allow PowerClimate to turn device on and off"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+              "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
+              "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+            }
+          }
         }
       },
       "air_device": {
         "title": "🌬️ {hp_label}: {device_name}",
         "description": "Configure air heat pump {device_index} of {total_air_devices}.",
-        "data": {
-          "energy_sensor_entity_id": "Power sensor",
-          "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
-          "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)",
-          "lower_setpoint_offset_cooling": "Lower setpoint offset — cooling (°C)",
-          "upper_setpoint_offset_cooling": "Upper setpoint offset — cooling (°C)",
-          "allow_on_off_control": "Allow PowerClimate to turn device on and off"
-        },
-        "data_description": {
-          "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
-          "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset.",
-          "lower_setpoint_offset_cooling": "Max-cool mode target = current temp + lower offset (e.g. −4 °C). Most aggressive cooling.",
-          "upper_setpoint_offset_cooling": "Min-cool mode target = current temp + upper offset (e.g. 0 °C). Least cooling.",
-          "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+        "sections": {
+          "energy": {
+            "name": "Energy monitoring",
+            "data": {
+              "energy_sensor_entity_id": "Power sensor"
+            }
+          },
+          "heating": {
+            "name": "Heating offsets",
+            "data": {
+              "lower_setpoint_offset_heating": "Lower setpoint offset — heating (°C)",
+              "upper_setpoint_offset_heating": "Upper setpoint offset — heating (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_heating": "Minimal-heat mode target = current temp + lower offset (typically negative).",
+              "upper_setpoint_offset_heating": "Setpoint-heat mode ceiling = current temp + upper offset."
+            }
+          },
+          "cooling": {
+            "name": "Cooling offsets",
+            "data": {
+              "lower_setpoint_offset_cooling": "Lower setpoint offset — cooling (°C)",
+              "upper_setpoint_offset_cooling": "Upper setpoint offset — cooling (°C)"
+            },
+            "data_description": {
+              "lower_setpoint_offset_cooling": "Max-cool mode target = current temp + lower offset (e.g. −4 °C). Most aggressive cooling.",
+              "upper_setpoint_offset_cooling": "Min-cool mode target = current temp + upper offset (e.g. 0 °C). Least cooling."
+            }
+          },
+          "control": {
+            "name": "Control behavior",
+            "data": {
+              "allow_on_off_control": "Allow PowerClimate to turn device on and off"
+            },
+            "data_description": {
+              "allow_on_off_control": "When enabled, PowerClimate can automatically turn this heat pump on or off based on system needs."
+            }
+          }
         }
       },
       "advanced": {
         "title": "Advanced Options",
         "description": "Fine-tune PowerClimate behavior. Leave fields empty to use defaults. Changes take effect immediately.",
-        "data": {
-          "min_setpoint_override": "Min setpoint override (°C)",
-          "max_setpoint_override": "Max setpoint override (°C)",
-          "assist_timer_seconds": "Assist timer duration (seconds)",
-          "assist_on_eta_threshold_minutes": "ON: ETA threshold (minutes)",
-          "assist_off_eta_threshold_minutes": "OFF: ETA threshold (minutes)",
-          "assist_min_on_minutes": "Anti-short-cycle: minimum ON time (minutes)",
-          "assist_min_off_minutes": "Anti-short-cycle: minimum OFF time (minutes)",
-          "assist_water_temp_threshold": "Water temperature threshold (°C)",
-          "assist_stall_temp_delta": "Stall temperature delta (°C)"
-        },
-        "data_description": {
-          "min_setpoint_override": "Absolute minimum temperature sent to any pump (default: 16°C)",
-          "max_setpoint_override": "Absolute maximum temperature sent to any pump (default: 30°C)",
-          "assist_timer_seconds": "Duration a condition must remain true before action is taken (default: 300s)",
-          "assist_on_eta_threshold_minutes": "Turn assist pumps ON if ETA exceeds this (default: 60min)",
-          "assist_off_eta_threshold_minutes": "Turn assist pumps OFF if ETA drops below this (default: 15min)",
-          "assist_min_on_minutes": "Block turning assist pumps OFF until they've been ON for at least this long (default: 20min)",
-          "assist_min_off_minutes": "Block turning assist pumps ON until they've been OFF for at least this long (default: 10min)",
-          "assist_water_temp_threshold": "Turn assist pumps ON when water reaches this temperature (default: 40°C)",
-          "assist_stall_temp_delta": "Temperature difference threshold for stall detection (default: 0.5°C)"
+        "sections": {
+          "setpoints": {
+            "name": "Setpoint limits",
+            "data": {
+              "min_setpoint_override": "Minimum temperature",
+              "max_setpoint_override": "Maximum temperature",
+              "maximum_overshoot": "Maximum overshoot"
+            },
+            "data_description": {
+              "min_setpoint_override": "Absolute minimum temperature sent to any pump (default: 16°C).",
+              "max_setpoint_override": "Absolute maximum temperature sent to any pump (default: 30°C).",
+              "maximum_overshoot": "Maximum permitted overshoot above the target temperature."
+            }
+          },
+          "assist": {
+            "name": "Assist behavior",
+            "data": {
+              "assist_timer_seconds": "Assist timer duration",
+              "assist_on_eta_threshold_minutes": "Turn-on ETA threshold",
+              "assist_off_eta_threshold_minutes": "Turn-off ETA threshold",
+              "assist_min_on_minutes": "Minimum ON time",
+              "assist_min_off_minutes": "Minimum OFF time",
+              "assist_water_temp_threshold": "Water temperature threshold",
+              "assist_stall_temp_delta": "Stall temperature difference"
+            },
+            "data_description": {
+              "assist_timer_seconds": "Duration a condition must remain true before action is taken (default: 300 seconds).",
+              "assist_on_eta_threshold_minutes": "Turn assist pumps on if the ETA exceeds this value (default: 60 minutes).",
+              "assist_off_eta_threshold_minutes": "Turn assist pumps off if the ETA drops below this value (default: 15 minutes).",
+              "assist_min_on_minutes": "Keep assist pumps on for at least this long (default: 20 minutes).",
+              "assist_min_off_minutes": "Keep assist pumps off for at least this long (default: 10 minutes).",
+              "assist_water_temp_threshold": "Turn assist pumps on when water reaches this temperature (default: 40°C).",
+              "assist_stall_temp_delta": "Temperature difference threshold for stall detection (default: 0.5°C)."
+            }
+          }
         }
       },
       "experimental": {
         "title": "Experimental",
         "description": "Experimental features. These settings may change without notice.",
-        "data": {
-          "house_power_sensor_entity_id": "House net power sensor (W, negative = export)"
-        },
-        "data_description": {
-          "house_power_sensor_entity_id": "Signed net active power. If negative, PowerClimate treats it as export/surplus and will allocate budgets in the Solar preset."
+        "sections": {
+          "sensors": {
+            "name": "Experimental sensors",
+            "data": {
+              "house_power_sensor_entity_id": "House net power sensor (W, negative = export)",
+              "mpc_temperature_sensor_entity_id": "MPC temperature sensor",
+              "outdoor_temp_sensor_entity_id": "Outdoor temperature sensor"
+            },
+            "data_description": {
+              "house_power_sensor_entity_id": "Signed net active power. If negative, PowerClimate treats it as export/surplus and will allocate budgets in the Solar preset.",
+              "mpc_temperature_sensor_entity_id": "Optional sensor used as the MPC control temperature.",
+              "outdoor_temp_sensor_entity_id": "Optional outdoor temperature sensor for experimental control logic."
+            }
+          }
         }
       }
     },

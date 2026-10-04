@@ -2,15 +2,22 @@
 
 These tests focus on pure utility functions that don't require complex Home Assistant setup.
 """
+import json
+from pathlib import Path
+
 import pytest
 import voluptuous as vol
 
 from custom_components.powerclimate.config_flow_handlers import (
+    build_global_schema,
+    flatten_section_data,
     process_advanced_input,
+    process_global_input,
     process_water_device_input,
     water_device_defaults,
     experimental_form_defaults,
     parse_offset,
+    process_air_device_input,
     process_experimental_input,
     slugify,
     generate_device_id,
@@ -23,8 +30,14 @@ from custom_components.powerclimate.const import (
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_HOUSE_POWER_SENSOR,
+    CONF_LOWER_SETPOINT_OFFSET_COOLING,
+    CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MPC_TEMPERATURE_SENSOR,
+    CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_ROOM_SENSORS,
+    CONF_UPPER_SETPOINT_OFFSET_COOLING,
+    CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
     DEFAULT_ENTRY_NAME,
 )
@@ -230,6 +243,68 @@ class TestExperimentalOptions:
         }
 
 
+class TestCollapsibleSections:
+    """Tests for config-flow section payload handling."""
+
+    def test_global_schema_sections_flatten_for_existing_processor(self):
+        """Nested form data should keep the existing flat processor contract."""
+        submitted = build_global_schema(
+            {
+                CONF_ENTRY_NAME: "Home",
+                CONF_ROOM_SENSORS: ["sensor.living_room"],
+            }
+        )(
+            {
+                "general": {
+                    CONF_ENTRY_NAME: "PowerClimate",
+                    CONF_ROOM_SENSORS: ["sensor.living_room"],
+                },
+                "mirrors": {
+                    CONF_MIRROR_CLIMATE_ENTITIES: ["climate.living_room"],
+                },
+            }
+        )
+
+        flattened = flatten_section_data(submitted)
+        entry_name, data, errors = process_global_input(flattened, None)
+
+        assert errors == {}
+        assert entry_name == "PowerClimate"
+        assert data == {
+            CONF_ROOM_SENSORS: ["sensor.living_room"],
+            CONF_MIRROR_CLIMATE_ENTITIES: ["climate.living_room"],
+        }
+
+    def test_flatten_section_data_preserves_top_level_values(self):
+        """Non-section values should remain available to existing flows."""
+        assert flatten_section_data(
+            {
+                "section": {"value": 1},
+                "top_level": True,
+            }
+        ) == {"value": 1, "top_level": True}
+
+    def test_advanced_translation_uses_readable_field_labels(self):
+        """Advanced options should not expose internal configuration keys."""
+        translation_path = (
+            Path(__file__).parents[1]
+            / "custom_components"
+            / "powerclimate"
+            / "translations"
+            / "en.json"
+        )
+        translations = json.loads(translation_path.read_text(encoding="utf-8"))
+        advanced = translations["options"]["step"]["advanced"]
+        setpoint_data = advanced["sections"]["setpoints"]["data"]
+
+        assert setpoint_data == {
+            "min_setpoint_override": "Minimum temperature",
+            "max_setpoint_override": "Maximum temperature",
+            "maximum_overshoot": "Maximum overshoot",
+        }
+        assert "data" not in advanced
+
+
 class TestWaterDeviceOptions:
     """Tests for water-device specific helpers."""
 
@@ -262,6 +337,39 @@ class TestWaterDeviceOptions:
         assert device is not None
         assert device[CONF_CLIMATE_ENTITY] == "climate.hp1"
         assert device[CONF_ALLOW_ON_OFF_CONTROL] is True
+
+    @pytest.mark.parametrize(
+        "processor, input_data, climate_entity",
+        [
+            (
+                process_water_device_input,
+                {
+                    CONF_ENERGY_SENSOR: "sensor.hp1_power",
+                    CONF_WATER_SENSOR: "sensor.hp1_water",
+                    CONF_LOWER_SETPOINT_OFFSET_HEATING: 2.0,
+                    CONF_UPPER_SETPOINT_OFFSET_HEATING: 0.0,
+                },
+                "climate.hp1",
+            ),
+            (
+                process_air_device_input,
+                {
+                    CONF_ENERGY_SENSOR: "sensor.hp2_power",
+                    CONF_LOWER_SETPOINT_OFFSET_HEATING: 2.0,
+                    CONF_UPPER_SETPOINT_OFFSET_HEATING: 0.0,
+                },
+                "climate.hp2",
+            ),
+        ],
+    )
+    def test_device_input_rejects_reversed_heating_offsets(
+        self, processor, input_data, climate_entity
+    ):
+        """Both device processors should share the same offset validation."""
+        device, errors = processor(input_data, climate_entity, set())
+
+        assert device is None
+        assert errors["base"] == "invalid_offsets"
 
 
 class TestAdvancedOptions:

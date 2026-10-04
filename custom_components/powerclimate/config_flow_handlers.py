@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 import voluptuous as vol
+from homeassistant import data_entry_flow
 from homeassistant.helpers.selector import selector
 
 from .const import (
@@ -88,32 +89,47 @@ def upper_offset_selector() -> Any:
     return selector({"number": {"min": 0, "max": 10, "step": 0.1}})
 
 
-def required_field(
-    key: str,
-    defaults: dict[str, Any],
-    schema_fields: dict[Any, Any],
-    schema_value: Any,
-) -> None:
-    """Add a required field to the schema with optional default."""
-    default_value = defaults.get(key)
-    if default_value is None:
-        schema_fields[vol.Required(key)] = schema_value
-    else:
-        schema_fields[vol.Required(key, default=default_value)] = schema_value
+def sectioned_schema(
+    sections: tuple[tuple[str, dict[Any, Any], bool], ...],
+) -> vol.Schema:
+    """Build a schema from named collapsible sections."""
+    return vol.Schema(
+        {
+            vol.Required(name): data_entry_flow.section(
+                vol.Schema(fields), {"collapsed": collapsed}
+            )
+            for name, fields, collapsed in sections
+        }
+    )
 
 
-def optional_field(
-    key: str,
+def flatten_section_data(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Flatten nested section values returned by Home Assistant forms."""
+    flattened: dict[str, Any] = {}
+    for key, value in user_input.items():
+        if isinstance(value, dict):
+            flattened.update(value)
+        else:
+            flattened[key] = value
+    return flattened
+
+
+def build_fields(
     defaults: dict[str, Any],
-    schema_fields: dict[Any, Any],
-    schema_value: Any,
-) -> None:
-    """Add an optional field to the schema with optional default."""
-    default_value = defaults.get(key)
-    if default_value is None:
-        schema_fields[vol.Optional(key)] = schema_value
-    else:
-        schema_fields[vol.Optional(key, default=default_value)] = schema_value
+    fields: tuple[tuple[str, Any], ...],
+    *,
+    required: bool = False,
+) -> dict[Any, Any]:
+    """Build schema fields with defaults from the current configuration."""
+    field_type = vol.Required if required else vol.Optional
+    return {
+        (
+            field_type(key, default=defaults[key])
+            if defaults.get(key) is not None
+            else field_type(key)
+        ): schema_value
+        for key, schema_value in fields
+    }
 
 
 def parse_offset(raw: Any, default: float) -> tuple[float, bool]:
@@ -137,6 +153,39 @@ def parse_offset(raw: Any, default: float) -> tuple[float, bool]:
         return -0.0, True
 
     return value, True
+
+
+def parse_offset_pair(
+    user_input: dict[str, Any],
+    lower_key: str,
+    lower_default: float,
+    upper_key: str,
+    upper_default: float,
+    errors: dict[str, str],
+    *,
+    compare_invalid: bool = False,
+) -> tuple[float, float]:
+    """Parse and validate a lower/upper offset pair."""
+    lower, lower_valid = parse_offset(
+        user_input.get(lower_key, lower_default),
+        lower_default,
+    )
+    if not lower_valid:
+        errors[lower_key] = "invalid"
+
+    upper, upper_valid = parse_offset(
+        user_input.get(upper_key, upper_default),
+        upper_default,
+    )
+    if not upper_valid:
+        errors[upper_key] = "invalid"
+
+    if (compare_invalid or lower_valid and upper_valid) and lower > upper:
+        errors["base"] = "invalid_offsets"
+        errors.setdefault(lower_key, "invalid")
+        errors.setdefault(upper_key, "invalid")
+
+    return lower, upper
 
 
 def slugify(value: str) -> str:
@@ -238,26 +287,21 @@ def global_form_defaults(
 
 def build_global_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build schema for the global setup form."""
-    schema_fields: dict[Any, Any] = {}
-    required_field(
-        CONF_ENTRY_NAME,
+    general_fields = build_fields(
         defaults,
-        schema_fields,
-        text_selector(),
+        (
+            (CONF_ENTRY_NAME, text_selector()),
+            (CONF_ROOM_SENSORS, entity_selector("sensor", multiple=True)),
+        ),
+        required=True,
     )
-    required_field(
-        CONF_ROOM_SENSORS,
+    mirror_fields = build_fields(
         defaults,
-        schema_fields,
-        entity_selector("sensor", multiple=True),
+        ((CONF_MIRROR_CLIMATE_ENTITIES, entity_selector("climate", multiple=True)),),
     )
-    optional_field(
-        CONF_MIRROR_CLIMATE_ENTITIES,
-        defaults,
-        schema_fields,
-        entity_selector("climate", multiple=True),
+    return sectioned_schema(
+        (("general", general_fields, False), ("mirrors", mirror_fields, True))
     )
-    return vol.Schema(schema_fields)
 
 
 def process_global_input(
@@ -335,25 +379,21 @@ def select_devices_defaults(
 
 def build_select_devices_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build schema for selecting which devices to configure."""
-    schema_fields: dict[Any, Any] = {}
-
-    # Optional water-based heat pump (single select)
-    optional_field(
-        FIELD_WATER_CLIMATE,
+    water_fields = build_fields(
         defaults,
-        schema_fields,
-        entity_selector("climate"),
+        ((FIELD_WATER_CLIMATE, entity_selector("climate")),),
+    )
+    air_fields = build_fields(
+        defaults,
+        ((FIELD_AIR_CLIMATES, entity_selector("climate", multiple=True)),),
     )
 
-    # Optional air heat pumps (multi-select)
-    optional_field(
-        FIELD_AIR_CLIMATES,
-        defaults,
-        schema_fields,
-        entity_selector("climate", multiple=True),
+    return sectioned_schema(
+        (
+            ("water_device", water_fields, False),
+            ("air_devices", air_fields, False),
+        )
     )
-
-    return vol.Schema(schema_fields)
 
 
 def process_select_devices_input(
@@ -432,38 +472,29 @@ def water_device_defaults(
 
 def build_water_device_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build schema for water device configuration."""
-    schema_fields: dict[Any, Any] = {}
+    sensor_fields = build_fields(
+        defaults,
+        (
+            (CONF_ENERGY_SENSOR, entity_selector("sensor")),
+            (CONF_WATER_SENSOR, entity_selector("sensor")),
+        ),
+        required=True,
+    )
+    control_defaults = {**defaults, CONF_ALLOW_ON_OFF_CONTROL: defaults.get(
+        CONF_ALLOW_ON_OFF_CONTROL, False
+    )}
+    control_fields = build_fields(
+        control_defaults,
+        (
+            (CONF_LOWER_SETPOINT_OFFSET_HEATING, lower_offset_selector()),
+            (CONF_UPPER_SETPOINT_OFFSET_HEATING, upper_offset_selector()),
+            (CONF_ALLOW_ON_OFF_CONTROL, bool),
+        ),
+    )
 
-    required_field(
-        CONF_ENERGY_SENSOR,
-        defaults,
-        schema_fields,
-        entity_selector("sensor"),
+    return sectioned_schema(
+        (("sensors", sensor_fields, False), ("control", control_fields, True))
     )
-    required_field(
-        CONF_WATER_SENSOR,
-        defaults,
-        schema_fields,
-        entity_selector("sensor"),
-    )
-    optional_field(
-        CONF_LOWER_SETPOINT_OFFSET_HEATING,
-        defaults,
-        schema_fields,
-        lower_offset_selector(),
-    )
-    optional_field(
-        CONF_UPPER_SETPOINT_OFFSET_HEATING,
-        defaults,
-        schema_fields,
-        upper_offset_selector(),
-    )
-    schema_fields[vol.Optional(
-        CONF_ALLOW_ON_OFF_CONTROL,
-        default=defaults.get(CONF_ALLOW_ON_OFF_CONTROL, False),
-    )] = bool
-
-    return vol.Schema(schema_fields)
 
 
 def process_water_device_input(
@@ -486,24 +517,15 @@ def process_water_device_input(
     if not water_sensor:
         errors[CONF_WATER_SENSOR] = "required"
 
-    lower_offset, lower_valid = parse_offset(
-        user_input.get(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_HP1),
+    lower_offset, upper_offset = parse_offset_pair(
+        user_input,
+        CONF_LOWER_SETPOINT_OFFSET_HEATING,
         DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-    )
-    if not lower_valid:
-        errors[CONF_LOWER_SETPOINT_OFFSET_HEATING] = "invalid"
-
-    upper_offset, upper_valid = parse_offset(
-        user_input.get(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_HP1),
+        CONF_UPPER_SETPOINT_OFFSET_HEATING,
         DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
+        errors,
+        compare_invalid=True,
     )
-    if not upper_valid:
-        errors[CONF_UPPER_SETPOINT_OFFSET_HEATING] = "invalid"
-
-    if lower_offset > upper_offset:
-        errors["base"] = "invalid_offsets"
-        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, "invalid")
-        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, "invalid")
 
     if errors:
         return None, errors
@@ -574,44 +596,41 @@ def air_device_defaults(
 
 def build_air_device_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build schema for air device configuration."""
-    schema_fields: dict[Any, Any] = {}
+    energy_fields = build_fields(
+        defaults,
+        ((CONF_ENERGY_SENSOR, entity_selector("sensor")),),
+        required=True,
+    )
+    heating_fields = build_fields(
+        defaults,
+        (
+            (CONF_LOWER_SETPOINT_OFFSET_HEATING, lower_offset_selector()),
+            (CONF_UPPER_SETPOINT_OFFSET_HEATING, upper_offset_selector()),
+        ),
+    )
+    cooling_fields = build_fields(
+        defaults,
+        (
+            (CONF_LOWER_SETPOINT_OFFSET_COOLING, lower_offset_selector()),
+            (CONF_UPPER_SETPOINT_OFFSET_COOLING, upper_offset_selector()),
+        ),
+    )
+    control_defaults = {**defaults, CONF_ALLOW_ON_OFF_CONTROL: defaults.get(
+        CONF_ALLOW_ON_OFF_CONTROL, False
+    )}
+    control_fields = build_fields(
+        control_defaults,
+        ((CONF_ALLOW_ON_OFF_CONTROL, bool),),
+    )
 
-    required_field(
-        CONF_ENERGY_SENSOR,
-        defaults,
-        schema_fields,
-        entity_selector("sensor"),
+    return sectioned_schema(
+        (
+            ("energy", energy_fields, False),
+            ("heating", heating_fields, True),
+            ("cooling", cooling_fields, True),
+            ("control", control_fields, True),
+        )
     )
-    optional_field(
-        CONF_LOWER_SETPOINT_OFFSET_HEATING,
-        defaults,
-        schema_fields,
-        lower_offset_selector(),
-    )
-    optional_field(
-        CONF_UPPER_SETPOINT_OFFSET_HEATING,
-        defaults,
-        schema_fields,
-        upper_offset_selector(),
-    )
-    optional_field(
-        CONF_LOWER_SETPOINT_OFFSET_COOLING,
-        defaults,
-        schema_fields,
-        lower_offset_selector(),
-    )
-    optional_field(
-        CONF_UPPER_SETPOINT_OFFSET_COOLING,
-        defaults,
-        schema_fields,
-        upper_offset_selector(),
-    )
-    schema_fields[vol.Optional(
-        CONF_ALLOW_ON_OFF_CONTROL,
-        default=defaults.get(CONF_ALLOW_ON_OFF_CONTROL, False),
-    )] = bool
-
-    return vol.Schema(schema_fields)
 
 
 def process_air_device_input(
@@ -630,45 +649,22 @@ def process_air_device_input(
     if not energy_sensor:
         errors[CONF_ENERGY_SENSOR] = "required"
 
-    # Heating offsets
-    lower_h, lower_h_valid = parse_offset(
-        user_input.get(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST),
+    lower_h, upper_h = parse_offset_pair(
+        user_input,
+        CONF_LOWER_SETPOINT_OFFSET_HEATING,
         DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
-    )
-    if not lower_h_valid:
-        errors[CONF_LOWER_SETPOINT_OFFSET_HEATING] = "invalid"
-
-    upper_h, upper_h_valid = parse_offset(
-        user_input.get(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST),
+        CONF_UPPER_SETPOINT_OFFSET_HEATING,
         DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
+        errors,
     )
-    if not upper_h_valid:
-        errors[CONF_UPPER_SETPOINT_OFFSET_HEATING] = "invalid"
-
-    if lower_h_valid and upper_h_valid and lower_h > upper_h:
-        errors["base"] = "invalid_offsets"
-        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, "invalid")
-        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, "invalid")
-
-    # Cooling offsets
-    lower_c, lower_c_valid = parse_offset(
-        user_input.get(CONF_LOWER_SETPOINT_OFFSET_COOLING, DEFAULT_LOWER_SETPOINT_OFFSET_COOLING),
+    lower_c, upper_c = parse_offset_pair(
+        user_input,
+        CONF_LOWER_SETPOINT_OFFSET_COOLING,
         DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
-    )
-    if not lower_c_valid:
-        errors[CONF_LOWER_SETPOINT_OFFSET_COOLING] = "invalid"
-
-    upper_c, upper_c_valid = parse_offset(
-        user_input.get(CONF_UPPER_SETPOINT_OFFSET_COOLING, DEFAULT_UPPER_SETPOINT_OFFSET_COOLING),
+        CONF_UPPER_SETPOINT_OFFSET_COOLING,
         DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
+        errors,
     )
-    if not upper_c_valid:
-        errors[CONF_UPPER_SETPOINT_OFFSET_COOLING] = "invalid"
-
-    if lower_c_valid and upper_c_valid and lower_c > upper_c:
-        errors.setdefault("base", "invalid_offsets")
-        errors.setdefault(CONF_LOWER_SETPOINT_OFFSET_COOLING, "invalid")
-        errors.setdefault(CONF_UPPER_SETPOINT_OFFSET_COOLING, "invalid")
 
     if errors:
         return None, errors
@@ -697,9 +693,9 @@ def process_air_device_input(
 
 def build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for advanced/expert options."""
-    schema_fields: dict[Any, Any] = {}
+    setpoint_fields: dict[Any, Any] = {}
 
-    advanced_fields = [
+    setpoint_options = [
         (
             CONF_MIN_SETPOINT_OVERRIDE,
             {"min": 10, "max": 25, "step": 0.5, "unit_of_measurement": "°C"},
@@ -708,6 +704,13 @@ def build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
             CONF_MAX_SETPOINT_OVERRIDE,
             {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C"},
         ),
+        (
+            CONF_MAXIMUM_OVERSHOOT,
+            {"min": 0, "max": 5, "step": 0.1, "unit_of_measurement": "°C"},
+        ),
+    ]
+
+    assist_options = [
         (
             CONF_ASSIST_TIMER_SECONDS,
             {"min": 60, "max": 900, "step": 30, "unit_of_measurement": "s"},
@@ -736,21 +739,26 @@ def build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
             CONF_ASSIST_STALL_TEMP_DELTA,
             {"min": 0.1, "max": 2, "step": 0.1, "unit_of_measurement": "°C"},
         ),
-        (
-            CONF_MAXIMUM_OVERSHOOT,
-            {"min": 0, "max": 5, "step": 0.1, "unit_of_measurement": "°C"},
-        ),
     ]
 
-    for field_name, selector_config in advanced_fields:
-        optional_field(
-            field_name,
-            defaults,
-            schema_fields,
-            selector({"number": selector_config}),
-        )
+    setpoint_fields = build_fields(
+        defaults,
+        tuple(
+            (field_name, selector({"number": selector_config}))
+            for field_name, selector_config in setpoint_options
+        ),
+    )
+    assist_fields = build_fields(
+        defaults,
+        tuple(
+            (field_name, selector({"number": selector_config}))
+            for field_name, selector_config in assist_options
+        ),
+    )
 
-    return vol.Schema(schema_fields)
+    return sectioned_schema(
+        (("setpoints", setpoint_fields, False), ("assist", assist_fields, True))
+    )
 
 
 def advanced_form_defaults(
@@ -800,28 +808,18 @@ def process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
 
 def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for experimental options."""
-    schema_fields: dict[Any, Any] = {}
-
-    optional_field(
-        CONF_HOUSE_POWER_SENSOR,
+    sensor_fields = build_fields(
         defaults,
-        schema_fields,
-        entity_selector("sensor"),
-    )
-    optional_field(
-        CONF_MPC_TEMPERATURE_SENSOR,
-        defaults,
-        schema_fields,
-        entity_selector("sensor"),
-    )
-    optional_field(
-        CONF_OUTDOOR_TEMP_SENSOR,
-        defaults,
-        schema_fields,
-        entity_selector("sensor"),
+        (
+            (CONF_HOUSE_POWER_SENSOR, entity_selector("sensor")),
+            (CONF_MPC_TEMPERATURE_SENSOR, entity_selector("sensor")),
+            (CONF_OUTDOOR_TEMP_SENSOR, entity_selector("sensor")),
+        ),
     )
 
-    return vol.Schema(schema_fields)
+    return sectioned_schema(
+        (("sensors", sensor_fields, False),),
+    )
 
 
 def experimental_form_defaults(
