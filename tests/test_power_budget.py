@@ -528,3 +528,17 @@ class TestManualBudgetsWithSolar:
         manager.update_budgets([{CONF_CLIMATE_ENTITY: "climate.hp2"}])
 
         assert manager.get_budget("climate.hp2") == 600.0
+
+
+class TestCoolingDirection:
+    """In cooling, more power is requested with a lower setpoint."""
+
+    def test_cooling_lowers_setpoint_when_power_too_low(self):
+        manager = PowerBudgetManager(MagicMock(), MockConfig())
+        manager.set_budget("climate.ac", 1000.0)
+
+        new_setpoint = manager.calculate_setpoint(
+            "climate.ac", 200.0, 16.0, 30.0, current_target_setpoint=24.0, is_cooling=True
+        )
+
+        assert new_setpoint < 24.0

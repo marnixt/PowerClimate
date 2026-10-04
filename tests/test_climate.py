@@ -848,3 +848,28 @@ def test_build_hp_status_air_only_includes_assist_info() -> None:
     assert status[0]["assist_mode"] == "setpoint"
     assert status[0]["on_timer_seconds"] == 12.0
     assert status[0]["water_derivative"] is None
+
+
+def test_handle_assist_control_does_not_record_failed_turn_on() -> None:
+    """A failed mode call must not be recorded as a turn-on."""
+    entity = _make_assist_entity(HVACMode.HEAT)
+    entity._assist_controller.evaluate_action.return_value = ("heat", "eta_high")
+    entity._ensure_device_mode = AsyncMock(return_value=False)
+
+    result = asyncio.run(entity._handle_assist_control("climate.ac", False, {}))
+
+    assert result is False
+    entity._assist_controller.record_turn_on.assert_not_called()
+
+
+def test_calculate_mode_target_keeps_device_setpoint_without_temperature() -> None:
+    """Without a device temperature the current device setpoint is kept."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(min_setpoint=16.0, max_setpoint=30.0)
+    entity._target_temperature = 21.0
+
+    target = entity._calculate_mode_target(
+        "setpoint", None, {CONF_CLIMATE_ENTITY: "climate.hp1"}, 0, current_target=35.0
+    )
+
+    assert target == 30.0

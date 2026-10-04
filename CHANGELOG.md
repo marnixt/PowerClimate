@@ -24,6 +24,11 @@ Adds cooling (air conditioning) support for air-based heat pumps.
 - The thermal model learns once per poll interval instead of on every heat pump state change.
 - Air-only setups: the first air heat pump now shows assist information instead of being treated as the water heat pump.
 - Total Power sensor reports watts (kW sources are converted) with power device and state classes.
+- Power mode steers in the right direction while cooling (a lower setpoint draws more power).
+- Per-device power readings in kW are converted to W for power mode and the thermal model.
+- Assist pumps are only recorded as switched on/off when the mode change succeeded.
+- When a heat pump reports no temperature, its current setpoint is kept instead of dropping to the minimum.
+- Experimental sensors can be cleared again in the options.
 - Large diagnostic attributes of the climate entity are excluded from the recorder; the broken entity picture was removed.
 - Timer and thermal model state now use Home Assistant's storage helper, are saved on unload and are removed when the entry is deleted.
 

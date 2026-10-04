@@ -269,3 +269,11 @@ class TestGenerateDeviceName:
     def test_empty_name(self):
         name = generate_device_name("climate.")
         assert name == "climate."
+
+
+def test_power_to_watts_converts_kw_and_comma_decimals() -> None:
+    from custom_components.powerclimate.utils import power_to_watts
+
+    assert power_to_watts("1,5", "kW") == 1500.0
+    assert power_to_watts("800", "W") == 800.0
+    assert power_to_watts("unknown", "W") is None

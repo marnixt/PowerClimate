@@ -15,6 +15,18 @@ def safe_float(value: Any, default: float | None = None) -> float | None:
         return default
 
 
+def power_to_watts(value: Any, unit: Any = None) -> float | None:
+    """Convert a power reading to watts; unknown units are returned as-is."""
+    numeric = safe_float(value)
+    if numeric is None and isinstance(value, str):
+        numeric = safe_float(value.replace(",", "."))
+    if numeric is None:
+        return None
+    if str(unit or "").strip().lower() in {"kw", "kilowatt", "kilowatts"}:
+        return numeric * 1000.0
+    return numeric
+
+
 def safe_int(value: Any, default: int | None = None) -> int | None:
     """Safely convert value to int."""
     if value is None:

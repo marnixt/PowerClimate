@@ -257,6 +257,7 @@ class PowerBudgetManager:
         min_setpoint: float,
         max_setpoint: float,
         current_target_setpoint: float | None = None,
+        is_cooling: bool = False,
     ) -> float:
         """Calculate setpoint to match power budget.
 
@@ -264,13 +265,16 @@ class PowerBudgetManager:
         1. Only adjust every ADJUSTMENT_INTERVAL seconds
         2. Use deadband - no adjustment if within tolerance
         3. Small fixed step size per adjustment
-        4. Direction: power too low → raise setpoint, too high → lower
+        4. Direction: power too low → raise the heating setpoint or lower the
+           cooling setpoint; power too high does the opposite.
 
         Args:
             entity_id: Climate entity ID.
             current_power: Current power consumption in watts.
             min_setpoint: Minimum allowed setpoint.
             max_setpoint: Maximum allowed setpoint.
+            current_target_setpoint: Device setpoint used as initial baseline.
+            is_cooling: Whether a lower setpoint increases power demand.
 
         Returns:
             Calculated setpoint temperature.
@@ -309,13 +313,12 @@ class PowerBudgetManager:
         if power_error_percent < DEFAULT_POWER_MODE_DEADBAND_PERCENT:
             return current_setpoint
 
-        # Apply step adjustment
-        if power_error > 0:
-            # Need more power - raise setpoint
-            new_setpoint = current_setpoint + DEFAULT_POWER_MODE_STEP_SIZE
-        else:
-            # Need less power - lower setpoint
-            new_setpoint = current_setpoint - DEFAULT_POWER_MODE_STEP_SIZE
+        # Apply step adjustment: more power means a higher heating setpoint or
+        # a lower cooling setpoint.
+        step = DEFAULT_POWER_MODE_STEP_SIZE if power_error > 0 else -DEFAULT_POWER_MODE_STEP_SIZE
+        if is_cooling:
+            step = -step
+        new_setpoint = current_setpoint + step
 
         # Clamp to bounds
         new_setpoint = max(min_setpoint, min(new_setpoint, max_setpoint))

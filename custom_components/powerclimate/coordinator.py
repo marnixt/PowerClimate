@@ -25,7 +25,7 @@ from .thermal_model import (
     SAVE_INTERVAL_SECONDS,
     ThermalModel,
 )
-from .utils import safe_float
+from .utils import power_to_watts, safe_float
 
 
 class OSDataUpdateCoordinator(DataUpdateCoordinator):
@@ -157,7 +157,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
                     temp_derivative = round(temp_derivative, 1)
                 device_payload["temperature_derivative"] = temp_derivative
 
-            device_payload["energy"] = self._read_float(energy_id)
+            device_payload["energy"] = self._read_power(energy_id)
             if water_id:
                 device_payload["water_temperature"] = self._read_float(
                     water_id
@@ -237,6 +237,15 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         if not state or state.state in ("unknown", "unavailable"):
             return None
         return safe_float(state.state)
+
+    def _read_power(self, entity_id: str | None) -> float | None:
+        """Read a power sensor and normalize kW readings to watts."""
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        if not state or state.state in ("unknown", "unavailable"):
+            return None
+        return power_to_watts(state.state, state.attributes.get("unit_of_measurement"))
 
     def _compute_derivative(
         self,

@@ -31,6 +31,7 @@ from custom_components.powerclimate.const import (
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_MPC_TEMPERATURE_SENSOR,
+    CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
@@ -155,6 +156,17 @@ class TestExperimentalOptions:
         assert processed == {
             CONF_HOUSE_POWER_SENSOR: "sensor.house_net",
             CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
+            CONF_OUTDOOR_TEMP_SENSOR: None,
+        }
+
+    def test_process_experimental_input_clears_omitted_sensors(self):
+        """HA omits emptied optional selectors; that must clear the option."""
+        processed = process_experimental_input({})
+
+        assert processed == {
+            CONF_HOUSE_POWER_SENSOR: None,
+            CONF_MPC_TEMPERATURE_SENSOR: None,
+            CONF_OUTDOOR_TEMP_SENSOR: None,
         }
 
 

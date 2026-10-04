@@ -53,7 +53,7 @@ from .helpers import (
     merged_entry_data,
     summary_signal,
 )
-from .utils import safe_float
+from .utils import power_to_watts
 
 
 class _TranslationMixin:
@@ -802,7 +802,7 @@ class PowerClimateAssistSummarySensor(_SummaryPayloadTextSensor):
 
         # Assist pump status
         hp_status = payload.get("hp_status", [])
-        assist_pumps = [hp for hp in hp_status if hp.get("role") not in ["hp1"]]
+        assist_pumps = [hp for hp in hp_status if hp.get("assist_mode") is not None]
 
         if not assist_pumps:
             parts.append(self._t("assist_no_pumps", "No assist pumps configured"))
@@ -1301,13 +1301,4 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
         state = self.hass.states.get(sensor_id)
         if not state or state.state in (None, "unknown", "unavailable"):
             return None
-        raw = state.state
-        value = safe_float(raw)
-        if value is None and isinstance(raw, str):
-            value = safe_float(raw.replace(",", "."))
-        if value is None:
-            return None
-        unit = str(state.attributes.get("unit_of_measurement") or "").strip().lower()
-        if unit == "kw":
-            return value * 1000.0
-        return value
+        return power_to_watts(state.state, state.attributes.get("unit_of_measurement"))

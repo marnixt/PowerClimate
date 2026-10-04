@@ -814,14 +814,14 @@ def experimental_form_defaults(
 
 def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     """Process and validate experimental options input."""
+    # An emptied optional selector is omitted from the submitted data, so a
+    # missing key means "cleared".
     data: dict[str, Any] = {}
-    if CONF_HOUSE_POWER_SENSOR in user_input:
-        sensor_entity_id = str(user_input.get(CONF_HOUSE_POWER_SENSOR) or "").strip()
-        data[CONF_HOUSE_POWER_SENSOR] = sensor_entity_id or None
-    if CONF_MPC_TEMPERATURE_SENSOR in user_input:
-        sensor_entity_id = str(user_input.get(CONF_MPC_TEMPERATURE_SENSOR) or "").strip()
-        data[CONF_MPC_TEMPERATURE_SENSOR] = sensor_entity_id or None
-    if CONF_OUTDOOR_TEMP_SENSOR in user_input:
-        sensor_entity_id = str(user_input.get(CONF_OUTDOOR_TEMP_SENSOR) or "").strip()
-        data[CONF_OUTDOOR_TEMP_SENSOR] = sensor_entity_id or None
+    for key in (
+        CONF_HOUSE_POWER_SENSOR,
+        CONF_MPC_TEMPERATURE_SENSOR,
+        CONF_OUTDOOR_TEMP_SENSOR,
+    ):
+        sensor_entity_id = str(user_input.get(key) or "").strip()
+        data[key] = sensor_entity_id or None
     return data
