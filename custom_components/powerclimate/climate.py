@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -174,6 +175,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def target_temperature(self) -> float | None:
         """Return target temperature."""
         return self._target_temperature
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Return internal control state for the diagnostics download."""
+        return {
+            "mode_state": self._mode_state,
+            "previous_target": self._previous_target,
+            "config": self._config.to_dict(),
+            "assist_timers": {
+                entity_id: asdict(state)
+                for entity_id, state in self._assist_controller.timer_states.items()
+            },
+        }
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

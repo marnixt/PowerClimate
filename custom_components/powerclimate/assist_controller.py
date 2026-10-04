@@ -109,6 +109,11 @@ class AssistPumpController:
 
         self._hass.async_create_task(self._maybe_persist())
 
+    @property
+    def timer_states(self) -> dict[str, AssistTimerState]:
+        """Return a copy of the timer states, keyed by climate entity ID."""
+        return dict(self._timer_states)
+
     def get_timer_state(self, entity_id: str) -> AssistTimerState:
         """Get or create timer state for an entity.
 
