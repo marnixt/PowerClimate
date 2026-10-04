@@ -29,7 +29,6 @@ from .config_accessor import ConfigAccessor
 from .const import (
     CONF_ALLOW_ON_OFF_CONTROL,
     CONF_CLIMATE_ENTITY,
-    CONF_DEVICE_NAME,
     CONF_ROOM_SENSOR_VALUES,
     CONF_ROOM_TEMPERATURE_KEY,
     COORDINATOR,
@@ -52,6 +51,11 @@ from .helpers import (
 )
 from .mode_targets import SetpointLimits, calculate_mode_target
 from .power_budget import PowerBudgetManager
+from .summary_payload import (
+    build_hp_status,
+    build_mpc_summary,
+    build_thermal_summary,
+)
 from .utils import compute_eta_hours, safe_float
 
 _LOGGER = logging.getLogger(__name__)
@@ -1357,31 +1361,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def _build_mpc_summary(self) -> dict[str, Any]:
         """Build diagnostics for the optional external MPC sensor."""
         sensor_id = self._config.mpc_temperature_sensor
-        if not sensor_id:
-            return {
-                "mpc_enabled": False,
-                "mpc_sensor_entity_id": None,
-                "mpc_advised_temperature": None,
-                "mpc_raw_state": None,
-                "mpc_state_available": False,
-            }
-
-        advised_temp, raw_state, attrs = self._read_mpc_sensor_state()
-        forecast_6h = attrs.get("forecast_6h")
-        return {
-            "mpc_enabled": True,
-            "mpc_sensor_entity_id": sensor_id,
-            "mpc_advised_temperature": advised_temp,
-            "mpc_raw_state": raw_state,
-            "mpc_state_available": advised_temp is not None,
-            "mpc_model_source": attrs.get("model_source"),
-            "mpc_heat_demand_w": safe_float(attrs.get("heat_demand_w")),
-            "mpc_net_demand_w": safe_float(attrs.get("net_demand_w")),
-            "mpc_outdoor_temp": safe_float(attrs.get("outdoor_temp")),
-            "mpc_flow_lph": safe_float(attrs.get("flow_lph")),
-            "mpc_return_temp": safe_float(attrs.get("return_temp")),
-            "mpc_forecast_6h": forecast_6h if isinstance(forecast_6h, list) else None,
-        }
+        advised_temp, raw_state, attrs = (
+            self._read_mpc_sensor_state() if sensor_id else (None, None, {})
+        )
+        return build_mpc_summary(sensor_id, advised_temp, raw_state, attrs)
 
     def _build_thermal_summary(self) -> dict[str, Any]:
         """Build diagnostics for the internal thermal MPC model."""
@@ -1390,14 +1373,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._config.min_setpoint,
             self._config.max_setpoint,
         )
-        return {
-            "thermal_ua_emitter": thermal_state.get("ua_emitter"),
-            "thermal_u_building": thermal_state.get("u_building"),
-            "thermal_ua_emitter_updates": thermal_state.get("ua_emitter_updates"),
-            "thermal_u_building_updates": thermal_state.get("u_building_updates"),
-            "thermal_is_converged": thermal_state.get("is_converged"),
-            "thermal_recommended_temp": recommended_temp,
-        }
+        return build_thermal_summary(thermal_state, recommended_temp)
 
     def _build_hp_status(
         self,
@@ -1405,60 +1381,16 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         device_payloads: dict[str, dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Build HP status list for summary payload."""
-        status: list[dict[str, Any]] = []
-        coordinator_data = self.coordinator.data or {}
-
-        for index, device in enumerate(devices):
-            entity_id = device.get(CONF_CLIMATE_ENTITY)
-            if not entity_id:
-                continue
-
-            payload = device_payloads.get(entity_id, {}) or {}
-            hvac_mode = str(payload.get("hvac_mode") or "").lower()
-            is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
-            is_water = self._config.is_water_device(device, index)
-
-            # Water derivative
-            if is_water:
-                water_derivative = safe_float(coordinator_data.get("water_derivative"))
-            else:
-                water_derivative = safe_float(payload.get("water_derivative"))
-
-            # Base info
-            hp_info: dict[str, Any] = {
-                "role": f"hp{index + 1}",
-                "name": device.get(CONF_DEVICE_NAME) or f"HP{index + 1}",
-                "entity_id": entity_id,
-                "active": entity_id in self._active_devices or is_running,
-                "hvac_mode": payload.get("hvac_mode"),
-                "assist_mode": None if is_water else self._assist_modes.get(entity_id, "off"),
-                "powerclimate_mode": self._hp_modes.get(entity_id, MODE_OFF),
-                "current_temperature": safe_float(payload.get("current_temperature")),
-                "target_temperature": safe_float(payload.get("target_temperature")),
-                "temperature_derivative": safe_float(payload.get("temperature_derivative")),
-                "water_temperature": safe_float(payload.get("water_temperature")),
-                "water_derivative": water_derivative,
-                "eta_hours": compute_eta_hours(
-                    (
-                        safe_float(payload.get("target_temperature"))
-                        - safe_float(payload.get("current_temperature"))
-                    )
-                    if payload.get("target_temperature") is not None
-                    and payload.get("current_temperature") is not None
-                    else None,
-                    safe_float(payload.get("temperature_derivative")),
-                ),
-                "energy": safe_float(payload.get("energy")),
-            }
-
-            # Assist-specific info
-            if not is_water:
-                hp_info["allow_on_off_control"] = device.get(CONF_ALLOW_ON_OFF_CONTROL, False)
-                hp_info.update(self._assist_controller.get_hp_status_info(entity_id))
-
-            status.append(hp_info)
-
-        return status
+        return build_hp_status(
+            devices,
+            device_payloads,
+            self.coordinator.data or {},
+            is_water_device=self._config.is_water_device,
+            active_devices=self._active_devices,
+            assist_modes=self._assist_modes,
+            hp_modes=self._hp_modes,
+            assist_status=self._assist_controller.get_hp_status_info,
+        )
 
     def _current_target_temperature(self) -> float | None:
         """Get the current target temperature."""
