@@ -30,8 +30,8 @@ Niet gelieerd aan Home Assistant.
 
 ## Documentatie
 
-- Detailed documentation (EN): [custom_components/powerclimate/README.md](custom_components/powerclimate/README.md)
-- Gedetailleerde documentatie (NL): [custom_components/powerclimate/README-NL.md](custom_components/powerclimate/README-NL.md)
+- Detailed documentation (EN): [docs/README.md](docs/README.md)
+- Gedetailleerde documentatie (NL): [docs/README-NL.md](docs/README-NL.md)
 
 ## Installatie
 
@@ -44,13 +44,13 @@ Kopieer `custom_components/powerclimate/` naar je Home Assistant `config/custom_
 3. Selecteer thermostaten die PowerClimate moet mirroren (optioneel). Alleen setpoint-wijzigingen daarvan worden overgenomen; het uitschakelen van een gemirrorde thermostaat schakelt PowerClimate niet uit.
 4. Selecteer een optionele waterwarmtepomp (0 of 1) en nul of meer lucht- (assist) warmtepompen. De eerste gemirrorde thermostaat wordt vooraf geselecteerd als waterwarmtepomp.
 
-![Select heat pumps configuration](custom_components/powerclimate/images/Config_select_heat_pumps.png)
+![Select heat pumps configuration](docs/images/Config_select_heat_pumps.png)
 
 5. Configureer elk geselecteerd apparaat op een eigen pagina (rol, sensoren, offsets en optioneel aan/uit controle voor assists).
 
 Let op: stel de lower setpoint offset zo in dat de warmtepomp net niet uit gaat. In dit voorbeeld zal setpoint op 17 graden ingesteld worden als de warmtepomp zelf 20 graden meet. 
   
-![Config air warmtepomp](custom_components/powerclimate/images/Config%20air%20heatpump%201.png)
+![Config air warmtepomp](docs/images/Config%20air%20heatpump%201.png)
 
 ## Support
 

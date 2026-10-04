@@ -9,7 +9,3 @@ exclude = [".git", ".venv", "__pycache__"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "W", "UP"]
 ignore = ["B008"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-addopts = "-q"

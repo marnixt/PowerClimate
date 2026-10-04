@@ -357,7 +357,9 @@ def test_handle_hp_state_change_forwards_mirror_updates() -> None:
     entity._mirror_entities = {"climate.mirror"}
     entity._maybe_forward_setpoint = MagicMock()
     entity.coordinator = SimpleNamespace(async_request_refresh=AsyncMock())
-    entity.hass = SimpleNamespace(async_create_task=MagicMock(side_effect=lambda coro: coro.close()))
+    entity.hass = SimpleNamespace(
+        async_create_task=MagicMock(side_effect=lambda coro: coro.close())
+    )
 
     event = SimpleNamespace(
         data={
@@ -512,7 +514,7 @@ def test_enter_away_mode_in_cool_raises_target_to_max() -> None:
 
 
 def test_enter_mpc_mode_preserves_cool_mode() -> None:
-    """Selecting MPC while in cool mode must preserve cool mode (MPC works for both heat and cool)."""
+    """Selecting MPC in cool mode must preserve cool mode (MPC works for heat and cool)."""
     entity = make_entity()
     entity._attr_hvac_mode = HVACMode.COOL
     entity._attr_preset_mode = "none"
@@ -599,7 +601,6 @@ def test_hvac_action_set_to_cooling_when_active() -> None:
     entity._active_devices = {"climate.air1"}
 
     # Simulate the hvac_action assignment logic used in _apply_staging
-    from homeassistant.components.climate.const import HVACAction
 
     if entity._attr_hvac_mode == HVACMode.OFF:
         action = HVACAction.OFF
@@ -617,7 +618,6 @@ def test_hvac_action_idle_when_cool_mode_no_active_devices() -> None:
     entity._attr_hvac_mode = HVACMode.COOL
     entity._active_devices = set()
 
-    from homeassistant.components.climate.const import HVACAction
 
     if entity._attr_hvac_mode == HVACMode.OFF:
         action = HVACAction.OFF
@@ -741,3 +741,110 @@ def test_handle_assist_control_allows_mode_change_when_hvac_modes_unknown() -> N
     entity._ensure_device_mode.assert_awaited_once_with(
         "climate.air1", HVACMode.COOL, force=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Device mode / setpoint sync uses the real device state
+# ---------------------------------------------------------------------------
+
+
+def _make_sync_entity(states: dict) -> PowerClimateClimate:
+    entity = make_entity()
+    entity.hass = SimpleNamespace(states=SimpleNamespace(get=states.get))
+    entity._device_modes = {}
+    entity._device_targets = {}
+    entity._device_reported_targets = {}
+    entity._last_mode_call = {}
+    entity._last_temp_call = {}
+    entity._call_climate_service = AsyncMock(return_value=True)
+    return entity
+
+
+def test_ensure_device_mode_reapplies_after_external_change() -> None:
+    """A cached mode must not hide a device that was switched off externally."""
+    entity = _make_sync_entity({"climate.hp1": SimpleNamespace(state="off", attributes={})})
+    entity._device_modes["climate.hp1"] = HVACMode.HEAT
+
+    asyncio.run(entity._ensure_device_mode("climate.hp1", HVACMode.HEAT))
+
+    entity._call_climate_service.assert_awaited_once()
+
+
+def test_ensure_device_mode_skips_when_device_already_in_mode() -> None:
+    entity = _make_sync_entity({"climate.hp1": SimpleNamespace(state="heat", attributes={})})
+
+    asyncio.run(entity._ensure_device_mode("climate.hp1", HVACMode.HEAT))
+
+    entity._call_climate_service.assert_not_awaited()
+
+
+def test_ensure_device_mode_does_not_cache_failed_call() -> None:
+    entity = _make_sync_entity({})
+    entity._call_climate_service = AsyncMock(return_value=False)
+
+    asyncio.run(entity._ensure_device_mode("climate.hp1", HVACMode.HEAT))
+
+    assert "climate.hp1" not in entity._device_modes
+
+
+def test_ensure_device_temperature_reapplies_after_external_change() -> None:
+    """A setpoint changed on the device itself must be corrected."""
+    state = SimpleNamespace(state="heat", attributes={"temperature": 21.5})
+    entity = _make_sync_entity({"climate.hp1": state})
+    entity._device_targets["climate.hp1"] = 21.3
+    entity._device_reported_targets["climate.hp1"] = 21.5
+
+    # Device rounded our 21.3 to 21.5: nothing to do.
+    asyncio.run(entity._ensure_device_temperature("climate.hp1", 21.3))
+    entity._call_climate_service.assert_not_awaited()
+
+    # Someone changed it to 19 on the device: re-apply.
+    state.attributes = {"temperature": 19.0}
+    asyncio.run(entity._ensure_device_temperature("climate.hp1", 21.3))
+    entity._call_climate_service.assert_awaited_once()
+
+
+def test_set_power_budget_triggers_staging() -> None:
+    entity = make_entity()
+    entity._power_manager = MagicMock()
+    entity._apply_staging = AsyncMock()
+
+    asyncio.run(entity.async_set_power_budget("climate.hp1", 800.0))
+
+    entity._power_manager.set_budget.assert_called_once_with("climate.hp1", 800.0)
+    entity._apply_staging.assert_awaited_once()
+
+
+def test_handle_hp_state_change_forwards_mirror_while_refresh_pending() -> None:
+    entity = make_entity()
+    entity._pending_state_refresh = True
+    entity._mirror_entities = {"climate.thermostat"}
+    entity._maybe_forward_setpoint = MagicMock()
+    event = SimpleNamespace(
+        data={"entity_id": "climate.thermostat", "new_state": object(), "old_state": None}
+    )
+
+    entity._handle_hp_state_change(event)
+
+    entity._maybe_forward_setpoint.assert_called_once()
+
+
+def test_build_hp_status_air_only_includes_assist_info() -> None:
+    """Without a water device the first air device still gets assist info."""
+    from custom_components.powerclimate.const import CONF_DEVICE_ROLE, DEVICE_ROLE_AIR
+
+    entity = make_entity()
+    entity.coordinator = SimpleNamespace(data={"water_derivative": 9.9})
+    entity._config = SimpleNamespace(is_water_device=lambda device, index: False)
+    entity._active_devices = set()
+    entity._assist_modes = {"climate.ac1": "setpoint"}
+    entity._hp_modes = {}
+    entity._assist_controller = MagicMock()
+    entity._assist_controller.get_hp_status_info.return_value = {"on_timer_seconds": 12.0}
+    devices = [{CONF_CLIMATE_ENTITY: "climate.ac1", CONF_DEVICE_ROLE: DEVICE_ROLE_AIR}]
+
+    status = entity._build_hp_status(devices, {"climate.ac1": {"hvac_mode": "heat"}})
+
+    assert status[0]["assist_mode"] == "setpoint"
+    assert status[0]["on_timer_seconds"] == 12.0
+    assert status[0]["water_derivative"] is None

@@ -19,17 +19,15 @@ from .const import (
     CONF_DEVICES,
     CONF_HOUSE_POWER_SENSOR,
     CONF_INTERNAL_MPC_HORIZON_MINUTES,
-    CONF_LOWER_SETPOINT_OFFSET,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
-    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
-    CONF_UPPER_SETPOINT_OFFSET,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     DEFAULT_ASSIST_MIN_OFF_MINUTES,
@@ -40,11 +38,11 @@ from .const import (
     DEFAULT_ASSIST_TIMER_SECONDS,
     DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
     DEFAULT_INTERNAL_MPC_HORIZON_MINUTES,
-    DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
+    DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_MIN_SETPOINT,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
@@ -300,22 +298,13 @@ class ConfigAccessor:
         index: int,
         offset_type: str,
     ) -> float:
-        """Calculate device heating offset with backward-compat fallback.
-
-        Reads new ``_heating`` keys first; falls back to legacy key for
-        existing config entries that predate the heating/cooling split.
-        """
+        """Calculate device heating offset with role-based defaults."""
         if offset_type == "lower":
-            # New key first, then legacy key for backward compat
             value = device.get(CONF_LOWER_SETPOINT_OFFSET_HEATING)
-            if value is None:
-                value = device.get(CONF_LOWER_SETPOINT_OFFSET)
             default_water = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
             default_air = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
         else:  # upper
             value = device.get(CONF_UPPER_SETPOINT_OFFSET_HEATING)
-            if value is None:
-                value = device.get(CONF_UPPER_SETPOINT_OFFSET)
             default_water = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
             default_air = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
 

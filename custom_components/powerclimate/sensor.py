@@ -24,8 +24,8 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.const import UnitOfPower, UnitOfTemperature
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -39,9 +39,11 @@ from homeassistant.helpers.update_coordinator import (
 
 from .const import (
     CONF_CLIMATE_ENTITY,
+    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
     COORDINATOR,
+    DEVICE_ROLE_WATER,
     DOMAIN,
 )
 from .helpers import (
@@ -51,6 +53,7 @@ from .helpers import (
     merged_entry_data,
     summary_signal,
 )
+from .utils import safe_float
 
 
 class _TranslationMixin:
@@ -162,8 +165,12 @@ def _build_behavior_sensors(
         role = f"hp{index + 1}"
         prefix = role
         label = f"HP{index + 1}"
-        if role == "hp1":
-            sensors.append(PowerClimateHP1BehaviorSensor(hass, entry))
+        if device.get(CONF_DEVICE_ROLE) == DEVICE_ROLE_WATER:
+            sensors.append(
+                PowerClimateHP1BehaviorSensor(
+                    hass, entry, role=role, prefix=prefix, label=label
+                )
+            )
         else:
             sensors.append(
                 PowerClimateHPBehaviorSensor(
@@ -973,6 +980,7 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:engine-outline"
+    _is_water_device = False
 
     def __init__(
         self,
@@ -1083,7 +1091,7 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         # For HP1 we want to show water ΔT before power. Remove any existing
         # power fragment produced by the generic snapshot and then append
         # sensor-specific parts which will include water ΔT and power (if any).
-        if self._role == "hp1":
+        if self._is_water_device:
             power_prefix = f"{self._t('label_power', 'Power')} "
             parts = [p for p in parts if not p.startswith(power_prefix)]
 
@@ -1140,16 +1148,25 @@ class PowerClimateHPBehaviorSensor(_AssistBehaviorSensor):
 
 
 class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
-    """Sensor showing HP1 behavior with water temperature."""
+    """Sensor showing water heat pump behavior with water temperature."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize the HP1 behavior sensor."""
+    _is_water_device = True
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        role: str = "hp1",
+        prefix: str = "hp1",
+        label: str = "HP1",
+    ) -> None:
+        """Initialize the water heat pump behavior sensor."""
         super().__init__(
             hass,
             entry,
-            role="hp1",
-            prefix="hp1",
-            label="HP1",
+            role=role,
+            prefix=prefix,
+            label=label,
         )
 
     def _sensor_specific_parts(self, entry: dict) -> list[str]:
@@ -1189,6 +1206,9 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:flash"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
 
     def __init__(
         self,
@@ -1204,21 +1224,21 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"{friendly} Total Power"
         self._attr_unique_id = f"powerclimate_total_power_{entry.entry_id}"
         self._attr_extra_state_attributes = {}
-        self._attr_native_unit_of_measurement = None
         self._energy_sensors = self._configured_energy_sensors()
         self._sensor_unsubs: list[Callable[[], None]] = []
         self._attr_device_info = integration_device_info(entry)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        self._recalculate()
         if self._energy_sensors:
-            unsub = async_track_state_change_event(
-                self.hass,
-                self._energy_sensors,
-                self._handle_energy_change,
+            self._sensor_unsubs.append(
+                async_track_state_change_event(
+                    self.hass,
+                    self._energy_sensors,
+                    self._handle_energy_change,
+                )
             )
-            if unsub:
-                self._sensor_unsubs.append(unsub)
 
     async def async_will_remove_from_hass(self) -> None:
         for unsub in self._sensor_unsubs:
@@ -1226,41 +1246,35 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
         self._sensor_unsubs.clear()
         await super().async_will_remove_from_hass()
 
-    async def _handle_energy_change(self, event) -> None:
-        self.async_schedule_update_ha_state(True)
+    @callback
+    def _handle_energy_change(self, event) -> None:
+        self._recalculate()
+        self.async_write_ha_state()
 
-    @property
-    def native_value(self) -> float | None:
-        self._ensure_unit()
-        config = merged_entry_data(self._entry)
-        devices = config.get(CONF_DEVICES, [])
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._recalculate()
+        super()._handle_coordinator_update()
+
+    def _recalculate(self) -> None:
+        """Recompute the total and attributes from the source sensors."""
         total = 0.0
-        configured_sources = 0
         active_sources = 0
         missing_sources: list[str] = []
         contributions: list[dict[str, object]] = []
 
-        for device in devices:
-            sensor_id = device.get(CONF_ENERGY_SENSOR)
-            if not sensor_id:
-                continue
-            configured_sources += 1
-            value = self._read_sensor_value(sensor_id)
+        for sensor_id in self._energy_sensors:
+            value = self._read_sensor_watts(sensor_id)
             if value is None:
                 missing_sources.append(sensor_id)
                 continue
             power = round(value)
             total += power
             active_sources += 1
-            contributions.append(
-                {
-                    "sensor": sensor_id,
-                    "value": power,
-                },
-            )
+            contributions.append({"sensor": sensor_id, "value": power})
 
         attributes: dict[str, object] = {
-            "source_count": configured_sources,
+            "source_count": len(self._energy_sensors),
             "active_sources": active_sources,
         }
         if missing_sources:
@@ -1269,51 +1283,31 @@ class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):
             attributes["sources"] = contributions
         self._attr_extra_state_attributes = attributes
 
-        if configured_sources == 0:
-            return None
-        if active_sources == 0:
-            return 0.0
-        return round(total)
-
-    def _ensure_unit(self) -> None:
-        if self._attr_native_unit_of_measurement:
-            return
-        for sensor_id in self._energy_sensors:
-            if not sensor_id:
-                continue
-            state = self.hass.states.get(sensor_id)
-            if not state:
-                continue
-            unit = state.attributes.get("unit_of_measurement")
-            if unit:
-                self._attr_native_unit_of_measurement = unit
-                return
+        if not self._energy_sensors:
+            self._attr_native_value = None
+        else:
+            self._attr_native_value = round(total) if active_sources else 0.0
 
     def _configured_energy_sensors(self) -> list[str]:
-        sensors: list[str] = []
         config = merged_entry_data(self._entry)
-        for device in config.get(CONF_DEVICES, []):
-            sensor_id = device.get(CONF_ENERGY_SENSOR)
-            if sensor_id:
-                sensors.append(sensor_id)
-        return sensors
+        return [
+            device[CONF_ENERGY_SENSOR]
+            for device in config.get(CONF_DEVICES, [])
+            if device.get(CONF_ENERGY_SENSOR)
+        ]
 
-    def _read_sensor_value(self, sensor_id: str) -> float | None:
+    def _read_sensor_watts(self, sensor_id: str) -> float | None:
+        """Read a power sensor in watts, converting kW sources."""
         state = self.hass.states.get(sensor_id)
-        if not state:
+        if not state or state.state in (None, "unknown", "unavailable"):
             return None
-        value = state.state
-        if value in (None, "unknown", "unavailable"):
+        raw = state.state
+        value = safe_float(raw)
+        if value is None and isinstance(raw, str):
+            value = safe_float(raw.replace(",", "."))
+        if value is None:
             return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            normalized = (
-                value.replace(",", ".")
-                if isinstance(value, str)
-                else value
-            )
-            try:
-                return float(normalized)
-            except (TypeError, ValueError):
-                return None
+        unit = str(state.attributes.get("unit_of_measurement") or "").strip().lower()
+        if unit == "kw":
+            return value * 1000.0
+        return value

@@ -24,7 +24,7 @@ Usage::
 
     model = ThermalModel(hass, entry_id)
     await model.async_load()
-    # Called once per coordinator cycle (default 60 s):
+    # Called once per poll cycle (default 60 s):
     model.update(room_temp, water_temp, hp_power, outdoor_temp)
     # Query recommended setpoints:
     t_supply = model.recommended_supply_temp_heating(target, room, outdoor)
@@ -32,10 +32,10 @@ Usage::
 """
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from homeassistant.helpers.storage import Store
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -73,8 +73,19 @@ _THERMAL_MASS_FACTOR_S: float = 4.0 * 3600.0
 # Default MPC time horizon (minutes to reach target room temperature).
 DEFAULT_HORIZON_MINUTES: float = 30.0
 
-# Number of coordinator cycles between storage saves (~10 min at 60 s).
-_SAVE_INTERVAL: int = 10
+# Minimum seconds between parameter updates (one observation per poll cycle).
+MIN_UPDATE_INTERVAL_SECONDS: float = 55.0
+
+# Seconds between periodic storage saves.
+SAVE_INTERVAL_SECONDS: float = 600.0
+
+STORAGE_VERSION = 1
+STORAGE_KEY_TEMPLATE = "powerclimate_thermal_{entry_id}"
+
+
+def storage_key(entry_id: str) -> str:
+    """Return the Store key used for an entry's thermal model."""
+    return STORAGE_KEY_TEMPLATE.format(entry_id=entry_id)
 
 
 class ThermalModel:
@@ -95,7 +106,7 @@ class ThermalModel:
         (HP2+) in cooling mode.
 
     Model state is persisted between HA restarts in
-    ``.storage/powerclimate_thermal_{entry_id}.json``.
+    ``.storage/powerclimate_thermal_{entry_id}``.
     """
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
@@ -105,10 +116,8 @@ class ThermalModel:
             hass:     Home Assistant instance.
             entry_id: Config entry ID used to namespace the storage file.
         """
-        self._hass = hass
-        self._entry_id = entry_id
-        self._storage_path = Path(
-            hass.config.path(".storage", f"powerclimate_thermal_{entry_id}.json")
+        self._store: Store[dict[str, Any]] = Store(
+            hass, STORAGE_VERSION, storage_key(entry_id)
         )
 
         # Learned parameters
@@ -126,10 +135,8 @@ class ThermalModel:
     async def async_load(self) -> None:
         """Load model state from persistent storage."""
         try:
-            data: dict[str, Any] | None = await self._hass.async_add_executor_job(
-                self._read_file
-            )
-            if data:
+            data = await self._store.async_load()
+            if isinstance(data, dict):
                 self.ua_emitter = float(data.get("ua_emitter", _DEFAULT_UA_EMITTER))
                 self.u_building = float(data.get("u_building", _DEFAULT_U_BUILDING))
                 self._ua_emitter_updates = int(data.get("ua_emitter_updates", 0))
@@ -154,21 +161,9 @@ class ThermalModel:
             "u_building_updates": self._u_building_updates,
         }
         try:
-            await self._hass.async_add_executor_job(self._write_file, data)
+            await self._store.async_save(data)
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.warning("Failed to save thermal model state: %s", err)
-
-    def _read_file(self) -> dict[str, Any] | None:
-        if not self._storage_path.exists():
-            return None
-        try:
-            return json.loads(self._storage_path.read_text(encoding="utf-8"))
-        except Exception:  # pylint: disable=broad-except
-            return None
-
-    def _write_file(self, data: dict[str, Any]) -> None:
-        self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-        self._storage_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Online parameter learning

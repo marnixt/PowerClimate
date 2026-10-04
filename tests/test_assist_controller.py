@@ -317,3 +317,28 @@ def test_get_hp_status_info_returns_expected_keys() -> None:
     }
     assert info["on_timer_seconds"] == 42.0
     assert info["active_condition"] == "water_hot"
+
+
+def test_update_timers_accumulates_independently_per_pump() -> None:
+    """Each assist pump must accumulate its own timer within one cycle."""
+    from unittest.mock import patch
+
+    import custom_components.powerclimate.assist_controller as module
+
+    config = MagicMock()
+    config.assist_on_eta_threshold_minutes = 60.0
+    config.assist_off_eta_threshold_minutes = 15.0
+    config.assist_water_temp_threshold = 40.0
+    config.assist_stall_temp_delta = 0.5
+    controller = AssistPumpController(config)
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    for cycle in range(6):
+        with patch.object(module, "datetime") as fake_datetime:
+            fake_datetime.now.return_value = start + timedelta(seconds=60 * cycle)
+            for entity_id in ("climate.a", "climate.b"):
+                # Room 19 -> 21 with a 2 h ETA: eta_high ON condition.
+                controller.update_timers(entity_id, 19.0, 21.0, 2.0, 30.0, 1.0, False)
+
+    assert controller.get_timer_state("climate.a").on_timer_seconds == 300.0
+    assert controller.get_timer_state("climate.b").on_timer_seconds == 300.0

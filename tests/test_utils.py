@@ -1,5 +1,4 @@
 """Tests for PowerClimate utility functions."""
-import pytest
 
 from custom_components.powerclimate.utils import (
     clamp_setpoint,

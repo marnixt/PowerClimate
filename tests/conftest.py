@@ -1,14 +1,17 @@
 """Pytest configuration and shared fixtures for PowerClimate tests."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture
 def hass():
     """Create a mock Home Assistant instance."""
     mock_hass = MagicMock()
-    mock_hass.config.path = MagicMock(side_effect=lambda *args: str(Path("/config").joinpath(*args)))
+    mock_hass.config.path = MagicMock(
+        side_effect=lambda *args: str(Path("/config").joinpath(*args))
+    )
     mock_hass.states.get = MagicMock(return_value=None)
     mock_hass.async_add_executor_job = AsyncMock()
     return mock_hass

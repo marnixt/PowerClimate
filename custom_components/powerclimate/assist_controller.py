@@ -57,7 +57,7 @@ class AssistPumpController:
 
         # Timer state by entity_id
         self._timer_states: dict[str, AssistTimerState] = {}
-        self._last_timer_update: datetime | None = None
+        self._last_timer_updates: dict[str, datetime] = {}
         self._last_persist_time: datetime | None = None
         self._states_loaded = False
 
@@ -150,11 +150,13 @@ class AssistPumpController:
         now = datetime.now(timezone.utc)
         state = self.get_timer_state(entity_id)
 
-        # Calculate time delta
+        # Calculate time delta per entity: each pump is updated in turn within
+        # one cycle, so a shared timestamp would give later pumps ~0 s.
         delta_seconds = 0.0
-        if self._last_timer_update is not None:
-            delta_seconds = (now - self._last_timer_update).total_seconds()
-        self._last_timer_update = now
+        last_update = self._last_timer_updates.get(entity_id)
+        if last_update is not None:
+            delta_seconds = max(0.0, (now - last_update).total_seconds())
+        self._last_timer_updates[entity_id] = now
 
         # Track state transitions
         if state.running_state != is_running:

@@ -1,17 +1,16 @@
 """Tests for PowerClimate timer storage."""
-import pytest
-import json
 from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from custom_components.powerclimate.models import AssistTimerState
 from custom_components.powerclimate.timer_storage import (
+    STORAGE_VERSION,
     TimerStorage,
     _datetime_to_iso,
     _iso_to_datetime,
-    STORAGE_VERSION,
 )
-from custom_components.powerclimate.models import AssistTimerState
 
 
 class TestDatetimeHelpers:
@@ -199,28 +198,42 @@ class TestTimerStorageRoundTrip:
         assert restored["climate.hp2"].target_hvac_mode is None
 
 
-class TestTimerStorageInit:
-    """Tests for TimerStorage initialization."""
+class TestTimerStorageStore:
+    """Tests for the Store-backed persistence."""
 
-    def test_init_sets_path(self):
-        """Should set storage path correctly."""
+    def test_init_uses_entry_scoped_store_key(self):
+        """Should create a Store keyed by the config entry."""
         hass = MagicMock()
-        hass.config.path = MagicMock(
-            return_value="/config/.storage/powerclimate_timers_abc123.json"
-        )
+        with patch("custom_components.powerclimate.timer_storage.Store") as store_cls:
+            TimerStorage(hass, "abc123")
 
-        storage = TimerStorage(hass, "abc123")
+        store_cls.assert_called_once_with(hass, STORAGE_VERSION, "powerclimate_timers_abc123")
 
-        hass.config.path.assert_called_once_with(
-            ".storage", "powerclimate_timers_abc123.json"
-        )
+    @pytest.mark.asyncio
+    async def test_save_and_load_round_trip(self):
+        """Saved states should be restored through the Store."""
+        saved: dict = {}
+        store = MagicMock()
+        store.async_save = AsyncMock(side_effect=lambda data: saved.update(data))
+        store.async_load = AsyncMock(side_effect=lambda: saved)
+        with patch(
+            "custom_components.powerclimate.timer_storage.Store", return_value=store
+        ):
+            storage = TimerStorage(MagicMock(), "entry1")
 
-    def test_init_not_loaded(self):
-        """Should start in not-loaded state."""
-        hass = MagicMock()
-        hass.config.path = MagicMock(return_value="/config/test.json")
+        await storage.async_save({"climate.hp2": AssistTimerState(on_timer_seconds=42.0)})
+        restored = await storage.async_load()
 
-        storage = TimerStorage(hass, "entry1")
+        assert restored["climate.hp2"].on_timer_seconds == 42.0
 
-        assert storage._loaded is False
-        assert storage._data == {}
+    @pytest.mark.asyncio
+    async def test_load_handles_empty_store(self):
+        """A missing store file should yield no states."""
+        store = MagicMock()
+        store.async_load = AsyncMock(return_value=None)
+        with patch(
+            "custom_components.powerclimate.timer_storage.Store", return_value=store
+        ):
+            storage = TimerStorage(MagicMock(), "entry1")
+
+        assert await storage.async_load() == {}

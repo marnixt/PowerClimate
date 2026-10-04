@@ -22,7 +22,6 @@ from .config_flow_handlers import (
     build_water_device_schema,
     experimental_form_defaults,
     flatten_section_data,
-    generate_device_name,
     global_form_defaults,
     process_advanced_input,
     process_air_device_input,
@@ -31,22 +30,20 @@ from .config_flow_handlers import (
     process_select_devices_input,
     process_water_device_input,
     select_devices_defaults,
-    slugify,
     split_devices_by_role,
+    validate_advanced_input,
     water_device_defaults,
 )
 from .const import (
     CONF_CLIMATE_ENTITY,
     CONF_DEVICE_ID,
-    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_ENTRY_NAME,
     CONF_MIRROR_CLIMATE_ENTITIES,
     DEFAULT_ENTRY_NAME,
-    DEVICE_ROLE_AIR,
-    DEVICE_ROLE_WATER,
     DOMAIN,
 )
+from .utils import generate_device_name, slugify
 
 
 def _initialize_device_state(flow: Any) -> None:
@@ -407,30 +404,22 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
     async def _create_options_entry(self) -> config_entries.ConfigFlowResult:
         """Create the options entry with all configured devices."""
         # If user only edited Advanced/Experimental, keep existing devices
-        if not self._water_device and not self._air_devices:
-            if self._base_water or self._base_air:
-                devices = []
-                if self._base_water:
-                    # Ensure role is set for backward compat
-                    water = dict(self._base_water)
-                    water.setdefault(CONF_DEVICE_ROLE, DEVICE_ROLE_WATER)
-                    devices.append(water)
-                for air in self._base_air:
-                    air_copy = dict(air)
-                    air_copy.setdefault(CONF_DEVICE_ROLE, DEVICE_ROLE_AIR)
-                    devices.append(air_copy)
-                self._entry_data[CONF_DEVICES] = devices
-        else:
+        devices: list[dict[str, Any]] = []
+        if self._water_device or self._air_devices:
             # Build device list from newly configured devices
-            devices: list[dict[str, Any]] = []
             if self._water_device:
                 devices.append(self._water_device)
             devices.extend(self._air_devices)
+        else:
+            if self._base_water:
+                devices.append(dict(self._base_water))
+            devices.extend(dict(air) for air in self._base_air)
 
-            if devices:
-                self._entry_data[CONF_DEVICES] = devices
+        if devices:
+            self._entry_data[CONF_DEVICES] = devices
 
-        # Update entry title if name changed
+        # Update the title together with the options so the update listener
+        # (and thus the reload) only fires once.
         if self._entry_name != (
             self._entry.title or self._entry.data.get(CONF_ENTRY_NAME)
         ):
@@ -440,6 +429,7 @@ class PowerClimateOptionsFlowHandler(config_entries.OptionsFlow):
                 self._entry,
                 data=new_data,
                 title=self._entry_name,
+                options=self._entry_data,
             )
 
         return self.async_create_entry(data=self._entry_data)

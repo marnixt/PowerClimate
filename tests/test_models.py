@@ -2,8 +2,6 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
 from custom_components.powerclimate.models import AssistTimerState
 
 

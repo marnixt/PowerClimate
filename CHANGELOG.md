@@ -9,17 +9,30 @@ Adds cooling (air conditioning) support for air-based heat pumps.
 
 **Highlights**
 - **Cool HVAC mode**: PowerClimate now exposes `HVACMode.COOL` alongside `OFF` and `HEAT`. Air-based heat pumps that support cooling can be driven in cooling mode.
-- **Heating/cooling offset separation**: The per-device setpoint offsets are now split into `lower_setpoint_offset_heating`/`upper_setpoint_offset_heating` and `lower_setpoint_offset_cooling`/`upper_setpoint_offset_cooling`. Existing config entries are read transparently via backward-compatible aliases.
+- **Heating/cooling offset separation**: The per-device setpoint offsets are now split into `lower_setpoint_offset_heating`/`upper_setpoint_offset_heating` and `lower_setpoint_offset_cooling`/`upper_setpoint_offset_cooling`.
 - **Cooling defaults**: Lower cooling offset default is −4 °C, upper cooling offset default is 0 °C.
 - **Water HP excluded from cooling**: The water-based heat pump is automatically turned off when PowerClimate is in Cool mode.
 - **Preset behaviour in Cool mode**: Boost maximises cooling; Away raises target to max setpoint (effectively disabling cooling); Solar and MPC are heating-only and remain unaffected.
 - **Assist control for cooling**: The assist controller and condition checks are mode-aware; ETA, overshoot detection, and stall detection all invert correctly for cooling.
 
+**Fixes**
+- Saving the Advanced options no longer fails; the minimum/maximum setpoint and ON/OFF ETA thresholds are now validated.
+- `set_power_budget` now takes effect: service budgets are kept separate from Solar budgets and are applied immediately. Invalid targets raise an error instead of being silently ignored, and negative budgets are rejected.
+- With multiple assist heat pumps, every pump now runs its own ON/OFF timer (previously only the first one switched automatically).
+- HVAC modes and setpoints are compared with the device's actual state, so manual changes on a device are corrected and failed service calls are retried.
+- Mirror thermostat setpoint changes are no longer dropped while a refresh is pending.
+- The thermal model learns once per poll interval instead of on every heat pump state change.
+- Air-only setups: the first air heat pump now shows assist information instead of being treated as the water heat pump.
+- Total Power sensor reports watts (kW sources are converted) with power device and state classes.
+- Large diagnostic attributes of the climate entity are excluded from the recorder; the broken entity picture was removed.
+- Timer and thermal model state now use Home Assistant's storage helper, are saved on unload and are removed when the entry is deleted.
+
 **Breaking Changes**
-- None. The renamed config keys fall back to the legacy `lower_setpoint_offset` / `upper_setpoint_offset` keys, so existing installations continue to work without any manual migration.
+- The legacy `lower_setpoint_offset` / `upper_setpoint_offset` keys and devices without a role are no longer read; reconfigure the devices if they predate the heating/cooling split.
+- Assist timer and thermal model state move to new storage files and start fresh.
 
 **Compatibility**
-- Target Home Assistant: 2024.1.0+
+- Target Home Assistant: 2024.11.0+
 - No external Python package requirements.
 
 ---

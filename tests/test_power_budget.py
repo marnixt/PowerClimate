@@ -1,17 +1,14 @@
 """Tests for PowerClimate power budget manager."""
-import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 
-from custom_components.powerclimate.power_budget import PowerBudgetManager
 from custom_components.powerclimate.const import (
     CONF_CLIMATE_ENTITY,
     DEFAULT_POWER_MAX_BUDGET_PER_DEVICE_W,
     DEFAULT_POWER_MIN_BUDGET_W,
     DEFAULT_POWER_SURPLUS_RESERVE_W,
-    DEFAULT_POWER_MODE_DEADBAND_PERCENT,
-    DEFAULT_POWER_MODE_STEP_SIZE,
 )
+from custom_components.powerclimate.power_budget import PowerBudgetManager
 
 
 class MockConfig:
@@ -78,9 +75,8 @@ class TestPowerBudgetManager:
         assert self.manager.total_budget_w == 500.0
 
     def test_clear_all(self):
-        """Should clear all state."""
-        self.manager.set_budget("climate.hp1", 1000.0)
-        self.manager.set_budget("climate.hp2", 500.0)
+        """Should clear automatic budgets and diagnostic state."""
+        self.manager._budgets = {"climate.hp1": 1000.0, "climate.hp2": 500.0}
         self.manager._house_net_power_w = -2000.0
         self.manager._power_available_w = 1500.0
 
@@ -90,6 +86,25 @@ class TestPowerBudgetManager:
         assert self.manager.total_budget_w == 0.0
         assert self.manager.house_net_power_w is None
         assert self.manager.power_available_w is None
+
+    def test_clear_all_keeps_manual_budgets(self):
+        """Service-set budgets must survive the per-update clear_all call."""
+        self.manager.set_budget("climate.hp1", 800.0)
+        self.manager._current_setpoints["climate.hp1"] = 22.0
+
+        self.manager.clear_all()
+
+        assert self.manager.get_budget("climate.hp1") == 800.0
+        assert self.manager._current_setpoints["climate.hp1"] == 22.0
+
+    def test_manual_budget_overrides_automatic(self):
+        """Manual budget takes precedence over the Solar allocation."""
+        self.manager._budgets = {"climate.hp1": 1200.0}
+        self.manager.set_budget("climate.hp1", 400.0)
+
+        assert self.manager.get_budget("climate.hp1") == 400.0
+        self.manager.clear_budget("climate.hp1")
+        assert self.manager.get_budget("climate.hp1") == 1200.0
 
     def test_get_budget_nonexistent_entity(self):
         """Should return 0 for unknown entity."""
@@ -187,7 +202,9 @@ class TestBudgetAllocation:
         """Should not allocate below minimum threshold."""
         # Small surplus, less than minimum budget
         small_surplus = DEFAULT_POWER_MIN_BUDGET_W / 2
-        self.hass.states.get.return_value = MockState(str(-small_surplus - DEFAULT_POWER_SURPLUS_RESERVE_W), "W")
+        self.hass.states.get.return_value = MockState(
+            str(-small_surplus - DEFAULT_POWER_SURPLUS_RESERVE_W), "W"
+        )
 
         devices = [
             {CONF_CLIMATE_ENTITY: "climate.hp1"},
@@ -498,3 +515,16 @@ class TestBudgetAllocationCoolingMode:
         result = self.manager._iter_budget_order(devices, is_cooling=False)
 
         assert result[0][CONF_CLIMATE_ENTITY] == "climate.hp1"
+
+
+class TestManualBudgetsWithSolar:
+    """Solar reallocation must not remove service-set budgets."""
+
+    def test_update_budgets_keeps_manual_budget(self):
+        manager = PowerBudgetManager(MagicMock(), MockConfig())
+        manager._hass.states.get.return_value = MockState("-100", "W")  # no surplus
+        manager.set_budget("climate.hp2", 600.0)
+
+        manager.update_budgets([{CONF_CLIMATE_ENTITY: "climate.hp2"}])
+
+        assert manager.get_budget("climate.hp2") == 600.0

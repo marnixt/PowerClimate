@@ -19,7 +19,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 - **Thermostaat-mirroring**: kopieer alleen setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate; HVAC aan/uit van die thermostaten wordt genegeerd.
 - **Standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 
-![PowerClimate-dashboard: Home Assistant UI met de virtuele PowerClimate-thermostaat (huidige temperatuur, setpoint en modusbediening).](custom_components/powerclimate/images/Dashboard%20Climate%20device.png)
+![PowerClimate-dashboard: Home Assistant UI met de virtuele PowerClimate-thermostaat (huidige temperatuur, setpoint en modusbediening).](images/Dashboard%20Climate%20device.png)
 
 ## Snelstart
 
@@ -32,7 +32,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
   - **Lucht- (assist) warmtepompen** (optioneel, 0..n): climate entity, optionele vermogenssensor, offsets per apparaat,
     en optioneel automatische AAN/UIT controle
 
-![Configuratievoorbeeld: selectie van warmtepompen in de PowerClimate-configuratiepagina.](custom_components/powerclimate/images/Config_select_heat_pumps.png)
+![Configuratievoorbeeld: selectie van warmtepompen in de PowerClimate-configuratiepagina.](images/Config_select_heat_pumps.png)
 
 ## Configuratie
 

@@ -3,7 +3,14 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from custom_components.powerclimate.const import CONF_CLIMATE_ENTITY, CONF_DEVICES, DOMAIN
+from custom_components.powerclimate.const import (
+    CONF_CLIMATE_ENTITY,
+    CONF_DEVICE_ROLE,
+    CONF_DEVICES,
+    DEVICE_ROLE_AIR,
+    DEVICE_ROLE_WATER,
+    DOMAIN,
+)
 from custom_components.powerclimate.sensor import (
     PowerClimateThermalModelTextSensor,
     PowerClimateThermalRecommendedSensor,
@@ -14,7 +21,9 @@ from custom_components.powerclimate.sensor import (
 
 def make_entry(devices):
     """Create a minimal config-entry-like object."""
-    return SimpleNamespace(entry_id="entry-1", title="PowerClimate", data={CONF_DEVICES: devices}, options={})
+    return SimpleNamespace(
+        entry_id="entry-1", title="PowerClimate", data={CONF_DEVICES: devices}, options={}
+    )
 
 
 def _make_summary_sensor(devices=None):
@@ -101,25 +110,39 @@ def test_thermal_summary_shows_room_temperature_when_present() -> None:
     assert "20.5" in text
 
 
-def test_build_behavior_sensors_single_device_creates_hp1_sensor() -> None:
-    """A config with only one device should produce exactly one HP1 behavior sensor."""
-    devices = [{CONF_CLIMATE_ENTITY: "climate.hp1"}]
-    entry = make_entry(devices)
-
+def _build_with_patched_sensors(devices):
     created = []
-
     with patch(
         "custom_components.powerclimate.sensor.PowerClimateHP1BehaviorSensor",
-        side_effect=lambda hass, entry: created.append("hp1") or "hp1",
+        side_effect=lambda hass, entry, role, prefix, label: created.append(("water", role)),
     ), patch(
         "custom_components.powerclimate.sensor.PowerClimateHPBehaviorSensor",
-        side_effect=lambda hass, entry, role, prefix, label: created.append("hpN") or "hpN",
+        side_effect=lambda hass, entry, role, prefix, label: created.append(("air", role)),
     ):
-        sensors = _build_behavior_sensors(MagicMock(), entry)
+        sensors = _build_behavior_sensors(MagicMock(), make_entry(devices))
+    return sensors, created
+
+
+def test_build_behavior_sensors_water_device_creates_water_sensor() -> None:
+    """The water device should get the water behavior sensor."""
+    devices = [{CONF_CLIMATE_ENTITY: "climate.hp1", CONF_DEVICE_ROLE: DEVICE_ROLE_WATER}]
+
+    sensors, created = _build_with_patched_sensors(devices)
 
     assert len(sensors) == 1
-    assert "hp1" in created
-    assert "hpN" not in created
+    assert created == [("water", "hp1")]
+
+
+def test_build_behavior_sensors_air_only_uses_assist_sensors() -> None:
+    """Without a water device, the first air device must not get the water sensor."""
+    devices = [
+        {CONF_CLIMATE_ENTITY: "climate.ac1", CONF_DEVICE_ROLE: DEVICE_ROLE_AIR},
+        {CONF_CLIMATE_ENTITY: "climate.ac2", CONF_DEVICE_ROLE: DEVICE_ROLE_AIR},
+    ]
+
+    _sensors, created = _build_with_patched_sensors(devices)
+
+    assert created == [("air", "hp1"), ("air", "hp2")]
 
 
 # ---------------------------------------------------------------------------
@@ -334,3 +357,23 @@ def test_thermal_summary_hides_thermal_info_when_preset_is_none() -> None:
 
     assert "Learning" not in text
     assert "Suggested" not in text
+
+
+def test_total_power_sensor_converts_kw_to_w() -> None:
+    """Mixed W/kW sources must be summed in watts."""
+    from custom_components.powerclimate.sensor import PowerClimateTotalPowerSensor
+
+    states = {
+        "sensor.hp1_power": SimpleNamespace(state="500", attributes={"unit_of_measurement": "W"}),
+        "sensor.hp2_power": SimpleNamespace(
+            state="1.2", attributes={"unit_of_measurement": "kW"}
+        ),
+    }
+    sensor = PowerClimateTotalPowerSensor.__new__(PowerClimateTotalPowerSensor)
+    sensor.hass = SimpleNamespace(states=SimpleNamespace(get=states.get))
+    sensor._energy_sensors = list(states)
+
+    sensor._recalculate()
+
+    assert sensor._attr_native_value == 1700
+    assert sensor.native_unit_of_measurement == "W"

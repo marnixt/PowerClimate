@@ -2,7 +2,10 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
+
+import pytest
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.powerclimate.__init__ import (
     SERVICE_CLEAR_POWER_BUDGET,
@@ -37,8 +40,8 @@ def make_entry(*entity_ids: str) -> SimpleNamespace:
 def test_set_power_budget_routes_to_matching_entry() -> None:
     """Service should target the entry that owns the requested device."""
     services = FakeServices()
-    climate_one = MagicMock()
-    climate_two = MagicMock()
+    climate_one = AsyncMock()
+    climate_two = AsyncMock()
     hass = SimpleNamespace(
         services=services,
         data={
@@ -54,15 +57,15 @@ def test_set_power_budget_routes_to_matching_entry() -> None:
     handler = services.get_handler(DOMAIN, SERVICE_SET_POWER_BUDGET)
     asyncio.run(handler(SimpleNamespace(data={"entity_id": "climate.hp2", "power_watts": 850.0})))
 
-    climate_one.set_power_budget.assert_not_called()
-    climate_two.set_power_budget.assert_called_once_with("climate.hp2", 850.0)
+    climate_one.async_set_power_budget.assert_not_called()
+    climate_two.async_set_power_budget.assert_awaited_once_with("climate.hp2", 850.0)
 
 
-def test_clear_power_budget_ignores_unknown_entity_with_multiple_entries() -> None:
+def test_clear_power_budget_rejects_unknown_entity_with_multiple_entries() -> None:
     """Service should not mutate an arbitrary entry when ownership is ambiguous."""
     services = FakeServices()
-    climate_one = MagicMock()
-    climate_two = MagicMock()
+    climate_one = AsyncMock()
+    climate_two = AsyncMock()
     hass = SimpleNamespace(
         services=services,
         data={
@@ -76,17 +79,18 @@ def test_clear_power_budget_ignores_unknown_entity_with_multiple_entries() -> No
     asyncio.run(_async_register_services(hass))
 
     handler = services.get_handler(DOMAIN, SERVICE_CLEAR_POWER_BUDGET)
-    asyncio.run(handler(SimpleNamespace(data={"entity_id": "climate.unknown"})))
+    with pytest.raises(ServiceValidationError):
+        asyncio.run(handler(SimpleNamespace(data={"entity_id": "climate.unknown"})))
 
-    climate_one.clear_power_budget.assert_not_called()
-    climate_two.clear_power_budget.assert_not_called()
+    climate_one.async_clear_power_budget.assert_not_called()
+    climate_two.async_clear_power_budget.assert_not_called()
 
 
-def test_set_power_budget_ignores_ambiguous_duplicate_ownership() -> None:
+def test_set_power_budget_rejects_ambiguous_duplicate_ownership() -> None:
     """Service should not pick an arbitrary entry when ownership is duplicated."""
     services = FakeServices()
-    climate_one = MagicMock()
-    climate_two = MagicMock()
+    climate_one = AsyncMock()
+    climate_two = AsyncMock()
     hass = SimpleNamespace(
         services=services,
         data={
@@ -100,16 +104,19 @@ def test_set_power_budget_ignores_ambiguous_duplicate_ownership() -> None:
     asyncio.run(_async_register_services(hass))
 
     handler = services.get_handler(DOMAIN, SERVICE_SET_POWER_BUDGET)
-    asyncio.run(handler(SimpleNamespace(data={"entity_id": "climate.hp1", "power_watts": 900.0})))
+    with pytest.raises(ServiceValidationError):
+        asyncio.run(
+            handler(SimpleNamespace(data={"entity_id": "climate.hp1", "power_watts": 900.0}))
+        )
 
-    climate_one.set_power_budget.assert_not_called()
-    climate_two.set_power_budget.assert_not_called()
+    climate_one.async_set_power_budget.assert_not_called()
+    climate_two.async_set_power_budget.assert_not_called()
 
 
 def test_set_power_budget_falls_back_when_single_entry_exists() -> None:
     """Service should still work for existing single-entry installations."""
     services = FakeServices()
-    climate_entity = MagicMock()
+    climate_entity = AsyncMock()
     hass = SimpleNamespace(
         services=services,
         data={
@@ -126,4 +133,4 @@ def test_set_power_budget_falls_back_when_single_entry_exists() -> None:
         handler(SimpleNamespace(data={"entity_id": "climate.hp1", "power_watts": 500.0}))
     )
 
-    climate_entity.set_power_budget.assert_called_once_with("climate.hp1", 500.0)
+    climate_entity.async_set_power_budget.assert_awaited_once_with("climate.hp1", 500.0)

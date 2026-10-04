@@ -12,7 +12,6 @@ from custom_components.powerclimate.const import (
     CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_HOUSE_POWER_SENSOR,
-    CONF_LOWER_SETPOINT_OFFSET,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MIN_SETPOINT_OVERRIDE,
@@ -268,17 +267,17 @@ class TestDeviceAccessors:
 
 
 class TestSetpointOffsets:
-    """Offsets should prefer new heating keys, fall back to legacy key, then role default."""
+    """Offsets should use the heating keys, then the role default."""
 
     def test_lower_offset_from_heating_key(self) -> None:
         accessor = _make_accessor()
-        device = {CONF_LOWER_SETPOINT_OFFSET_HEATING: -2.0, CONF_LOWER_SETPOINT_OFFSET: -99.0}
+        device = {CONF_LOWER_SETPOINT_OFFSET_HEATING: -2.0}
         assert accessor.get_device_lower_offset(device, 1) == -2.0
 
-    def test_lower_offset_falls_back_to_legacy_key(self) -> None:
+    def test_lower_offset_ignores_legacy_key(self) -> None:
         accessor = _make_accessor()
-        device = {CONF_LOWER_SETPOINT_OFFSET: -3.0}
-        assert accessor.get_device_lower_offset(device, 1) == -3.0
+        device = {CONF_DEVICE_ROLE: DEVICE_ROLE_AIR, "lower_setpoint_offset": -3.0}
+        assert accessor.get_device_lower_offset(device, 1) == DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
 
     def test_lower_offset_returns_water_default_for_water_device(self) -> None:
         accessor = _make_accessor()

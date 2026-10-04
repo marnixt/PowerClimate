@@ -6,7 +6,7 @@ no Home Assistant event loop is required.
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -171,3 +171,41 @@ class TestComputeDerivative:
         result = self.coordinator._compute_derivative(history, 22.0, 900 * 10)
         # denom would be 0; function should return None rather than raising
         assert result is None or isinstance(result, float)
+
+
+@pytest.mark.asyncio
+async def test_thermal_model_updates_once_per_poll_interval() -> None:
+    """Extra refreshes from state changes must not feed the thermal model."""
+    from custom_components.powerclimate.const import (
+        CONF_CLIMATE_ENTITY,
+        CONF_DEVICE_ROLE,
+        CONF_DEVICES,
+        CONF_ROOM_SENSORS,
+        CONF_WATER_SENSOR,
+        DEVICE_ROLE_WATER,
+    )
+
+    coord = _make_coordinator()
+    coord.entry = SimpleNamespace(
+        data={
+            CONF_ROOM_SENSORS: ["sensor.room"],
+            CONF_DEVICES: [
+                {
+                    CONF_CLIMATE_ENTITY: "climate.hp1",
+                    CONF_DEVICE_ROLE: DEVICE_ROLE_WATER,
+                    CONF_WATER_SENSOR: "sensor.water",
+                }
+            ],
+        },
+        options={},
+    )
+    coord.hass.states.get.return_value = SimpleNamespace(state="20.0", attributes={})
+    coord.thermal_model = MagicMock()
+    coord.thermal_model.async_save = AsyncMock()
+    coord._last_model_update = None
+    coord._last_model_save = None
+
+    await coord._async_update_data()
+    await coord._async_update_data()
+
+    assert coord.thermal_model.update.call_count == 1

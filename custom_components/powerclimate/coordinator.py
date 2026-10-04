@@ -20,7 +20,12 @@ from .const import (
     DEVICE_ROLE_WATER,
 )
 from .helpers import merged_entry_data
-from .thermal_model import ThermalModel
+from .thermal_model import (
+    MIN_UPDATE_INTERVAL_SECONDS,
+    SAVE_INTERVAL_SECONDS,
+    ThermalModel,
+)
+from .utils import safe_float
 
 
 class OSDataUpdateCoordinator(DataUpdateCoordinator):
@@ -54,7 +59,8 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         """
         self.entry = entry
         self.thermal_model = ThermalModel(hass, entry.entry_id)
-        self._model_cycle_count: int = 0
+        self._last_model_update: datetime | None = None
+        self._last_model_save: datetime | None = None
         self._room_temp_history: list[tuple[datetime, float]] = []
         self._device_temp_history: dict[
             str,
@@ -187,7 +193,17 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             ),
             None,
         )
-        if room_temp is not None and water_payload is not None:
+        # Extra refreshes are requested on every heat pump state change; only
+        # feed the model one observation per poll interval so the EWMA
+        # learning rate stays time-based.
+        now = datetime.now(timezone.utc)
+        model_due = (
+            self._last_model_update is None
+            or (now - self._last_model_update).total_seconds()
+            >= MIN_UPDATE_INTERVAL_SECONDS
+        )
+        if model_due and room_temp is not None and water_payload is not None:
+            self._last_model_update = now
             self.thermal_model.update(
                 room_temp=room_temp,
                 water_temp=water_payload.get("water_temperature"),
@@ -196,10 +212,10 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
                 room_derivative_per_hour=data.get("room_derivative"),
             )
 
-        # Save model periodically (every _SAVE_INTERVAL cycles ≈ 10 min)
-        self._model_cycle_count += 1
-        from .thermal_model import _SAVE_INTERVAL
-        if self._model_cycle_count % _SAVE_INTERVAL == 0:
+        if self._last_model_save is None:
+            self._last_model_save = now
+        elif (now - self._last_model_save).total_seconds() >= SAVE_INTERVAL_SECONDS:
+            self._last_model_save = now
             await self.thermal_model.async_save()
 
         data["thermal_model_state"] = self.thermal_model.to_dict()
@@ -220,10 +236,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         state = self.hass.states.get(entity_id)
         if not state or state.state in ("unknown", "unavailable"):
             return None
-        try:
-            return float(state.state)
-        except (TypeError, ValueError):
-            return None
+        return safe_float(state.state)
 
     def _compute_derivative(
         self,

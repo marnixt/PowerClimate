@@ -97,17 +97,13 @@ DEFAULT_POWER_MAX_BUDGET_PER_DEVICE_W = 1200.0
 # Floor = current_temp + lower_offset (lower is typically negative or zero)
 # Ceiling = current_temp + upper_offset
 
-# Heating-specific offset keys (new; replaces legacy keys below)
+# Heating-specific offset keys
 CONF_LOWER_SETPOINT_OFFSET_HEATING = "lower_setpoint_offset_heating"
 CONF_UPPER_SETPOINT_OFFSET_HEATING = "upper_setpoint_offset_heating"
 
 # Cooling-specific offset keys (air devices only)
 CONF_LOWER_SETPOINT_OFFSET_COOLING = "lower_setpoint_offset_cooling"
 CONF_UPPER_SETPOINT_OFFSET_COOLING = "upper_setpoint_offset_cooling"
-
-# Legacy keys kept for backward compatibility with existing config entries
-CONF_LOWER_SETPOINT_OFFSET = "lower_setpoint_offset"
-CONF_UPPER_SETPOINT_OFFSET = "upper_setpoint_offset"
 
 # HP1 (water-based heat pump) heating defaults
 DEFAULT_LOWER_SETPOINT_OFFSET_HP1 = -0.3
@@ -131,7 +127,6 @@ DEFAULT_MAX_SETPOINT = 30.0
 CONF_MIN_SETPOINT_OVERRIDE = "min_setpoint_override"
 CONF_MAX_SETPOINT_OVERRIDE = "max_setpoint_override"
 CONF_ASSIST_TIMER_SECONDS = "assist_timer_seconds"
-# Legacy (kept for backwards compatibility; UI now uses minutes)
 
 # Preferred ETA thresholds in minutes
 CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES = "assist_on_eta_threshold_minutes"

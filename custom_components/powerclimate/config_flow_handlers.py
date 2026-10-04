@@ -6,7 +6,6 @@ reducing code duplication and ensuring consistent behavior.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import voluptuous as vol
@@ -30,29 +29,31 @@ from .const import (
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_HOUSE_POWER_SENSOR,
-    CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
+    CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
-    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
-    CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
+    CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
     DEFAULT_ASSIST_MIN_OFF_MINUTES,
     DEFAULT_ASSIST_MIN_ON_MINUTES,
+    DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
+    DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
     DEFAULT_ASSIST_STALL_TEMP_DELTA,
     DEFAULT_ASSIST_TIMER_SECONDS,
     DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
-    DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_ENTRY_NAME,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
+    DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_MIN_SETPOINT,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
@@ -60,6 +61,8 @@ from .const import (
     DEVICE_ROLE_AIR,
     DEVICE_ROLE_WATER,
 )
+from .utils import generate_device_id, generate_device_name, safe_float
+from .utils import parse_offset_with_default as parse_offset
 
 # Field names for UI toggles (not stored in data)
 FIELD_WATER_CLIMATE = "water_climate_entity_id"
@@ -132,29 +135,6 @@ def build_fields(
     }
 
 
-def parse_offset(raw: Any, default: float) -> tuple[float, bool]:
-    """Parse an offset while preserving a leading -0.
-
-    Returns:
-        Tuple of (value, is_valid).
-    """
-    raw_str = None
-    if isinstance(raw, str):
-        raw_str = raw.strip()
-    elif raw is not None:
-        raw_str = str(raw).strip()
-
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        return default, False
-
-    if raw_str and re.match(r"^-0(\.0+)?$", raw_str):
-        return -0.0, True
-
-    return value, True
-
-
 def parse_offset_pair(
     user_input: dict[str, Any],
     lower_key: str,
@@ -188,31 +168,6 @@ def parse_offset_pair(
     return lower, upper
 
 
-def slugify(value: str) -> str:
-    """Convert string to lowercase slug with underscores."""
-    value = value.strip().lower()
-    value = re.sub(r"[^a-z0-9_]+", "_", value)
-    value = re.sub(r"_+", "_", value)
-    return value.strip("_")
-
-
-def generate_device_id(climate_entity: str, used_ids: set[str]) -> str:
-    """Generate unique device ID from climate entity."""
-    base = slugify(climate_entity.split(".")[-1]) or "hp"
-    candidate = base
-    counter = 2
-    while candidate in used_ids:
-        candidate = f"{base}_{counter}"
-        counter += 1
-    return candidate
-
-
-def generate_device_name(climate_entity: str) -> str:
-    """Generate human-readable device name from entity ID."""
-    raw = climate_entity.split(".")[-1].replace("_", " ")
-    return raw.title() if raw else climate_entity
-
-
 def entry_name_from_input(
     user_input: dict[str, Any] | None,
     base: dict[str, Any] | None = None,
@@ -232,35 +187,21 @@ def entry_name_from_input(
 def split_devices_by_role(
     base: dict[str, Any] | None,
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """Split devices into water device and air devices based on role.
+    """Split devices into the water device and air devices based on role.
 
-    For backward compatibility, if no role is set:
-    - First device is assumed to be water
-    - Remaining devices are assumed to be air
+    Devices without a valid role are ignored, matching ConfigAccessor.
     """
-    devices = [
-        dict(device)
-        for device in (base or {}).get(CONF_DEVICES, [])
-        if isinstance(device, dict)
-    ]
-    if not devices:
-        return None, []
-
     water_device = None
-    air_devices = []
+    air_devices: list[dict[str, Any]] = []
 
-    for i, device in enumerate(devices):
+    for device in (base or {}).get(CONF_DEVICES, []):
+        if not isinstance(device, dict):
+            continue
         role = device.get(CONF_DEVICE_ROLE)
-        if role == DEVICE_ROLE_WATER:
-            water_device = device
+        if role == DEVICE_ROLE_WATER and water_device is None:
+            water_device = dict(device)
         elif role == DEVICE_ROLE_AIR:
-            air_devices.append(device)
-        else:
-            # Backward compatibility: first device without role is water
-            if i == 0 and water_device is None:
-                water_device = device
-            else:
-                air_devices.append(device)
+            air_devices.append(dict(device))
 
     return water_device, air_devices
 
@@ -449,20 +390,19 @@ def water_device_defaults(
         defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
             CONF_ALLOW_ON_OFF_CONTROL, False
         )
-        # Read new heating key, fall back to legacy key for existing configs
-        lower_h = existing_device.get(CONF_LOWER_SETPOINT_OFFSET_HEATING)
-        if lower_h is None:
-            lower_h = existing_device.get("lower_setpoint_offset", DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
-        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = lower_h
+        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = existing_device.get(
+            CONF_LOWER_SETPOINT_OFFSET_HEATING
+        )
+        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = existing_device.get(
+            CONF_UPPER_SETPOINT_OFFSET_HEATING
+        )
 
-        upper_h = existing_device.get(CONF_UPPER_SETPOINT_OFFSET_HEATING)
-        if upper_h is None:
-            upper_h = existing_device.get("upper_setpoint_offset", DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
-        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = upper_h
-
-    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_HP1)
-    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_HP1)
-    defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
+    if defaults.get(CONF_LOWER_SETPOINT_OFFSET_HEATING) is None:
+        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
+    if defaults.get(CONF_UPPER_SETPOINT_OFFSET_HEATING) is None:
+        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
+    if defaults.get(CONF_ALLOW_ON_OFF_CONTROL) is None:
+        defaults[CONF_ALLOW_ON_OFF_CONTROL] = False
 
     if user_input:
         defaults.update(user_input)
@@ -563,16 +503,12 @@ def air_device_defaults(
         defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
             CONF_ALLOW_ON_OFF_CONTROL, False
         )
-        # Heating offsets: new key first, fall back to legacy for existing configs
-        lower_h = existing_device.get(CONF_LOWER_SETPOINT_OFFSET_HEATING)
-        if lower_h is None:
-            lower_h = existing_device.get("lower_setpoint_offset", DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST)
-        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = lower_h
-
-        upper_h = existing_device.get(CONF_UPPER_SETPOINT_OFFSET_HEATING)
-        if upper_h is None:
-            upper_h = existing_device.get("upper_setpoint_offset", DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST)
-        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = upper_h
+        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = existing_device.get(
+            CONF_LOWER_SETPOINT_OFFSET_HEATING
+        )
+        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = existing_device.get(
+            CONF_UPPER_SETPOINT_OFFSET_HEATING
+        )
 
         # Cooling offsets
         defaults[CONF_LOWER_SETPOINT_OFFSET_COOLING] = existing_device.get(
@@ -582,11 +518,16 @@ def air_device_defaults(
             CONF_UPPER_SETPOINT_OFFSET_COOLING, DEFAULT_UPPER_SETPOINT_OFFSET_COOLING
         )
 
-    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET_HEATING, DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST)
-    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET_HEATING, DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST)
-    defaults.setdefault(CONF_LOWER_SETPOINT_OFFSET_COOLING, DEFAULT_LOWER_SETPOINT_OFFSET_COOLING)
-    defaults.setdefault(CONF_UPPER_SETPOINT_OFFSET_COOLING, DEFAULT_UPPER_SETPOINT_OFFSET_COOLING)
-    defaults.setdefault(CONF_ALLOW_ON_OFF_CONTROL, False)
+    if defaults.get(CONF_LOWER_SETPOINT_OFFSET_HEATING) is None:
+        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
+    if defaults.get(CONF_UPPER_SETPOINT_OFFSET_HEATING) is None:
+        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
+    if defaults.get(CONF_LOWER_SETPOINT_OFFSET_COOLING) is None:
+        defaults[CONF_LOWER_SETPOINT_OFFSET_COOLING] = DEFAULT_LOWER_SETPOINT_OFFSET_COOLING
+    if defaults.get(CONF_UPPER_SETPOINT_OFFSET_COOLING) is None:
+        defaults[CONF_UPPER_SETPOINT_OFFSET_COOLING] = DEFAULT_UPPER_SETPOINT_OFFSET_COOLING
+    if defaults.get(CONF_ALLOW_ON_OFF_CONTROL) is None:
+        defaults[CONF_ALLOW_ON_OFF_CONTROL] = False
 
     if user_input:
         defaults.update(user_input)
@@ -773,8 +714,8 @@ def advanced_form_defaults(
         CONF_MIN_SETPOINT_OVERRIDE: DEFAULT_MIN_SETPOINT,
         CONF_MAX_SETPOINT_OVERRIDE: DEFAULT_MAX_SETPOINT,
         CONF_ASSIST_TIMER_SECONDS: DEFAULT_ASSIST_TIMER_SECONDS,
-        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES: None,
-        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES: None,
+        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES: DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
+        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES: DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
         CONF_ASSIST_MIN_ON_MINUTES: DEFAULT_ASSIST_MIN_ON_MINUTES,
         CONF_ASSIST_MIN_OFF_MINUTES: DEFAULT_ASSIST_MIN_OFF_MINUTES,
         CONF_ASSIST_WATER_TEMP_THRESHOLD: DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
@@ -801,6 +742,40 @@ def process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
     }
 
     return {key: user_input[key] for key in advanced_keys if key in user_input}
+
+
+def validate_advanced_input(data: dict[str, Any]) -> dict[str, str]:
+    """Validate cross-field constraints of the advanced options.
+
+    Args:
+        data: Existing configuration merged with the submitted values.
+
+    Returns:
+        Errors keyed by field name (or "base").
+    """
+    errors: dict[str, str] = {}
+
+    min_sp = safe_float(data.get(CONF_MIN_SETPOINT_OVERRIDE), DEFAULT_MIN_SETPOINT)
+    max_sp = safe_float(data.get(CONF_MAX_SETPOINT_OVERRIDE), DEFAULT_MAX_SETPOINT)
+    if min_sp >= max_sp:
+        errors["base"] = "invalid_setpoint_range"
+        errors[CONF_MIN_SETPOINT_OVERRIDE] = "invalid"
+        errors[CONF_MAX_SETPOINT_OVERRIDE] = "invalid"
+
+    on_eta = safe_float(
+        data.get(CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES),
+        DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
+    )
+    off_eta = safe_float(
+        data.get(CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES),
+        DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
+    )
+    if off_eta >= on_eta:
+        errors.setdefault("base", "invalid_eta_thresholds")
+        errors[CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES] = "invalid"
+        errors[CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES] = "invalid"
+
+    return errors
 
 
 # --- Experimental Options Step ---

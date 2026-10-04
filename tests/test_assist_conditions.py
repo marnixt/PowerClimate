@@ -1,6 +1,4 @@
 """Tests for PowerClimate assist conditions."""
-import pytest
-from unittest.mock import MagicMock
 
 from custom_components.powerclimate.assist_conditions import (
     AssistConditionChecker,

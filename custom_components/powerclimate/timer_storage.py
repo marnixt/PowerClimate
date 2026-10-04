@@ -6,11 +6,11 @@ ensuring that timer data survives Home Assistant restarts.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from homeassistant.helpers.storage import Store
 
 from .models import AssistTimerState
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
-STORAGE_KEY = "powerclimate_timer_state"
+STORAGE_KEY_TEMPLATE = "powerclimate_timers_{entry_id}"
 
 
 def _datetime_to_iso(dt: datetime | None) -> str | None:
@@ -40,11 +40,16 @@ def _iso_to_datetime(iso_str: str | None) -> datetime | None:
         return None
 
 
+def storage_key(entry_id: str) -> str:
+    """Return the Store key used for an entry's timer state."""
+    return STORAGE_KEY_TEMPLATE.format(entry_id=entry_id)
+
+
 class TimerStorage:
     """Persistent storage for assist pump timer states.
 
-    Stores timer states to a JSON file in the Home Assistant config directory
-    so that timer progress is preserved across restarts.
+    Uses Home Assistant's Store helper (atomic writes in ``.storage``) so that
+    timer progress is preserved across restarts.
     """
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
@@ -54,13 +59,10 @@ class TimerStorage:
             hass: Home Assistant instance.
             entry_id: Config entry ID for namespacing.
         """
-        self._hass = hass
         self._entry_id = entry_id
-        self._storage_path = Path(hass.config.path(
-            ".storage", f"powerclimate_timers_{entry_id}.json"
-        ))
-        self._data: dict[str, Any] = {}
-        self._loaded = False
+        self._store: Store[dict[str, Any]] = Store(
+            hass, STORAGE_VERSION, storage_key(entry_id)
+        )
 
     async def async_load(self) -> dict[str, AssistTimerState]:
         """Load timer states from storage.
@@ -68,25 +70,21 @@ class TimerStorage:
         Returns:
             Dictionary mapping entity_id to AssistTimerState.
         """
-        if self._loaded:
-            return self._deserialize_states(self._data.get("timers", {}))
-
-        states: dict[str, AssistTimerState] = {}
-
         try:
-            data = await self._hass.async_add_executor_job(self._read_file)
-            if data:
-                self._data = data
-                states = self._deserialize_states(data.get("timers", {}))
-                _LOGGER.debug(
-                    "Loaded %d timer states from storage for entry %s",
-                    len(states),
-                    self._entry_id,
-                )
+            data = await self._store.async_load()
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.warning("Failed to load timer storage: %s", err)
+            return {}
 
-        self._loaded = True
+        if not isinstance(data, dict):
+            return {}
+
+        states = self._deserialize_states(data.get("timers") or {})
+        _LOGGER.debug(
+            "Loaded %d timer states from storage for entry %s",
+            len(states),
+            self._entry_id,
+        )
         return states
 
     async def async_save(self, states: dict[str, AssistTimerState]) -> None:
@@ -95,47 +93,14 @@ class TimerStorage:
         Args:
             states: Dictionary mapping entity_id to AssistTimerState.
         """
-        self._data = {
-            "version": STORAGE_VERSION,
-            "entry_id": self._entry_id,
-            "timers": self._serialize_states(states),
-        }
-
         try:
-            await self._hass.async_add_executor_job(self._write_file, self._data)
-            _LOGGER.debug(
-                "Saved %d timer states to storage for entry %s",
-                len(states),
-                self._entry_id,
-            )
+            await self._store.async_save({"timers": self._serialize_states(states)})
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.warning("Failed to save timer storage: %s", err)
 
     async def async_remove(self) -> None:
         """Remove the storage file."""
-        try:
-            await self._hass.async_add_executor_job(self._delete_file)
-            _LOGGER.debug("Removed timer storage for entry %s", self._entry_id)
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.debug("Failed to remove timer storage: %s", err)
-
-    def _read_file(self) -> dict[str, Any] | None:
-        """Read storage file (blocking)."""
-        if not self._storage_path.exists():
-            return None
-        with self._storage_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
-
-    def _write_file(self, data: dict[str, Any]) -> None:
-        """Write storage file (blocking)."""
-        self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._storage_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-
-    def _delete_file(self) -> None:
-        """Delete storage file (blocking)."""
-        if self._storage_path.exists():
-            self._storage_path.unlink()
+        await self._store.async_remove()
 
     def _serialize_states(
         self, states: dict[str, AssistTimerState]

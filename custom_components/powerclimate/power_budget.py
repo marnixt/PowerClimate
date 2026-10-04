@@ -56,7 +56,8 @@ class PowerBudgetManager:
         self._config = config
 
         # Power budget state
-        self._budgets: dict[str, float] = {}  # entity_id -> target watts
+        self._budgets: dict[str, float] = {}  # entity_id -> watts (Solar preset)
+        self._manual_budgets: dict[str, float] = {}  # entity_id -> watts (service)
         self._current_setpoints: dict[str, float] = {}  # entity_id -> setpoint
         self._last_adjustments: dict[str, datetime] = {}  # entity_id -> timestamp
         self._last_update: datetime | None = None
@@ -84,13 +85,13 @@ class PowerBudgetManager:
 
     @property
     def budgets(self) -> dict[str, float]:
-        """Get current power budgets by entity ID."""
-        return dict(self._budgets)
+        """Get effective power budgets by entity ID (manual overrides automatic)."""
+        return {**self._budgets, **self._manual_budgets}
 
     @property
     def total_budget_w(self) -> float:
         """Get total allocated power budget in watts."""
-        return sum(float(v) for v in self._budgets.values()) if self._budgets else 0.0
+        return sum(float(v) for v in self.budgets.values())
 
     def get_budget(self, entity_id: str) -> float:
         """Get power budget for a specific entity.
@@ -101,39 +102,57 @@ class PowerBudgetManager:
         Returns:
             Power budget in watts, or 0.0 if not set.
         """
+        if entity_id in self._manual_budgets:
+            return self._manual_budgets[entity_id]
         return self._budgets.get(entity_id, 0.0)
 
     def set_budget(self, entity_id: str, power_watts: float) -> None:
-        """Set power budget for a device.
+        """Set a manual power budget for a device (service API).
+
+        Manual budgets survive ``clear_all`` and Solar reallocation; they are
+        only removed by ``clear_budget``.
 
         Args:
             entity_id: Climate entity ID.
             power_watts: Target power in watts.
         """
-        self._budgets[entity_id] = power_watts
+        self._manual_budgets[entity_id] = float(power_watts)
         _LOGGER.info("Power budget set for %s: %d W", entity_id, power_watts)
 
     def clear_budget(self, entity_id: str) -> None:
-        """Clear power budget for a device.
+        """Clear the manual power budget for a device (service API).
 
         Args:
             entity_id: Climate entity ID.
         """
-        self._budgets.pop(entity_id, None)
-        self._current_setpoints.pop(entity_id, None)
-        self._last_adjustments.pop(entity_id, None)
+        self._manual_budgets.pop(entity_id, None)
+        if entity_id not in self._budgets:
+            self._reset_tracking(entity_id)
         _LOGGER.info("Power budget cleared for %s", entity_id)
 
     def clear_all(self) -> None:
-        """Clear all power budgets and reset state."""
-        self._budgets.clear()
-        self._current_setpoints.clear()
-        self._last_adjustments.clear()
+        """Clear all automatic (Solar) budgets and reset their state.
+
+        Manual budgets set via the service are kept.
+        """
+        for entity_id in list(self._budgets):
+            self._clear_auto_budget(entity_id)
         self._last_update = None
         self._house_net_power_w = None
         self._power_available_w = None
         self._power_budget_remaining_w = None
         self._air_budget_rotation = 0
+
+    def _reset_tracking(self, entity_id: str) -> None:
+        """Forget setpoint tracking for an entity."""
+        self._current_setpoints.pop(entity_id, None)
+        self._last_adjustments.pop(entity_id, None)
+
+    def _clear_auto_budget(self, entity_id: str) -> None:
+        """Remove an automatic budget, keeping tracking for manual budgets."""
+        self._budgets.pop(entity_id, None)
+        if entity_id not in self._manual_budgets:
+            self._reset_tracking(entity_id)
 
     def update_budgets(self, devices: list[dict[str, Any]], *, is_cooling: bool = False) -> None:
         """Update per-device power budgets from house net power.
@@ -191,11 +210,10 @@ class PowerBudgetManager:
         # Clear budgets for devices no longer allocated
         for entity_id in list(self._budgets.keys()):
             if entity_id not in new_budgets:
-                self.clear_budget(entity_id)
+                self._clear_auto_budget(entity_id)
 
         # Apply new budgets
-        for entity_id, budget in new_budgets.items():
-            self.set_budget(entity_id, budget)
+        self._budgets.update(new_budgets)
 
         self._power_budget_remaining_w = float(max(0.0, remaining_w))
 
@@ -257,7 +275,7 @@ class PowerBudgetManager:
         Returns:
             Calculated setpoint temperature.
         """
-        target_power = self._budgets.get(entity_id, 0.0)
+        target_power = self.get_budget(entity_id)
         now = dt_util.utcnow()
 
         # Get or initialize current setpoint
@@ -356,5 +374,6 @@ class PowerBudgetManager:
             "power_available_w": self._power_available_w,
             "power_budget_remaining_w": self._power_budget_remaining_w,
             "power_budget_total_w": self.total_budget_w,
-            "power_budget_by_entity_w": dict(self._budgets),
+            "power_budget_by_entity_w": self.budgets,
+            "power_budget_manual_w": dict(self._manual_budgets),
         }

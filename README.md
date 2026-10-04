@@ -23,7 +23,7 @@ Not affiliated with Home Assistant.
 
 - **Multi-heatpump orchestration**: One virtual thermostat coordinates one optional water-based heat pump and any number of air-based assist heat pumps.
 
-![PowerClimate dashboard climate device: Home Assistant UI showing the PowerClimate virtual thermostat with current temperature, setpoint, and mode controls.](custom_components/powerclimate/images/Dashboard%20Climate%20device.png)
+![PowerClimate dashboard climate device: Home Assistant UI showing the PowerClimate virtual thermostat with current temperature, setpoint, and mode controls.](docs/images/Dashboard%20Climate%20device.png)
 - **Per-device offsets + guardrails**: Separate lower/upper offsets for heating and cooling per device, plus global min/max setpoint limits.
 - **Heating and cooling modes**: Air-based heat pumps that support both heat and cool can be used in either mode. The water-based heat pump (if configured) is automatically excluded from cooling.
 - **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
@@ -32,13 +32,13 @@ Not affiliated with Home Assistant.
 - **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
 - **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
-![Config air warmtepomp](custom_components/powerclimate/images/Dashboard%20example%201.png)
+![Config air warmtepomp](docs/images/Dashboard%20example%201.png)
 
 
 ## Documentation
 
-- Detailed documentation (EN): [custom_components/powerclimate/README.md](custom_components/powerclimate/README.md)
-- Gedetailleerde documentatie (NL): [custom_components/powerclimate/README-NL.md](custom_components/powerclimate/README-NL.md)
+- Detailed documentation (EN): [docs/README.md](docs/README.md)
+- Gedetailleerde documentatie (NL): [docs/README-NL.md](docs/README-NL.md)
 
 ## Installation
 
@@ -59,13 +59,13 @@ Copy `custom_components/powerclimate/` into your Home Assistant `config/custom_c
 2. Select one or more room temperature sensors (PowerClimate uses an average of available values).
 3. Select thermostats that PowerClimate should mirror (optional). Only setpoint changes on these thermostats are copied to PowerClimate; turning a mirrored thermostat off does not turn PowerClimate off.
 4. Select an optional water-based heat pump (0 or 1) and zero or more air-based assist heat pumps. The first mirrored thermostat is preselected for the water heat pump.
-![Select heat pumps configuration](custom_components/powerclimate/images/Config_select_heat_pumps.png)
+![Select heat pumps configuration](docs/images/Config_select_heat_pumps.png)
 
 5. Configure each selected device on its own page (role, sensors, offsets, and optional on/off control for assists).
 
 Note: Set the lower setpoint offset so that the heat pump almost, but not completely, switches off. In this example, the setpoint will be a minimum of 17 °C when the heat pump itself measures 20 °C.
 
-![Config air warmtepomp](custom_components/powerclimate/images/Config%20air%20heatpump%201.png)
+![Config air warmtepomp](docs/images/Config%20air%20heatpump%201.png)
 
 ## Support
 

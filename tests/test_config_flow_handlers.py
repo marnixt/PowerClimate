@@ -6,23 +6,20 @@ import json
 from pathlib import Path
 
 import pytest
-import voluptuous as vol
 
 from custom_components.powerclimate.config_flow_handlers import (
     build_global_schema,
-    flatten_section_data,
-    process_advanced_input,
-    process_global_input,
-    process_water_device_input,
-    water_device_defaults,
+    entry_name_from_input,
     experimental_form_defaults,
+    flatten_section_data,
     parse_offset,
+    process_advanced_input,
     process_air_device_input,
     process_experimental_input,
-    slugify,
-    generate_device_id,
-    generate_device_name,
-    entry_name_from_input,
+    process_global_input,
+    process_water_device_input,
+    validate_advanced_input,
+    water_device_defaults,
 )
 from custom_components.powerclimate.const import (
     CONF_ALLOW_ON_OFF_CONTROL,
@@ -30,13 +27,11 @@ from custom_components.powerclimate.const import (
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
     CONF_HOUSE_POWER_SENSOR,
-    CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAXIMUM_OVERSHOOT,
-    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_ROOM_SENSORS,
-    CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
     DEFAULT_ENTRY_NAME,
@@ -96,87 +91,7 @@ class TestParseOffset:
         assert value == 1.5
 
 
-class TestSlugify:
-    """Tests for slugify function."""
 
-    def test_basic_slugify(self):
-        """Should convert to lowercase with underscores."""
-        assert slugify("Hello World") == "hello_world"
-
-    def test_special_characters(self):
-        """Should replace special characters."""
-        assert slugify("Hello-World!@#$") == "hello_world"
-
-    def test_multiple_spaces(self):
-        """Should collapse multiple spaces."""
-        assert slugify("hello   world") == "hello_world"
-
-    def test_multiple_underscores(self):
-        """Should collapse multiple underscores."""
-        assert slugify("hello___world") == "hello_world"
-
-    def test_leading_trailing(self):
-        """Should strip leading/trailing whitespace."""
-        assert slugify("  hello world  ") == "hello_world"
-
-    def test_empty_string(self):
-        """Should handle empty string."""
-        assert slugify("") == ""
-
-    def test_only_special_chars(self):
-        """Should handle string with only special chars."""
-        assert slugify("@#$%") == ""
-
-
-class TestGenerateDeviceId:
-    """Tests for generate_device_id function."""
-
-    def test_basic_id(self):
-        """Should generate ID from entity name."""
-        device_id = generate_device_id("climate.living_room", set())
-        assert device_id == "living_room"
-
-    def test_duplicate_id(self):
-        """Should append number for duplicates."""
-        used = {"living_room"}
-        device_id = generate_device_id("climate.living_room", used)
-        assert device_id == "living_room_2"
-
-    def test_multiple_duplicates(self):
-        """Should increment number for multiple duplicates."""
-        used = {"living_room", "living_room_2", "living_room_3"}
-        device_id = generate_device_id("climate.living_room", used)
-        assert device_id == "living_room_4"
-
-    def test_empty_entity_name(self):
-        """Should use default for empty name."""
-        device_id = generate_device_id("climate.", set())
-        assert device_id == "hp"
-
-    def test_complex_entity_name(self):
-        """Should handle complex entity names."""
-        device_id = generate_device_id("climate.master_bedroom_heat_pump", set())
-        assert device_id == "master_bedroom_heat_pump"
-
-
-class TestGenerateDeviceName:
-    """Tests for generate_device_name function."""
-
-    def test_basic_name(self):
-        """Should generate title-case name."""
-        name = generate_device_name("climate.living_room")
-        assert name == "Living Room"
-
-    def test_underscores_to_spaces(self):
-        """Should convert underscores to spaces."""
-        name = generate_device_name("climate.master_bedroom_ac")
-        assert name == "Master Bedroom Ac"
-
-    def test_empty_name(self):
-        """Should return full entity ID for empty name part."""
-        name = generate_device_name("climate.")
-        # Returns the full entity when split produces empty string
-        assert name == "climate."
 
 
 class TestEntryNameFromInput:
@@ -380,3 +295,73 @@ class TestAdvancedOptions:
         processed = process_advanced_input({CONF_MAXIMUM_OVERSHOOT: 1.2})
 
         assert processed[CONF_MAXIMUM_OVERSHOOT] == 1.2
+
+    def test_validate_advanced_input_accepts_defaults(self):
+        assert validate_advanced_input({}) == {}
+
+    def test_validate_advanced_input_rejects_inverted_setpoints(self):
+        errors = validate_advanced_input(
+            {"min_setpoint_override": 25.0, "max_setpoint_override": 20.0}
+        )
+        assert errors["base"] == "invalid_setpoint_range"
+
+    def test_validate_advanced_input_rejects_inverted_eta_thresholds(self):
+        errors = validate_advanced_input(
+            {
+                "assist_on_eta_threshold_minutes": 10.0,
+                "assist_off_eta_threshold_minutes": 30.0,
+            }
+        )
+        assert errors["base"] == "invalid_eta_thresholds"
+
+
+class TestAdvancedOptionsStep:
+    """The options flow advanced step must validate and save."""
+
+    @staticmethod
+    def _make_flow():
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from custom_components.powerclimate.config_flow import (
+            PowerClimateOptionsFlowHandler,
+        )
+
+        entry = SimpleNamespace(data={}, options={}, title="PowerClimate")
+        flow = PowerClimateOptionsFlowHandler(entry)
+        flow.async_show_form = MagicMock(return_value="form")
+        flow.async_create_entry = MagicMock(return_value="created")
+        return flow
+
+    def test_advanced_step_saves_valid_input(self):
+        import asyncio
+
+        flow = self._make_flow()
+        result = asyncio.run(
+            flow.async_step_advanced(
+                {"setpoints": {"min_setpoint_override": 17.0, CONF_MAXIMUM_OVERSHOOT: 0.8}}
+            )
+        )
+
+        assert result == "created"
+        saved = flow.async_create_entry.call_args.kwargs["data"]
+        assert saved["min_setpoint_override"] == 17.0
+
+    def test_advanced_step_shows_errors(self):
+        import asyncio
+
+        flow = self._make_flow()
+        result = asyncio.run(
+            flow.async_step_advanced(
+                {
+                    "setpoints": {
+                        "min_setpoint_override": 25.0,
+                        "max_setpoint_override": 20.0,
+                    }
+                }
+            )
+        )
+
+        assert result == "form"
+        errors = flow.async_show_form.call_args.kwargs["errors"]
+        assert errors["base"] == "invalid_setpoint_range"

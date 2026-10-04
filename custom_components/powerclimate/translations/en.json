@@ -120,7 +120,12 @@
       "required": "This field is required.",
       "duplicate": "A device cannot be both water and air type.",
       "invalid": "Select a valid value.",
-      "invalid_offsets": "Lower offset must be less than or equal to upper offset."
+      "invalid_offsets": "Lower offset must be less than or equal to upper offset.",
+      "invalid_setpoint_range": "Minimum temperature must be lower than maximum temperature.",
+      "invalid_eta_thresholds": "The OFF ETA threshold must be lower than the ON ETA threshold."
+    },
+    "abort": {
+      "already_configured": "A PowerClimate entry with this name is already configured."
     }
   },
   "options": {
@@ -312,7 +317,17 @@
       "required": "This field is required.",
       "duplicate": "A device cannot be both water and air type.",
       "invalid": "Select a valid value.",
-      "invalid_offsets": "Lower offset must be less than or equal to upper offset."
+      "invalid_offsets": "Lower offset must be less than or equal to upper offset.",
+      "invalid_setpoint_range": "Minimum temperature must be lower than maximum temperature.",
+      "invalid_eta_thresholds": "The OFF ETA threshold must be lower than the ON ETA threshold."
+    }
+  },
+  "exceptions": {
+    "unknown_target": {
+      "message": "No PowerClimate entry manages {entity_id}."
+    },
+    "ambiguous_target": {
+      "message": "Multiple PowerClimate entries manage {entity_id}; the target is ambiguous."
     }
   }
 }
