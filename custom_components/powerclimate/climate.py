@@ -1012,6 +1012,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             not overshoot
             and held is not None
             and abs(target - held) < SUPPLY_SETPOINT_DEADBAND - FLOAT_COMPARISON_EPSILON
+            and config.output_min <= held - current_temp <= config.output_max
         ):
             correction = held - current_temp
         else:

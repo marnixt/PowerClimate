@@ -219,6 +219,28 @@ def test_mpc_target_rises_while_supply_is_below_advice() -> None:
     assert third == 21.2
 
 
+def test_mpc_deadband_never_leaves_device_offsets() -> None:
+    """A held setpoint is dropped when holding it would exceed the offsets."""
+    entity = _make_mpc_entity(advice=45.0)
+
+    first = _water_target(entity, current_target=None, water_temp=25.0)
+    with patch("custom_components.powerclimate.climate.datetime") as fake_datetime:
+        fake_datetime.now.return_value = T0 + timedelta(seconds=60)
+        later = entity._calculate_mode_target(
+            MODE_MPC,
+            current_temp=20.85,  # device temperature dropped 0.15 °C
+            device={CONF_CLIMATE_ENTITY: "climate.hp1"},
+            index=0,
+            current_power=1000.0,
+            current_target=first,
+            water_temp=25.0,
+        )
+
+    assert first == 22.5  # 21.0 + upper offset 1.5
+    # Holding 22.5 would be +1.65 above 20.85; the setpoint follows instead.
+    assert later == 22.4  # round(20.85 + 1.5, 1)
+
+
 def test_mpc_holds_correction_during_supply_spike() -> None:
     """A sudden supply jump (e.g. boiler hot water) does not move the setpoint."""
     entity = _make_mpc_entity(advice=30.0)
