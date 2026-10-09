@@ -35,12 +35,17 @@ from .const import (
     DEFAULT_TARGET_TEMPERATURE,
     DOMAIN,
     ETA_THRESHOLD_MET_DURATION_MINUTES,
+    FLOAT_COMPARISON_EPSILON,
     MODE_BOOST,
     MODE_MINIMAL,
     MODE_MPC,
     MODE_OFF,
     MODE_SETPOINT,
     MODE_THERMAL_MPC,
+    SUPPLY_FILTER_TAU_SECONDS,
+    SUPPLY_SETPOINT_DEADBAND,
+    SUPPLY_SPIKE_KELVIN,
+    SUPPLY_SPIKE_MAX_SECONDS,
     TEMPERATURE_CHANGE_THRESHOLD,
 )
 from .device_commands import DeviceCommander
@@ -49,13 +54,14 @@ from .helpers import (
     summary_signal,
 )
 from .mode_targets import SetpointLimits, calculate_mode_target
-from .pi_controller import PIConfig, PIController
+from .pi_controller import PIConfig, PIController, PIResult
 from .summary_payload import (
     build_hp_status,
     build_mpc_summary,
     build_supply_pi_summary,
     build_thermal_summary,
 )
+from .supply_filter import SupplyFilter
 from .utils import clamp_value, compute_eta_hours, safe_float
 
 _LOGGER = logging.getLogger(__name__)
@@ -146,6 +152,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._coordinator_update_task: asyncio.Task[None] | None = None
         # Steers the water heat pump's supply temperature in the MPC presets.
         self._supply_pi = PIController()
+        self._supply_filter = SupplyFilter(
+            SUPPLY_FILTER_TAU_SECONDS, SUPPLY_SPIKE_KELVIN, SUPPLY_SPIKE_MAX_SECONDS
+        )
+        self._supply_last_result: PIResult | None = None
+        self._supply_last_correction: float | None = None
+        self._supply_held_target: float | None = None
         self._supply_pi_summary: dict[str, Any] = build_supply_pi_summary(None)
 
     @property
@@ -284,7 +296,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if hvac_mode not in self.hvac_modes:
             return
         if hvac_mode != self._attr_hvac_mode:
-            self._supply_pi.reset()
+            self._reset_supply_control()
         self._attr_hvac_mode = hvac_mode
         if self._attr_preset_mode != PRESET_NONE:
             self._attr_preset_mode = PRESET_NONE
@@ -299,7 +311,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return
         if preset_mode != self._attr_preset_mode:
             # Start the supply-temperature control afresh in the new preset.
-            self._supply_pi.reset()
+            self._reset_supply_control()
 
         if preset_mode == PRESET_BOOST:
             await self._enter_boost_mode()
@@ -948,13 +960,29 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if advice is None or water_temp is None or current_temp is None:
             return None
 
+        now = datetime.now(timezone.utc)
+        reading = self._supply_filter.update(water_temp, now)
+        if reading.spike and self._supply_last_correction is not None:
+            # Something else is heating the supply pipe (e.g. hot water from
+            # a boiler): hold the last correction until the spike is over.
+            self._supply_pi_summary = build_supply_pi_summary(
+                source,
+                advised_temp=advice,
+                supply_temp=water_temp,
+                supply_filtered=reading.filtered,
+                spike=True,
+                result=self._supply_last_result,
+                correction=self._supply_last_correction,
+            )
+            return self._supply_last_correction
+
         config = PIConfig(
             kp=self._config.supply_pi_kp,
             ti_seconds=self._config.supply_pi_ti_minutes * 60.0,
             output_min=limits.lower_offset,
             output_max=limits.upper_offset,
         )
-        error = advice - water_temp
+        error = advice - reading.filtered
         if not self._supply_pi.initialized:
             # Start from the device's current offset, so entering the preset
             # or restarting does not make the setpoint jump.
@@ -970,19 +998,44 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         overshoot = self._is_water_overshoot_condition_true()
         result = self._supply_pi.update(
             error,
-            datetime.now(timezone.utc),
+            now,
             config,
             integrate=compressor_running and not overshoot,
         )
         correction = config.output_min if overshoot else result.output
+
+        # Keep the setpoint unless it moves by at least the deadband, so the
+        # heat pump does not get a new setpoint for every bit of noise.
+        target = current_temp + correction
+        held = self._supply_held_target
+        if (
+            not overshoot
+            and held is not None
+            and abs(target - held) < SUPPLY_SETPOINT_DEADBAND - FLOAT_COMPARISON_EPSILON
+        ):
+            correction = held - current_temp
+        else:
+            self._supply_held_target = target
+
+        self._supply_last_result = result
+        self._supply_last_correction = correction
         self._supply_pi_summary = build_supply_pi_summary(
             source,
             advised_temp=advice,
             supply_temp=water_temp,
+            supply_filtered=reading.filtered,
             result=result,
             correction=correction,
         )
         return correction
+
+    def _reset_supply_control(self) -> None:
+        """Start the supply-temperature control afresh."""
+        self._supply_pi.reset()
+        self._supply_filter.reset()
+        self._supply_last_result = None
+        self._supply_last_correction = None
+        self._supply_held_target = None
 
     def _compute_thermal_mpc_target(self) -> float | None:
         """Compute the internal thermal model's advice.

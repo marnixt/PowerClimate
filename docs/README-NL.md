@@ -130,6 +130,14 @@ het kamersetpoint zo dat de **gemeten** aanvoertemperatuur het advies volgt.
   MPC-bronnen melden dat als er geen warmte nodig is) of ontbreekt de
   aanvoermeting, dan geldt de normale setpoint-logica en houdt de regelaar zijn
   toestand vast.
+- **Gemiddelde aanvoer**: de regelaar gebruikt een voortschrijdend gemiddelde
+  van de aanvoertemperatuur (ongeveer twee minuten), zodat meetruis het
+  setpoint niet bereikt.
+- **Pieken**: een meting meer dan 5 K boven dat gemiddelde (bijvoorbeeld een
+  ketel die via dezelfde leiding warm water maakt) houdt de laatste correctie
+  vast tot de piek voorbij is; een sprong die langer dan 10 minuten duurt telt
+  als echt.
+- **Dode zone**: het setpoint verandert pas bij een verschil van minstens 0,2 °C.
 - **Assistpompen** blijven de warmtevraag van de ruimte volgen; zij krijgen het
   advies nooit.
 - De regelaar begint opnieuw bij elke wissel van preset of HVAC-modus.

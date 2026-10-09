@@ -6,6 +6,7 @@ This file consolidates release notes and highlights useful for HACS and users.
 
 **Changed**
 - **MPC and Thermal presets steer the supply temperature**: the advised supply temperature is no longer sent as the water heat pump's setpoint. A PI controller moves the room setpoint within the device's heating offsets until the measured supply temperature follows the advice. Tuning (gain, integral time, minimum compressor power) lives under Options → Experimental.
+- **Supply-temperature control is calm and spike-proof**: the controller uses a moving average of the supply temperature, holds its correction during a sudden supply spike (such as a boiler making hot water through the same pipe) and only moves the setpoint by at least 0.2 °C.
 - **Assist pumps in the MPC preset** follow room demand instead of receiving the advised supply temperature as their setpoint.
 - **Thermal preset, heating**: the model's supply temperature is no longer clamped to the room setpoint limits.
 

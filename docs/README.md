@@ -142,6 +142,12 @@ setpoint so that the **measured** supply temperature follows the advice.
 - **No advice**: if the advice sensor is `unknown`/`unavailable` (some MPC
   sources report this when no heat is needed) or there is no supply reading,
   the normal setpoint logic applies and the controller keeps its state.
+- **Smoothed supply**: the controller uses a moving average of the supply
+  temperature (about two minutes), so sensor noise does not reach the setpoint.
+- **Spikes**: a reading more than 5 K above that average (for example a boiler
+  making hot water through the same pipe) holds the last correction until the
+  spike is over; a jump that lasts longer than 10 minutes counts as real.
+- **Deadband**: the setpoint only moves when it changes by at least 0.2 °C.
 - **Assist pumps** keep following room demand; they never receive the advice.
 - The controller restarts on every preset or HVAC mode change.
 

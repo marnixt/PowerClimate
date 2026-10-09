@@ -85,6 +85,16 @@ CONF_SUPPLY_PI_MIN_POWER_W = "supply_pi_min_power_w"
 DEFAULT_SUPPLY_PI_KP = 0.15
 DEFAULT_SUPPLY_PI_TI_MINUTES = 45.0
 DEFAULT_SUPPLY_PI_MIN_POWER_W = 200.0
+# Moving average of the measured supply temperature (time constant).
+SUPPLY_FILTER_TAU_SECONDS = 120.0
+# A reading this far above the average is a spike (e.g. a boiler making hot
+# water through the same pipe); the controller holds its output meanwhile.
+SUPPLY_SPIKE_KELVIN = 5.0
+# A spike lasting longer than this is accepted as a real change.
+SUPPLY_SPIKE_MAX_SECONDS = 600.0
+# Only move the water heat pump's setpoint when it changes at least this much,
+# so supply noise does not send a new setpoint every few seconds.
+SUPPLY_SETPOINT_DEADBAND = 0.2
 
 # Setpoint offset configuration
 # Floor = current_temp + lower_offset (lower is typically negative or zero)

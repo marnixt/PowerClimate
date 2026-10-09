@@ -39,6 +39,8 @@ SUPPLY_PI_ATTRIBUTES = (
     "supply_pi_source",
     "supply_pi_advised_temp",
     "supply_pi_supply_temp",
+    "supply_pi_supply_filtered",
+    "supply_pi_spike",
     "supply_pi_error",
     "supply_pi_p",
     "supply_pi_i",

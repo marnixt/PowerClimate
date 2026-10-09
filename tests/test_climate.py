@@ -19,6 +19,7 @@ from custom_components.powerclimate.const import (
     MODE_THERMAL_MPC,
 )
 from custom_components.powerclimate.pi_controller import PIController
+from custom_components.powerclimate.supply_filter import SupplyFilter
 
 
 def make_entity() -> PowerClimateClimate:
@@ -88,6 +89,7 @@ def test_async_set_preset_mode_accepts_legacy_case() -> None:
     entity._config = SimpleNamespace(mpc_enabled=True)
     entity._attr_preset_mode = "none"
     entity._supply_pi = PIController()
+    entity._supply_filter = SupplyFilter(120.0, 5.0, 600.0)
     entity._enter_boost_mode = AsyncMock()
     entity._enter_away_mode = AsyncMock()
     entity._enter_mpc_mode = AsyncMock()
@@ -157,6 +159,10 @@ def _make_mpc_entity(
     entity.coordinator = SimpleNamespace(data={"room_temperature": room_temp})
     entity._read_mpc_temperature_state = MagicMock(return_value=advice)
     entity._supply_pi = PIController()
+    entity._supply_filter = SupplyFilter(120.0, 5.0, 600.0)
+    entity._supply_last_result = None
+    entity._supply_last_correction = None
+    entity._supply_held_target = None
     entity._supply_pi_summary = {}
     return entity
 
@@ -204,10 +210,37 @@ def test_mpc_target_rises_while_supply_is_below_advice() -> None:
 
     first = _water_target(entity)
     second = _water_target(entity, T0 + timedelta(seconds=300))
+    third = _water_target(entity, T0 + timedelta(seconds=600))
 
     assert first == 21.0
-    # 300 s of a 600 s integral time adds half of kp * error (0.1).
-    assert second == 21.1
+    # Each 300 s of a 600 s integral time adds half of kp * error (0.1);
+    # the first 0.1 stays within the setpoint deadband.
+    assert second == 21.0
+    assert third == 21.2
+
+
+def test_mpc_holds_correction_during_supply_spike() -> None:
+    """A sudden supply jump (e.g. boiler hot water) does not move the setpoint."""
+    entity = _make_mpc_entity(advice=30.0)
+
+    first = _water_target(entity, current_target=21.5)
+    spike = _water_target(entity, T0 + timedelta(seconds=60), water_temp=57.0)
+
+    assert spike == first == 21.5
+    assert entity._supply_pi_summary["supply_pi_spike"] is True
+    assert entity._supply_pi_summary["supply_pi_supply_filtered"] == 28.0
+
+
+def test_mpc_accepts_lasting_supply_change() -> None:
+    """A jump that lasts longer than a spike is used as the new supply temperature."""
+    entity = _make_mpc_entity(advice=30.0)
+
+    _water_target(entity, current_target=21.5)
+    _water_target(entity, T0 + timedelta(seconds=60), water_temp=40.0)
+    target = _water_target(entity, T0 + timedelta(seconds=700), water_temp=40.0)
+
+    assert entity._supply_pi_summary["supply_pi_spike"] is False
+    assert target == 20.7  # supply far above advice: lower offset
 
 
 def test_mpc_target_is_limited_to_device_offsets() -> None:
@@ -289,11 +322,13 @@ def test_preset_change_resets_supply_controller() -> None:
     entity._config = SimpleNamespace(mpc_enabled=True)
     entity._attr_preset_mode = "none"
     entity._supply_pi = MagicMock()
+    entity._supply_filter = MagicMock()
     entity._enter_mpc_mode = AsyncMock()
 
     asyncio.run(entity.async_set_preset_mode("mpc"))
 
     entity._supply_pi.reset.assert_called_once()
+    entity._supply_filter.reset.assert_called_once()
 
 
 def test_hvac_mode_change_resets_supply_controller() -> None:
@@ -302,11 +337,13 @@ def test_hvac_mode_change_resets_supply_controller() -> None:
     entity._attr_hvac_mode = HVACMode.HEAT
     entity._attr_preset_mode = "none"
     entity._supply_pi = MagicMock()
+    entity._supply_filter = MagicMock()
     entity._apply_staging = AsyncMock()
 
     asyncio.run(entity.async_set_hvac_mode(HVACMode.COOL))
 
     entity._supply_pi.reset.assert_called_once()
+    entity._supply_filter.reset.assert_called_once()
 
 
 def test_is_water_overshoot_condition_true_uses_maximum_overshoot() -> None:

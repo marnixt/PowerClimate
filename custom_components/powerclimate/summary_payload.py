@@ -73,6 +73,8 @@ def build_supply_pi_summary(
     *,
     advised_temp: float | None = None,
     supply_temp: float | None = None,
+    supply_filtered: float | None = None,
+    spike: bool = False,
     result: PIResult | None = None,
     correction: float | None = None,
 ) -> dict[str, Any]:
@@ -82,8 +84,10 @@ def build_supply_pi_summary(
         source: Where the advice came from ("mpc" or "thermal"); None while
             the controller is not running.
         advised_temp: Advised supply temperature.
-        supply_temp: Measured supply temperature.
-        result: Outcome of the controller update.
+        supply_temp: Measured (raw) supply temperature.
+        supply_filtered: Smoothed supply temperature the controller uses.
+        spike: True while a supply spike holds the controller.
+        result: Outcome of the last controller update.
         correction: Correction applied to the device temperature.
     """
 
@@ -96,6 +100,8 @@ def build_supply_pi_summary(
         "supply_pi_source": source if active else None,
         "supply_pi_advised_temp": advised_temp if active else None,
         "supply_pi_supply_temp": supply_temp if active else None,
+        "supply_pi_supply_filtered": rounded(supply_filtered) if active else None,
+        "supply_pi_spike": spike if active else None,
         "supply_pi_error": rounded(result.error) if active else None,
         "supply_pi_p": rounded(result.p_term) if active else None,
         "supply_pi_i": rounded(result.i_term) if active else None,
