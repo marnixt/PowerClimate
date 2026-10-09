@@ -302,8 +302,21 @@
               "outdoor_temp_sensor_entity_id": "Outdoor temperature sensor"
             },
             "data_description": {
-              "mpc_temperature_sensor_entity_id": "Optional sensor used as the MPC control temperature.",
+              "mpc_temperature_sensor_entity_id": "Optional sensor with an advised supply temperature. Enables the MPC preset; PowerClimate steers the water heat pump's setpoint so the measured supply temperature follows the advice.",
               "outdoor_temp_sensor_entity_id": "Optional outdoor temperature sensor for experimental control logic."
+            }
+          },
+          "supply_control": {
+            "name": "Supply temperature control (MPC presets)",
+            "data": {
+              "supply_pi_kp": "Proportional gain",
+              "supply_pi_ti_minutes": "Integral time",
+              "supply_pi_min_power_w": "Minimum compressor power"
+            },
+            "data_description": {
+              "supply_pi_kp": "Setpoint change in °C per °C difference between advised and measured supply temperature (default: 0.15).",
+              "supply_pi_ti_minutes": "Time in which the integral adds one proportional step; longer is slower and calmer (default: 45 minutes).",
+              "supply_pi_min_power_w": "Below this water heat pump power the compressor counts as idle and the integral stops (default: 200 W)."
             }
           }
         }
@@ -363,6 +376,12 @@
       },
       "hp_behavior": {
         "name": "{label} Behavior"
+      },
+      "target_temperature": {
+        "name": "Target Temperature"
+      },
+      "supply_correction": {
+        "name": "Supply Correction"
       }
     }
   }

@@ -110,7 +110,8 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF | Air HPs follow cooling setpoint |
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) | Air HPs: aggressive cooling (current + lower offset) |
 | **Away** | Minimal mode (let temp drop to 16 °C) | OFF (if allow_on_off enabled), otherwise minimal | Target raised to max setpoint (disables cooling) |
-| **MPC** | MPC-advised setpoint | — | Heating-only; no effect in cool mode |
+| **MPC** | PI control of the supply temperature towards the MPC advice, via the room setpoint within the device offsets | Normal assist logic | Air HPs follow cooling setpoint |
+| **Thermal** | Same supply-temperature control, advice from the internal thermal model | Normal assist logic | Air HPs: setpoint from the thermal model |
 
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
 Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
@@ -142,6 +143,8 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | HP1 Behavior | HVAC status, temps, water temperature when available |
 | HP2+ Behavior | HVAC status, temps, and PowerClimate mode for each configured assist pump |
 | Total Power | Aggregated power from all configured pumps |
+| Target Temperature | PowerClimate's room target as a sensor (e.g. as comfort target for an external MPC source) |
+| Supply Correction | Setpoint correction of the supply-temperature controller in the MPC/Thermal presets |
 
 Behavior sensors are created for every configured pump, not only the first five.
 

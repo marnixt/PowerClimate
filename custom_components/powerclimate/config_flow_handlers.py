@@ -37,6 +37,9 @@ from .const import (
     CONF_MPC_TEMPERATURE_SENSOR,
     CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
+    CONF_SUPPLY_PI_KP,
+    CONF_SUPPLY_PI_MIN_POWER_W,
+    CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
@@ -54,6 +57,9 @@ from .const import (
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_MIN_SETPOINT,
+    DEFAULT_SUPPLY_PI_KP,
+    DEFAULT_SUPPLY_PI_MIN_POWER_W,
+    DEFAULT_SUPPLY_PI_TI_MINUTES,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
@@ -790,8 +796,30 @@ def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
         ),
     )
 
+    supply_control_options = [
+        (CONF_SUPPLY_PI_KP, {"min": 0.01, "max": 1.0, "step": 0.01}),
+        (
+            CONF_SUPPLY_PI_TI_MINUTES,
+            {"min": 5, "max": 240, "step": 1, "unit_of_measurement": "min"},
+        ),
+        (
+            CONF_SUPPLY_PI_MIN_POWER_W,
+            {"min": 0, "max": 2000, "step": 10, "unit_of_measurement": "W"},
+        ),
+    ]
+    supply_control_fields = build_fields(
+        defaults,
+        tuple(
+            (field_name, selector({"number": selector_config}))
+            for field_name, selector_config in supply_control_options
+        ),
+    )
+
     return sectioned_schema(
-        (("sensors", sensor_fields, False),),
+        (
+            ("sensors", sensor_fields, False),
+            ("supply_control", supply_control_fields, True),
+        ),
     )
 
 
@@ -806,6 +834,13 @@ def experimental_form_defaults(
     return {
         CONF_MPC_TEMPERATURE_SENSOR: base.get(CONF_MPC_TEMPERATURE_SENSOR),
         CONF_OUTDOOR_TEMP_SENSOR: base.get(CONF_OUTDOOR_TEMP_SENSOR),
+        CONF_SUPPLY_PI_KP: base.get(CONF_SUPPLY_PI_KP, DEFAULT_SUPPLY_PI_KP),
+        CONF_SUPPLY_PI_TI_MINUTES: base.get(
+            CONF_SUPPLY_PI_TI_MINUTES, DEFAULT_SUPPLY_PI_TI_MINUTES
+        ),
+        CONF_SUPPLY_PI_MIN_POWER_W: base.get(
+            CONF_SUPPLY_PI_MIN_POWER_W, DEFAULT_SUPPLY_PI_MIN_POWER_W
+        ),
     }
 
 
@@ -820,4 +855,13 @@ def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     ):
         sensor_entity_id = str(user_input.get(key) or "").strip()
         data[key] = sensor_entity_id or None
+    # The number fields always carry a default; keep the stored value when one
+    # is missing.
+    for key in (
+        CONF_SUPPLY_PI_KP,
+        CONF_SUPPLY_PI_TI_MINUTES,
+        CONF_SUPPLY_PI_MIN_POWER_W,
+    ):
+        if key in user_input:
+            data[key] = user_input[key]
     return data

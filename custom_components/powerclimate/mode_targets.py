@@ -39,7 +39,7 @@ def calculate_mode_target(
     target_temperature: float | None,
     is_cooling: bool,
     current_target: float | None = None,
-    mpc_target: Callable[[], float | None] | None = None,
+    supply_correction: Callable[[], float | None] | None = None,
     thermal_target: Callable[[], float | None] | None = None,
 ) -> float:
     """Calculate the setpoint for a device in the given mode.
@@ -52,8 +52,11 @@ def calculate_mode_target(
         target_temperature: PowerClimate's room target.
         is_cooling: True when PowerClimate is in cooling mode.
         current_target: The device's current setpoint.
-        mpc_target: Returns the external MPC sensor's advised temperature.
-        thermal_target: Returns the internal thermal model's setpoint.
+        supply_correction: Returns the correction (°C) on the device
+            temperature that steers the supply temperature towards the MPC
+            advice (MPC modes, heating).
+        thermal_target: Returns the internal thermal model's setpoint
+            (thermal MPC, cooling).
     """
     min_sp = limits.min_setpoint
     max_sp = limits.max_setpoint
@@ -67,12 +70,15 @@ def calculate_mode_target(
             return min_sp
         return max(min_sp, min(fallback, max_sp))
 
-    if mode == MODE_MPC and mpc_target is not None:
-        value = mpc_target()
-        if value is not None:
-            return max(min_sp, min(value, max_sp))
+    mpc_mode = mode in (MODE_MPC, MODE_THERMAL_MPC)
+    if mpc_mode and not is_cooling and supply_correction is not None:
+        # The device setpoint is a room setpoint: steer the supply temperature
+        # by moving it relative to the temperature the device measures.
+        correction = supply_correction()
+        if correction is not None:
+            return round(max(min_sp, min(current_temp + correction, max_sp)), 1)
 
-    if mode == MODE_THERMAL_MPC and thermal_target is not None:
+    if mode == MODE_THERMAL_MPC and is_cooling and thermal_target is not None:
         value = thermal_target()
         if value is not None:
             return value

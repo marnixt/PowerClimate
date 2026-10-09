@@ -1,11 +1,39 @@
 """Tests for the summary payload builders."""
 
 from custom_components.powerclimate.const import CONF_CLIMATE_ENTITY, CONF_DEVICE_NAME
+from custom_components.powerclimate.pi_controller import PIResult
 from custom_components.powerclimate.summary_payload import (
     build_hp_status,
     build_mpc_summary,
+    build_supply_pi_summary,
     build_thermal_summary,
 )
+
+
+def test_supply_pi_summary_inactive():
+    summary = build_supply_pi_summary(None)
+    assert summary["supply_pi_active"] is False
+    assert summary["supply_pi_correction"] is None
+    assert summary["supply_pi_source"] is None
+
+
+def test_supply_pi_summary_reports_controller_state():
+    result = PIResult(
+        output=0.4567, error=2.0, p_term=0.2, i_term=0.2567,
+        integrating=True, saturated=False,
+    )
+    summary = build_supply_pi_summary(
+        "mpc", advised_temp=30.0, supply_temp=28.0, result=result, correction=0.4567
+    )
+    assert summary["supply_pi_active"] is True
+    assert summary["supply_pi_source"] == "mpc"
+    assert summary["supply_pi_advised_temp"] == 30.0
+    assert summary["supply_pi_supply_temp"] == 28.0
+    assert summary["supply_pi_error"] == 2.0
+    assert summary["supply_pi_i"] == 0.26
+    assert summary["supply_pi_correction"] == 0.46
+    assert summary["supply_pi_integrating"] is True
+    assert summary["supply_pi_saturated"] is False
 
 
 def test_mpc_summary_disabled_without_sensor():

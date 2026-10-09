@@ -1,6 +1,7 @@
 """Tests for PowerClimate climate orchestration helpers."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,9 +12,13 @@ from custom_components.powerclimate.const import (
     CONF_ALLOW_ON_OFF_CONTROL,
     CONF_CLIMATE_ENTITY,
     MODE_BOOST,
+    MODE_MINIMAL,
     MODE_MPC,
     MODE_OFF,
+    MODE_SETPOINT,
+    MODE_THERMAL_MPC,
 )
+from custom_components.powerclimate.pi_controller import PIController
 
 
 def make_entity() -> PowerClimateClimate:
@@ -81,6 +86,8 @@ def test_async_set_preset_mode_accepts_legacy_case() -> None:
     """Preset setters should normalize legacy title-cased preset values."""
     entity = make_entity()
     entity._config = SimpleNamespace(mpc_enabled=True)
+    entity._attr_preset_mode = "none"
+    entity._supply_pi = PIController()
     entity._enter_boost_mode = AsyncMock()
     entity._enter_away_mode = AsyncMock()
     entity._enter_mpc_mode = AsyncMock()
@@ -122,48 +129,184 @@ def test_determine_hp1_mode_returns_mpc_for_mpc_preset() -> None:
     assert entity._determine_hp1_mode(False, "climate.hp1") == MODE_MPC
 
 
-def test_calculate_mode_target_uses_mpc_sensor_value() -> None:
-    """MPC mode should use the external advised temperature when available."""
+# ---------------------------------------------------------------------------
+# Supply-temperature control (MPC presets)
+# ---------------------------------------------------------------------------
+
+T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def _make_mpc_entity(
+    advice: float | None, *, room_temp: float = 21.0, preset: str = "mpc"
+) -> PowerClimateClimate:
+    """Return an entity in an MPC preset with a kp 0.1 / 10 min controller."""
     entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.HEAT
+    entity._attr_preset_mode = preset
+    entity._target_temperature = 21.0
     entity._config = SimpleNamespace(
         min_setpoint=16.0,
-        max_setpoint=35.0,
-        get_device_lower_offset=lambda _device, _index: 0.0,
-        get_device_upper_offset=lambda _device, _index: 0.0,
+        max_setpoint=30.0,
+        get_device_lower_offset=lambda _device, _index: -0.3,
+        get_device_upper_offset=lambda _device, _index: 1.5,
+        supply_pi_kp=0.1,
+        supply_pi_ti_minutes=10.0,
+        supply_pi_min_power_w=200.0,
+        maximum_overshoot=0.5,
     )
-    entity._target_temperature = 21.0
-    entity._read_mpc_temperature_state = MagicMock(return_value=32.5)
-
-    target = entity._calculate_mode_target(
-        MODE_MPC,
-        current_temp=28.0,
-        device={CONF_CLIMATE_ENTITY: "climate.hp1"},
-        index=0,
-    )
-
-    assert target == 32.5
+    entity.coordinator = SimpleNamespace(data={"room_temperature": room_temp})
+    entity._read_mpc_temperature_state = MagicMock(return_value=advice)
+    entity._supply_pi = PIController()
+    entity._supply_pi_summary = {}
+    return entity
 
 
-def test_calculate_mode_target_falls_back_when_mpc_sensor_unavailable() -> None:
-    """MPC mode should fall back to setpoint clamping when the sensor is unavailable."""
-    entity = make_entity()
-    entity._config = SimpleNamespace(
-        min_setpoint=16.0,
-        max_setpoint=35.0,
-        get_device_lower_offset=lambda _device, _index: 0.0,
-        get_device_upper_offset=lambda _device, _index: 5.0,
-    )
-    entity._target_temperature = 21.0
-    entity._read_mpc_temperature_state = MagicMock(return_value=None)
+def _water_target(
+    entity: PowerClimateClimate,
+    at: datetime = T0,
+    *,
+    mode: str = MODE_MPC,
+    current_target: float | None = 21.0,
+    water_temp: float | None = 28.0,
+    power: float | None = 1000.0,
+) -> float:
+    with patch("custom_components.powerclimate.climate.datetime") as fake_datetime:
+        fake_datetime.now.return_value = at
+        return entity._calculate_mode_target(
+            mode,
+            current_temp=21.0,
+            device={CONF_CLIMATE_ENTITY: "climate.hp1"},
+            index=0,
+            current_power=power,
+            current_target=current_target,
+            water_temp=water_temp,
+        )
 
-    target = entity._calculate_mode_target(
-        MODE_MPC,
-        current_temp=20.0,
-        device={CONF_CLIMATE_ENTITY: "climate.hp1"},
-        index=0,
-    )
+
+def test_mpc_target_starts_from_current_device_offset() -> None:
+    """Entering MPC keeps the device setpoint where it is (bumpless start)."""
+    entity = _make_mpc_entity(advice=30.0)
+
+    target = _water_target(entity, current_target=21.5)
+
+    assert target == 21.5
+    summary = entity._supply_pi_summary
+    assert summary["supply_pi_active"] is True
+    assert summary["supply_pi_source"] == "mpc"
+    assert summary["supply_pi_advised_temp"] == 30.0
+    assert summary["supply_pi_error"] == 2.0
+    assert summary["supply_pi_correction"] == 0.5
+
+
+def test_mpc_target_rises_while_supply_is_below_advice() -> None:
+    """A supply temperature below the advice raises the room setpoint over time."""
+    entity = _make_mpc_entity(advice=30.0)
+
+    first = _water_target(entity)
+    second = _water_target(entity, T0 + timedelta(seconds=300))
+
+    assert first == 21.0
+    # 300 s of a 600 s integral time adds half of kp * error (0.1).
+    assert second == 21.1
+
+
+def test_mpc_target_is_limited_to_device_offsets() -> None:
+    """The correction never leaves the water device's heating offsets."""
+    entity = _make_mpc_entity(advice=45.0)
+
+    target = _water_target(entity, current_target=None, water_temp=25.0)
+
+    assert target == 22.5  # 21.0 + upper offset 1.5
+
+
+def test_mpc_integral_frozen_while_compressor_idle() -> None:
+    """Without compressor power the supply temperature does not drive the integral."""
+    entity = _make_mpc_entity(advice=30.0)
+
+    _water_target(entity, power=50.0)
+    target = _water_target(entity, T0 + timedelta(seconds=300), power=50.0)
 
     assert target == 21.0
+    assert entity._supply_pi_summary["supply_pi_integrating"] is False
+
+
+def test_mpc_overshoot_forces_lower_offset() -> None:
+    """Above target plus maximum overshoot the setpoint goes to the lower offset."""
+    entity = _make_mpc_entity(advice=30.0, room_temp=21.6)
+
+    target = _water_target(entity)
+
+    assert target == 20.7  # 21.0 + lower offset -0.3
+
+
+def test_mpc_falls_back_to_room_target_without_advice() -> None:
+    """Without advice the normal setpoint logic applies and the controller waits."""
+    entity = _make_mpc_entity(advice=None)
+    entity._target_temperature = 21.4
+
+    target = _water_target(entity)
+
+    assert target == 21.4
+    assert entity._supply_pi.initialized is False
+    assert entity._supply_pi_summary == {}
+
+
+def test_mpc_falls_back_without_supply_reading() -> None:
+    """Without a supply temperature reading the controller cannot run."""
+    entity = _make_mpc_entity(advice=30.0)
+
+    target = _water_target(entity, water_temp=None)
+
+    assert target == 21.0
+    assert entity._supply_pi.initialized is False
+
+
+def test_thermal_preset_steers_supply_to_thermal_model_advice() -> None:
+    """The thermal preset uses the internal model's supply temperature as advice."""
+    entity = _make_mpc_entity(advice=None, preset="thermal")
+    entity._compute_thermal_mpc_target = MagicMock(return_value=32.0)
+
+    _water_target(entity, mode=MODE_THERMAL_MPC)
+
+    assert entity._supply_pi_summary["supply_pi_source"] == "thermal"
+    assert entity._supply_pi_summary["supply_pi_advised_temp"] == 32.0
+    entity._read_mpc_temperature_state.assert_not_called()
+
+
+def test_assist_follows_room_demand_in_mpc_preset() -> None:
+    """The MPC advice is a supply temperature; assists keep normal logic."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.HEAT
+    entity._attr_preset_mode = "mpc"
+
+    assert entity._determine_assist_mode(False, 0.0, "climate.air1") == MODE_SETPOINT
+    assert entity._determine_assist_mode(True, 0.0, "climate.air1") == MODE_MINIMAL
+
+
+def test_preset_change_resets_supply_controller() -> None:
+    """A new preset starts the supply-temperature control afresh."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(mpc_enabled=True)
+    entity._attr_preset_mode = "none"
+    entity._supply_pi = MagicMock()
+    entity._enter_mpc_mode = AsyncMock()
+
+    asyncio.run(entity.async_set_preset_mode("mpc"))
+
+    entity._supply_pi.reset.assert_called_once()
+
+
+def test_hvac_mode_change_resets_supply_controller() -> None:
+    """Switching between heat and cool starts the supply control afresh."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.HEAT
+    entity._attr_preset_mode = "none"
+    entity._supply_pi = MagicMock()
+    entity._apply_staging = AsyncMock()
+
+    asyncio.run(entity.async_set_hvac_mode(HVACMode.COOL))
+
+    entity._supply_pi.reset.assert_called_once()
 
 
 def test_is_water_overshoot_condition_true_uses_maximum_overshoot() -> None:

@@ -49,5 +49,7 @@
   "thermal_learning": "Learning",
   "label_ua_emitter": "Emitter",
   "label_u_building": "Building",
-  "label_suggested": "Suggested"
+  "label_suggested": "Suggested",
+  "label_advice": "Advice",
+  "label_correction": "Correction"
 }

@@ -49,12 +49,14 @@ from .helpers import (
     summary_signal,
 )
 from .mode_targets import SetpointLimits, calculate_mode_target
+from .pi_controller import PIConfig, PIController
 from .summary_payload import (
     build_hp_status,
     build_mpc_summary,
+    build_supply_pi_summary,
     build_thermal_summary,
 )
-from .utils import compute_eta_hours, safe_float
+from .utils import clamp_value, compute_eta_hours, safe_float
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -142,6 +144,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._water_overshoot_since: datetime | None = None
         self._coordinator_update_pending = False
         self._coordinator_update_task: asyncio.Task[None] | None = None
+        # Steers the water heat pump's supply temperature in the MPC presets.
+        self._supply_pi = PIController()
+        self._supply_pi_summary: dict[str, Any] = build_supply_pi_summary(None)
 
     @property
     def preset_modes(self) -> list[str] | None:
@@ -278,6 +283,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Set HVAC mode."""
         if hvac_mode not in self.hvac_modes:
             return
+        if hvac_mode != self._attr_hvac_mode:
+            self._supply_pi.reset()
         self._attr_hvac_mode = hvac_mode
         if self._attr_preset_mode != PRESET_NONE:
             self._attr_preset_mode = PRESET_NONE
@@ -290,6 +297,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         preset_mode = self._normalize_preset_mode(preset_mode)
         if preset_mode not in self.preset_modes:
             return
+        if preset_mode != self._attr_preset_mode:
+            # Start the supply-temperature control afresh in the new preset.
+            self._supply_pi.reset()
 
         if preset_mode == PRESET_BOOST:
             await self._enter_boost_mode()
@@ -387,6 +397,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         devices = self._config.devices
         device_payloads = self._get_device_payloads()
         self._mirror_entities = set(self._config.mirror_thermostats)
+        # Filled again by _supply_correction when the controller runs.
+        self._supply_pi_summary = build_supply_pi_summary(None)
         if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
             return
@@ -585,6 +597,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             index,
             current_power,
             current_target,
+            water_temp,
         )
         desired_targets[entity_id] = target
 
@@ -859,8 +872,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """
         if self._attr_preset_mode == PRESET_BOOST:
             return MODE_BOOST
-        if self._attr_preset_mode == PRESET_MPC:
-            return MODE_MPC
+        # The MPC advice is a supply temperature for the water heat pump;
+        # assists keep following room demand in the MPC preset.
         if self._attr_preset_mode == PRESET_THERMAL and self._is_cooling():
             return MODE_THERMAL_MPC
         # For automatic pumps, check off_timer to keep running briefly after target is reached
@@ -882,6 +895,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         index: int,
         current_power: float | None = None,
         current_target: float | None = None,
+        water_temp: float | None = None,
     ) -> float:
         """Calculate target temperature for a given mode; see calculate_mode_target."""
         cooling = self._is_cooling()
@@ -902,16 +916,76 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             target_temperature=self._target_temperature,
             is_cooling=cooling,
             current_target=current_target,
-            mpc_target=self._read_mpc_temperature_state,
-            thermal_target=lambda: self._compute_thermal_mpc_target(min_sp, max_sp),
+            supply_correction=lambda: self._supply_correction(
+                limits, current_temp, current_target, water_temp, current_power
+            ),
+            thermal_target=self._compute_thermal_mpc_target,
         )
 
-    def _compute_thermal_mpc_target(
+    def _supply_correction(
         self,
-        min_sp: float,
-        max_sp: float,
+        limits: SetpointLimits,
+        current_temp: float | None,
+        current_target: float | None,
+        water_temp: float | None,
+        power: float | None,
     ) -> float | None:
-        """Compute setpoint from the internal thermal model.
+        """Return the setpoint correction that steers the supply temperature.
+
+        The water heat pump's setpoint is a room setpoint, so an advised supply
+        temperature cannot be sent as is. A PI controller on
+        ``advice - measured supply`` moves the setpoint within the device's
+        offsets around the temperature the device measures.
+
+        Returns None (normal setpoint logic) without an advice, a supply
+        reading or a device temperature; the controller then keeps its state.
+        """
+        source = "thermal" if self._attr_preset_mode == PRESET_THERMAL else "mpc"
+        if source == "thermal":
+            advice = self._compute_thermal_mpc_target()
+        else:
+            advice = self._read_mpc_temperature_state()
+        if advice is None or water_temp is None or current_temp is None:
+            return None
+
+        config = PIConfig(
+            kp=self._config.supply_pi_kp,
+            ti_seconds=self._config.supply_pi_ti_minutes * 60.0,
+            output_min=limits.lower_offset,
+            output_max=limits.upper_offset,
+        )
+        error = advice - water_temp
+        if not self._supply_pi.initialized:
+            # Start from the device's current offset, so entering the preset
+            # or restarting does not make the setpoint jump.
+            start = current_target - current_temp if current_target is not None else 0.0
+            self._supply_pi.initialize(
+                clamp_value(start, config.output_min, config.output_max), error, config
+            )
+
+        # Without compressor output the supply temperature says nothing about
+        # the heat delivered, and above the overshoot limit the room has
+        # enough: freeze the integral in both cases.
+        compressor_running = power is not None and power >= self._config.supply_pi_min_power_w
+        overshoot = self._is_water_overshoot_condition_true()
+        result = self._supply_pi.update(
+            error,
+            datetime.now(timezone.utc),
+            config,
+            integrate=compressor_running and not overshoot,
+        )
+        correction = config.output_min if overshoot else result.output
+        self._supply_pi_summary = build_supply_pi_summary(
+            source,
+            advised_temp=advice,
+            supply_temp=water_temp,
+            result=result,
+            correction=correction,
+        )
+        return correction
+
+    def _compute_thermal_mpc_target(self) -> float | None:
+        """Compute the internal thermal model's advice.
 
         For heating: returns the recommended water supply temperature.
         For cooling: returns the recommended AC setpoint.
@@ -937,18 +1011,16 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 current_room=current_room,
                 outdoor_temp=outdoor_temp,
                 horizon_minutes=horizon,
-                min_setpoint=min_sp,
-                max_setpoint=max_sp,
+                min_setpoint=self._config.min_setpoint,
+                max_setpoint=self._config.max_setpoint,
             )
-        else:
-            return thermal_model.recommended_supply_temp_heating(
-                target_room=target_room,
-                current_room=current_room,
-                outdoor_temp=outdoor_temp,
-                horizon_minutes=horizon,
-                min_supply=min_sp,
-                max_supply=max_sp,
-            )
+        # A supply temperature: the room setpoint limits do not apply.
+        return thermal_model.recommended_supply_temp_heating(
+            target_room=target_room,
+            current_room=current_room,
+            outdoor_temp=outdoor_temp,
+            horizon_minutes=horizon,
+        )
 
     def _read_mpc_sensor_state(self) -> tuple[float | None, Any, dict[str, Any]]:
         """Read the configured external MPC sensor state and attributes."""
@@ -1281,6 +1353,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "maximum_overshoot": self._config.maximum_overshoot,
             **self._build_mpc_summary(),
             **self._build_thermal_summary(),
+            **self._supply_pi_summary,
         }
 
         self._summary_payload = payload
@@ -1302,10 +1375,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def _build_thermal_summary(self) -> dict[str, Any]:
         """Build diagnostics for the internal thermal MPC model."""
         thermal_state = (self.coordinator.data or {}).get("thermal_model_state") or {}
-        recommended_temp = self._compute_thermal_mpc_target(
-            self._config.min_setpoint,
-            self._config.max_setpoint,
-        )
+        recommended_temp = self._compute_thermal_mpc_target()
         return build_thermal_summary(thermal_state, recommended_temp)
 
     def _build_hp_status(

@@ -1,4 +1,4 @@
-"""Numeric sensors: derivatives, internal MPC and total power."""
+"""Numeric sensors: derivatives, internal MPC, supply control and total power."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfPower
+from homeassistant.const import UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import (
@@ -32,6 +32,67 @@ from ..helpers import (
     merged_entry_data,
 )
 from ..utils import power_to_watts
+from .common import SummaryPayloadValueSensor
+
+SUPPLY_PI_ATTRIBUTES = (
+    "supply_pi_active",
+    "supply_pi_source",
+    "supply_pi_advised_temp",
+    "supply_pi_supply_temp",
+    "supply_pi_error",
+    "supply_pi_p",
+    "supply_pi_i",
+    "supply_pi_integrating",
+    "supply_pi_saturated",
+)
+
+
+class PowerClimateTargetTemperatureSensor(SummaryPayloadValueSensor):
+    """PowerClimate's room target temperature as a sensor.
+
+    Other integrations that only accept a sensor (for example an external MPC
+    source that needs the comfort target) can read the target from here
+    instead of from a thermostat whose setpoint PowerClimate itself moves.
+    """
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:home-thermometer-outline"
+    _payload_key = "target_temperature"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the target temperature sensor."""
+        super().__init__(
+            hass,
+            entry,
+            translation_key="target_temperature",
+            unique_id_prefix="powerclimate_target_temperature",
+        )
+
+
+class PowerClimateSupplyCorrectionSensor(SummaryPayloadValueSensor):
+    """Correction the supply-temperature controller applies (MPC presets)."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:thermometer-plus"
+    _payload_key = "supply_pi_correction"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the supply correction sensor."""
+        super().__init__(
+            hass,
+            entry,
+            translation_key="supply_correction",
+            unique_id_prefix="powerclimate_supply_correction",
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        payload = self._payload or {}
+        return {key: payload.get(key) for key in SUPPLY_PI_ATTRIBUTES}
 
 
 class PowerClimateDerivativeSensor(CoordinatorEntity, SensorEntity):

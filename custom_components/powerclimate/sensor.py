@@ -8,9 +8,14 @@ and calculations from the PowerClimate integration:
 - **Thermal Summary**: Human-readable summary of system state
 - **Assist Behavior**: Simple per-stage view showing HVAC state and assist mode
 - **Total Power**: Aggregated power consumption from all configured heat pumps
+- **Target Temperature**: PowerClimate's room target, for integrations that
+  only accept a sensor
+- **Supply Correction**: Setpoint correction of the supply-temperature
+  controller in the MPC presets
 
-All sensors are marked as diagnostic entities and grouped under the
-integration's virtual device in the Home Assistant device registry.
+All sensors except Target Temperature are diagnostic entities. They are
+grouped under the integration's virtual device in the Home Assistant device
+registry.
 """
 
 from __future__ import annotations
@@ -41,6 +46,8 @@ from .sensors.assist import (
 from .sensors.measurements import (
     PowerClimateDerivativeSensor,
     PowerClimateInternalMPCSensor,
+    PowerClimateSupplyCorrectionSensor,
+    PowerClimateTargetTemperatureSensor,
     PowerClimateTotalPowerSensor,
     PowerClimateWaterDerivativeSensor,
 )
@@ -56,6 +63,8 @@ __all__ = [
     "PowerClimateHP1BehaviorSensor",
     "PowerClimateHPBehaviorSensor",
     "PowerClimateInternalMPCSensor",
+    "PowerClimateSupplyCorrectionSensor",
+    "PowerClimateTargetTemperatureSensor",
     "PowerClimateThermalModelTextSensor",
     "PowerClimateThermalRecommendedSensor",
     "PowerClimateThermalSummarySensor",
@@ -99,6 +108,8 @@ async def async_setup_entry(
         internal_mpc_sensor,
         thermal_model_text_sensor,
         thermal_recommended_sensor,
+        PowerClimateTargetTemperatureSensor(hass, entry),
+        PowerClimateSupplyCorrectionSensor(hass, entry),
     ]
 
     sensors.extend(_build_behavior_sensors(hass, entry))

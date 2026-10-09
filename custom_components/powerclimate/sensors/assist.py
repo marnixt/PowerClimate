@@ -472,13 +472,18 @@ class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
             mode_label = self._t("label_mode", "Mode")
             parts.append(f"{mode_label}: {mode}")
 
-        # Show thermal recommended temp when in thermal MPC mode
-        if mode == "thermal_mpc":
-            payload = self._payload or {}
-            recommended = payload.get("thermal_recommended_temp")
-            if isinstance(recommended, (int, float)):
-                suggested_label = self._t("label_suggested", "Suggested")
-                parts.append(f"{suggested_label} {recommended:.1f}°C")
+        # In the MPC modes show the advised supply temperature and the
+        # correction the supply-temperature controller applies.
+        payload = self._payload or {}
+        if mode in ("mpc", "thermal_mpc") and payload.get("supply_pi_active"):
+            advised = payload.get("supply_pi_advised_temp")
+            if isinstance(advised, (int, float)):
+                advice_label = self._t("label_advice", "Advice")
+                parts.append(f"{advice_label} {advised:.1f}°C")
+            correction = payload.get("supply_pi_correction")
+            if isinstance(correction, (int, float)):
+                correction_label = self._t("label_correction", "Correction")
+                parts.append(f"{correction_label} {correction:+.1f}°C")
 
         water_label = self._t("label_water", "Water")
         d_label = self._t("label_derivative", "ΔT")

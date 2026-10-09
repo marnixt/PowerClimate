@@ -73,6 +73,19 @@ CONF_OUTDOOR_TEMP_SENSOR = "outdoor_temp_sensor_entity_id"
 CONF_INTERNAL_MPC_HORIZON_MINUTES = "internal_mpc_horizon_minutes"
 DEFAULT_INTERNAL_MPC_HORIZON_MINUTES = 30.0
 
+# Supply-temperature control (MPC presets, water heat pump, heating).
+# The water heat pump's setpoint is a room setpoint; a PI controller moves it
+# within the device's heating offsets until the measured supply temperature
+# matches the advised one.
+CONF_SUPPLY_PI_KP = "supply_pi_kp"  # °C setpoint per °C supply error
+CONF_SUPPLY_PI_TI_MINUTES = "supply_pi_ti_minutes"
+# Below this water heat pump power the compressor is considered idle and the
+# integral is frozen: the supply temperature then says nothing about output.
+CONF_SUPPLY_PI_MIN_POWER_W = "supply_pi_min_power_w"
+DEFAULT_SUPPLY_PI_KP = 0.15
+DEFAULT_SUPPLY_PI_TI_MINUTES = 45.0
+DEFAULT_SUPPLY_PI_MIN_POWER_W = 200.0
+
 # Setpoint offset configuration
 # Floor = current_temp + lower_offset (lower is typically negative or zero)
 # Ceiling = current_temp + upper_offset

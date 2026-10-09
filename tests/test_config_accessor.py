@@ -16,6 +16,8 @@ from custom_components.powerclimate.const import (
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_MPC_TEMPERATURE_SENSOR,
+    CONF_SUPPLY_PI_KP,
+    CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     DEFAULT_ASSIST_MIN_OFF_MINUTES,
@@ -28,6 +30,9 @@ from custom_components.powerclimate.const import (
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
+    DEFAULT_SUPPLY_PI_KP,
+    DEFAULT_SUPPLY_PI_MIN_POWER_W,
+    DEFAULT_SUPPLY_PI_TI_MINUTES,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
@@ -83,6 +88,19 @@ class TestGlobalDefaults:
 
     def test_mpc_disabled_by_default(self) -> None:
         assert _make_accessor().mpc_enabled is False
+
+    def test_supply_pi_defaults(self) -> None:
+        accessor = _make_accessor()
+        assert accessor.supply_pi_kp == DEFAULT_SUPPLY_PI_KP
+        assert accessor.supply_pi_ti_minutes == DEFAULT_SUPPLY_PI_TI_MINUTES
+        assert accessor.supply_pi_min_power_w == DEFAULT_SUPPLY_PI_MIN_POWER_W
+
+    def test_supply_pi_from_options(self) -> None:
+        accessor = _make_accessor(
+            options={CONF_SUPPLY_PI_KP: 0.2, CONF_SUPPLY_PI_TI_MINUTES: 30}
+        )
+        assert accessor.supply_pi_kp == 0.2
+        assert accessor.supply_pi_ti_minutes == 30.0
 
     def test_mirror_thermostats_empty_by_default(self) -> None:
         assert _make_accessor().mirror_thermostats == []
@@ -332,6 +350,9 @@ class TestToDict:
             "maximum_overshoot",
             "mpc_enabled",
             "mpc_temperature_sensor",
+            "supply_pi_kp",
+            "supply_pi_ti_minutes",
+            "supply_pi_min_power_w",
             "mirror_thermostats",
             "device_count",
         }

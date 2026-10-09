@@ -84,6 +84,8 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **none** | Normale werking (HEAT mode, volgt setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost (huidig + upper offset) | Boost (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
+| **MPC** | PI-regeling van de aanvoertemperatuur naar het MPC-advies, via het kamersetpoint binnen de offsets | Normale assist-logica |
+| **Thermal** | Dezelfde aanvoertemperatuurregeling, advies uit het interne thermische model | Normale assist-logica (koelen: setpoint uit het model) |
 
 `Away` schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
 HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
@@ -113,6 +115,8 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 | HP1 Behavior | HVAC status, temps, watertemperatuur (indien beschikbaar) |
 | HP2+ Behavior | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
 | Total Power | Opgeteld vermogen van alle geconfigureerde pompen |
+| Doeltemperatuur | Kamerdoel van PowerClimate als sensor (bijv. als comfortdoel voor een externe MPC-bron) |
+| Aanvoercorrectie | Setpointcorrectie van de aanvoertemperatuurregeling in de presets MPC/Thermal |
 
 Behavior-sensoren worden aangemaakt voor elke geconfigureerde pomp, niet alleen voor de eerste vijf.
 

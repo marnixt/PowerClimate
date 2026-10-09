@@ -140,3 +140,54 @@ class SummaryPayloadTextSensor(TranslationMixin, SensorEntity):
 
     def _format_payload(self, payload: dict | None) -> str:
         raise NotImplementedError
+
+
+class SummaryPayloadValueSensor(SensorEntity):
+    """Base class for dispatcher-driven sensors showing one summary value."""
+
+    _attr_should_poll = False
+    _payload_key: str
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        *,
+        translation_key: str,
+        unique_id_prefix: str,
+    ) -> None:
+        super().__init__()
+        self.hass = hass
+        self._entry = entry
+        self._entry_id = entry.entry_id
+        self._signal = summary_signal(self._entry_id)
+        self._unsub = None
+        self._attr_translation_key = translation_key
+        self._attr_unique_id = f"{unique_id_prefix}_{self._entry_id}"
+        self._attr_has_entity_name = True
+        self._attr_device_info = integration_device_info(entry)
+        self._payload: dict[str, Any] | None = snapshot_summary(hass, self._entry_id)
+
+    @property
+    def native_value(self) -> float | None:
+        value = (self._payload or {}).get(self._payload_key)
+        return float(value) if isinstance(value, (int, float)) else None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._payload = snapshot_summary(self.hass, self._entry_id)
+        self._unsub = async_dispatcher_connect(
+            self.hass,
+            self._signal,
+            self._handle_summary,
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+        await super().async_will_remove_from_hass()
+
+    def _handle_summary(self, payload: dict | None) -> None:
+        self._payload = payload
+        self.schedule_update_ha_state()

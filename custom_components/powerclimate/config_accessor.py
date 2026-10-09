@@ -27,6 +27,9 @@ from .const import (
     CONF_MPC_TEMPERATURE_SENSOR,
     CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
+    CONF_SUPPLY_PI_KP,
+    CONF_SUPPLY_PI_MIN_POWER_W,
+    CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     DEFAULT_ASSIST_MIN_OFF_MINUTES,
@@ -43,6 +46,9 @@ from .const import (
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MAXIMUM_OVERSHOOT,
     DEFAULT_MIN_SETPOINT,
+    DEFAULT_SUPPLY_PI_KP,
+    DEFAULT_SUPPLY_PI_MIN_POWER_W,
+    DEFAULT_SUPPLY_PI_TI_MINUTES,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
@@ -128,6 +134,25 @@ class ConfigAccessor:
                 CONF_INTERNAL_MPC_HORIZON_MINUTES,
                 DEFAULT_INTERNAL_MPC_HORIZON_MINUTES,
             )
+        )
+
+    @property
+    def supply_pi_kp(self) -> float:
+        """Get the supply-temperature controller's proportional gain."""
+        return float(self._get_config().get(CONF_SUPPLY_PI_KP, DEFAULT_SUPPLY_PI_KP))
+
+    @property
+    def supply_pi_ti_minutes(self) -> float:
+        """Get the supply-temperature controller's integral time in minutes."""
+        return float(
+            self._get_config().get(CONF_SUPPLY_PI_TI_MINUTES, DEFAULT_SUPPLY_PI_TI_MINUTES)
+        )
+
+    @property
+    def supply_pi_min_power_w(self) -> float:
+        """Get the water heat pump power below which the integral is frozen."""
+        return float(
+            self._get_config().get(CONF_SUPPLY_PI_MIN_POWER_W, DEFAULT_SUPPLY_PI_MIN_POWER_W)
         )
 
     @property
@@ -334,6 +359,9 @@ class ConfigAccessor:
             "maximum_overshoot": self.maximum_overshoot,
             "mpc_enabled": self.mpc_enabled,
             "mpc_temperature_sensor": self.mpc_temperature_sensor,
+            "supply_pi_kp": self.supply_pi_kp,
+            "supply_pi_ti_minutes": self.supply_pi_ti_minutes,
+            "supply_pi_min_power_w": self.supply_pi_min_power_w,
             "mirror_thermostats": self.mirror_thermostats,
             "device_count": len(self.devices),
         }

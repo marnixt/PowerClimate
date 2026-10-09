@@ -94,25 +94,62 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **none** | Normale werking (HEAT mode, volgt setpoint). Als `Allow PowerClimate to turn device on and off` voor het water-apparaat aan staat, kan aanhoudende overshoot boven `Maximum overshoot` het apparaat na de ingestelde timerduur UIT zetten; het gaat meteen weer AAN zodra er enige warmtevraag is (kamer onder setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost mode (huidig + upper offset) | Boost mode (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
-| **MPC** | Gebruikt de geconfigureerde externe geadviseerde watertemperatuur als target temperature voor het primaire water-apparaat; valt terug op normale setpoint-logica als de sensorstate niet beschikbaar is | Normale assist-logica op basis van warmtevraag in de ruimte |
+| **MPC** | Stuurt de aanvoertemperatuur naar het advies van de geconfigureerde MPC-sensor door het kamersetpoint binnen de heating-offsets van het apparaat te verschuiven (zie hieronder); valt zonder advies terug op normale setpoint-logica | Normale assist-logica op basis van warmtevraag in de ruimte |
+| **Thermal** | Verwarmen: dezelfde aanvoertemperatuurregeling, met het interne thermische model als advies | Verwarmen: normale assist-logica. Koelen: setpoint uit het thermische model |
 
-MPC preset vereist een geconfigureerde experimentele sensor met een geadviseerde watertemperatuur, bijvoorbeeld `sensor.quatt_warmteanalyse_mpc_aanbevolen_aanvoertemperatuur` uit Quatt Stooklijn. PowerClimate schrijft die waarde naar de target temperature van de climate entity; als de onderliggende thermostaat dat niet omzet naar de echte warmtepomp-aanvoertemperatuur, hangt het effect af van die integratie.
+MPC preset vereist een geconfigureerde experimentele sensor met een geadviseerde aanvoertemperatuur, bijvoorbeeld de MPC aanbevolen aanvoertemperatuur van de integratie Quatt Warmteanalyse (stooklijn).
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
 HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
 Wanneer `Allow PowerClimate to turn device on and off` op het water-apparaat is ingeschakeld, mag PowerClimate deze bij aanhoudende overshoot boven `Maximum overshoot` ook UIT schakelen. Terug inschakelen gebeurt zodra de ruimtetemperatuur weer onder het setpoint zakt (elk beetje vraag), ruim vóór de assistpompen zouden starten.
 
 ### MPC-regellogica
 
-MPC is een eenvoudige shadow-to-control modus die de output van Quatt Stooklijn gebruikt.
+Veel waterwarmtepompen worden via een kamerthermostaat aangestuurd: het setpoint
+van hun climate-entity is een **kamer**setpoint en de warmtepomp kiest de
+aanvoertemperatuur zelf. Een geadviseerde aanvoertemperatuur (bijvoorbeeld
+35 °C) kan dus niet als setpoint worden gestuurd. PowerClimate verschuift daarom
+het kamersetpoint zo dat de **gemeten** aanvoertemperatuur het advies volgt.
 
-- PowerClimate leest de state van de geconfigureerde sensor als geadviseerde watertemperatuur.
-- Als de sensor een geldig numeriek getal teruggeeft, gebruikt PowerClimate die waarde voor de primaire water-heatpump.
-- De geadviseerde waarde wordt altijd nog begrensd door de globale min/max setpoint-limieten.
-- Als de sensor `unknown` of `unavailable` is, valt PowerClimate terug op de normale setpoint-logica.
-- Assistpompen kopiëren de MPC-waarde niet direct; die blijven op de gebruikelijke warmtevraag van de ruimte sturen.
-- De water-overshoot-afschakeling blijft hier los van actief wanneer water on/off control is ingeschakeld.
+- **Fout**: geadviseerde aanvoertemperatuur − gemeten aanvoertemperatuur (de
+  watertemperatuursensor van het water-apparaat).
+- **PI-regelaar**: correctie = Kp · fout + integraal. Het setpoint van het
+  water-apparaat wordt *apparaattemperatuur + correctie*.
+- **Grenzen**: de correctie blijft binnen de lower/upper heating-offsets van het
+  water-apparaat (standaard −0,3 / +1,5 °C) en de globale min/max.
+- **Zonder sprong starten**: bij het kiezen van de preset (of na een herstart)
+  begint de regeling bij het huidige setpoint van het apparaat.
+- **Anti-windup**: de integraal groeit niet zolang de correctie in de richting
+  van de fout tegen een grens staat.
+- **Compressor stil**: onder het minimale compressorvermogen staat de integraal
+  stil (de aanvoertemperatuur zegt dan niets over de geleverde warmte); het
+  proportionele deel blijft reageren.
+- **Overshoot**: staat de kamer boven doel + `Maximum overshoot`, dan gaat de
+  correctie naar de onderste offset. De water-overshoot-afschakeling blijft los
+  daarvan werken.
+- **Geen advies**: is de adviessensor `unknown`/`unavailable` (sommige
+  MPC-bronnen melden dat als er geen warmte nodig is) of ontbreekt de
+  aanvoermeting, dan geldt de normale setpoint-logica en houdt de regelaar zijn
+  toestand vast.
+- **Assistpompen** blijven de warmtevraag van de ruimte volgen; zij krijgen het
+  advies nooit.
+- De regelaar begint opnieuw bij elke wissel van preset of HVAC-modus.
 
-In de praktijk bepaalt het Quatt-model dus de watertemperatuur, terwijl PowerClimate de orkestratie en veiligheid blijft doen. Daardoor is MPC handig als je de aanvoertemperatuur beter wilt laten volgen op de actuele warmtevraag, zonder dat de externe sensor een harde afhankelijkheid wordt.
+De afstelling staat onder **Opties → Experimental → Aanvoertemperatuurregeling**.
+De sensor **Aanvoercorrectie** toont de correctie, met het advies, de gemeten
+aanvoertemperatuur, de fout en het P- en I-deel als attributen, zodat je de
+regelaar tijdens het afstellen in een grafiek kunt volgen.
+
+**Voorkom een terugkoppellus.** Rekent de MPC-bron zijn advies uit met het
+kamersetpoint van de thermostaat, dan ziet hij het setpoint dat PowerClimate
+zelf verschuift: een hoger setpoint verhoogt het advies, en dat verhoogt het
+setpoint weer. Laat de MPC-bron in dat geval de sensor **Doeltemperatuur** van
+PowerClimate als kamersetpoint gebruiken; die bevat altijd het kamerdoel dat jij
+instelt.
+
+**Andere regelaars.** Werkt er nog iets op hetzelfde advies (bijvoorbeeld een
+begrenzing van geluidsniveau of vermogen van de compressor op dezelfde
+aanvoerfout), dan tellen de correcties op. Houd PowerClimate de tragere van de
+twee (een langere integratietijd) en let op het aantal compressorstarts.
 
 **Configuratie-ranges:**
 - Lower setpoint offset: -5.0–0.0 °C
@@ -143,7 +180,15 @@ Sommige features zijn bewust experimenteel en staan onder **Opties -> Experiment
 
 Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerClimate -> Opties -> Experimental**
 
-- **MPC geadviseerde watertemperatuur sensor**: kies een sensor die een geadviseerde watertemperatuur exposeert. Als deze is ingesteld, wordt de preset `MPC` beschikbaar en gebruikt PowerClimate de sensorstate wanneer die beschikbaar is.
+- **MPC geadviseerde aanvoertemperatuur sensor**: kies een sensor met een geadviseerde aanvoertemperatuur. Als deze is ingesteld, wordt de preset `MPC` beschikbaar.
+- **Buitentemperatuursensor**: gebruikt door het interne thermische model (preset `Thermal`).
+- **Aanvoertemperatuurregeling** (presets MPC en Thermal, verwarmen):
+
+| Optie | Default | Range | Beschrijving |
+|--------|---------|-------|-------------|
+| Proportionele versterking | 0,15 | 0,01–1,0 | Setpointwijziging in °C per °C aanvoerfout |
+| Integratietijd | 45 min | 5–240 min | Tijd waarin de integraal één proportionele stap toevoegt; langer is rustiger |
+| Minimaal compressorvermogen | 200 W | 0–2000 W | Onder dit vermogen van de waterwarmtepomp staat de integraal stil |
 
 **Notes:**
 - Wijzigingen werken direct (geen restart nodig)
@@ -180,6 +225,8 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 | **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, watertemperatuur wanneer beschikbaar |
 | **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
 | Total Power | `sensor.powerclimate_total_power_*` | Opgeteld vermogen van geconfigureerde pompen |
+| Doeltemperatuur | `sensor.powerclimate_target_temperature_*` | Kamerdoel van PowerClimate, voor integraties die alleen een sensor accepteren (geen diagnostische entity) |
+| Aanvoercorrectie | `sensor.powerclimate_supply_correction_*` | Setpointcorrectie van de aanvoertemperatuurregeling (presets MPC/Thermal), met de toestand als attributen |
 
 **Text sensor details:**
 - Alle text sensors (prefix `powerclimate_text_*`) kun je excluden uit recorder:

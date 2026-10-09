@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from custom_components.powerclimate.config_flow_handlers import (
+    build_experimental_schema,
     build_global_schema,
     entry_name_from_input,
     experimental_form_defaults,
@@ -32,9 +33,14 @@ from custom_components.powerclimate.const import (
     CONF_MPC_TEMPERATURE_SENSOR,
     CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
+    CONF_SUPPLY_PI_KP,
+    CONF_SUPPLY_PI_MIN_POWER_W,
+    CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
     DEFAULT_ENTRY_NAME,
+    DEFAULT_SUPPLY_PI_MIN_POWER_W,
+    DEFAULT_SUPPLY_PI_TI_MINUTES,
 )
 
 
@@ -139,6 +145,14 @@ class TestExperimentalOptions:
 
         assert defaults[CONF_MPC_TEMPERATURE_SENSOR] == "sensor.quatt_mpc"
 
+    def test_experimental_form_defaults_fill_supply_control(self):
+        """Supply-control fields show stored values, else the defaults."""
+        defaults = experimental_form_defaults({CONF_SUPPLY_PI_KP: 0.3}, None)
+
+        assert defaults[CONF_SUPPLY_PI_KP] == 0.3
+        assert defaults[CONF_SUPPLY_PI_TI_MINUTES] == DEFAULT_SUPPLY_PI_TI_MINUTES
+        assert defaults[CONF_SUPPLY_PI_MIN_POWER_W] == DEFAULT_SUPPLY_PI_MIN_POWER_W
+
     def test_process_experimental_input_keeps_mpc_sensor(self):
         """Experimental input should normalize the optional MPC sensor."""
         processed = process_experimental_input(
@@ -149,6 +163,36 @@ class TestExperimentalOptions:
             CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
             CONF_OUTDOOR_TEMP_SENSOR: None,
         }
+
+    def test_process_experimental_input_keeps_supply_control(self):
+        """Submitted supply-control values are stored."""
+        processed = process_experimental_input(
+            {
+                CONF_SUPPLY_PI_KP: 0.2,
+                CONF_SUPPLY_PI_TI_MINUTES: 60,
+                CONF_SUPPLY_PI_MIN_POWER_W: 300,
+            }
+        )
+
+        assert processed[CONF_SUPPLY_PI_KP] == 0.2
+        assert processed[CONF_SUPPLY_PI_TI_MINUTES] == 60
+        assert processed[CONF_SUPPLY_PI_MIN_POWER_W] == 300
+
+    def test_experimental_schema_sections_flatten(self):
+        """Nested experimental form data flattens to the processor contract."""
+        schema = build_experimental_schema(experimental_form_defaults({}, None))
+        submitted = schema(
+            {
+                "sensors": {CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc"},
+                "supply_control": {CONF_SUPPLY_PI_KP: 0.25},
+            }
+        )
+
+        processed = process_experimental_input(flatten_section_data(submitted))
+
+        assert processed[CONF_MPC_TEMPERATURE_SENSOR] == "sensor.quatt_mpc"
+        assert processed[CONF_SUPPLY_PI_KP] == 0.25
+        assert processed[CONF_SUPPLY_PI_TI_MINUTES] == DEFAULT_SUPPLY_PI_TI_MINUTES
 
     def test_process_experimental_input_clears_omitted_sensors(self):
         """HA omits emptied optional selectors; that must clear the option."""

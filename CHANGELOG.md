@@ -4,6 +4,15 @@ This file consolidates release notes and highlights useful for HACS and users.
 
 ## Unreleased
 
+**Changed**
+- **MPC and Thermal presets steer the supply temperature**: the advised supply temperature is no longer sent as the water heat pump's setpoint. A PI controller moves the room setpoint within the device's heating offsets until the measured supply temperature follows the advice. Tuning (gain, integral time, minimum compressor power) lives under Options → Experimental.
+- **Assist pumps in the MPC preset** follow room demand instead of receiving the advised supply temperature as their setpoint.
+- **Thermal preset, heating**: the model's supply temperature is no longer clamped to the room setpoint limits.
+
+**Added**
+- **Target Temperature sensor**: PowerClimate's room target as a sensor, for integrations that only accept a sensor — for example as the comfort target of an external MPC source, which avoids a feedback loop through the thermostat setpoint.
+- **Supply Correction sensor**: the controller's correction with advice, measured supply temperature, error and P/I parts as attributes.
+
 **Removed**
 - **Solar preset and power budgets**: the `Solar` preset, the house net power sensor option, the `Power Budget` sensor and the `powerclimate.set_power_budget` / `powerclimate.clear_power_budget` services are gone. A saved `Solar` preset falls back to `none`; remove the orphaned `Power Budget` entity by hand.
 

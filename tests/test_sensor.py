@@ -12,6 +12,9 @@ from custom_components.powerclimate.const import (
     DOMAIN,
 )
 from custom_components.powerclimate.sensor import (
+    PowerClimateHP1BehaviorSensor,
+    PowerClimateSupplyCorrectionSensor,
+    PowerClimateTargetTemperatureSensor,
     PowerClimateThermalModelTextSensor,
     PowerClimateThermalRecommendedSensor,
     PowerClimateThermalSummarySensor,
@@ -377,3 +380,80 @@ def test_total_power_sensor_converts_kw_to_w() -> None:
 
     assert sensor._attr_native_value == 1700
     assert sensor.native_unit_of_measurement == "W"
+
+
+# ---------------------------------------------------------------------------
+# Target temperature and supply correction
+# ---------------------------------------------------------------------------
+
+
+def _summary_hass(summary: dict | None = None) -> SimpleNamespace:
+    entry_data = {"summary_payload": summary} if summary is not None else {}
+    return SimpleNamespace(
+        data={DOMAIN: {"entry-1": entry_data}},
+        config=SimpleNamespace(language="en", path=lambda *parts: ""),
+    )
+
+
+def test_target_temperature_sensor_reports_room_target() -> None:
+    """The target sensor exposes PowerClimate's room target, not a device setpoint."""
+    sensor = PowerClimateTargetTemperatureSensor(
+        _summary_hass({"target_temperature": 21.3}), make_entry([])
+    )
+
+    assert sensor.native_value == 21.3
+    assert sensor.native_unit_of_measurement == "°C"
+    assert sensor.entity_category is None
+
+
+def test_target_temperature_sensor_without_summary() -> None:
+    sensor = PowerClimateTargetTemperatureSensor(_summary_hass(), make_entry([]))
+
+    assert sensor.native_value is None
+
+
+def test_supply_correction_sensor_exposes_controller_state() -> None:
+    sensor = PowerClimateSupplyCorrectionSensor(
+        _summary_hass(
+            {
+                "supply_pi_active": True,
+                "supply_pi_source": "mpc",
+                "supply_pi_advised_temp": 30.0,
+                "supply_pi_supply_temp": 28.0,
+                "supply_pi_error": 2.0,
+                "supply_pi_correction": 0.45,
+            }
+        ),
+        make_entry([]),
+    )
+
+    assert sensor.native_value == 0.45
+    attributes = sensor.extra_state_attributes
+    assert attributes["supply_pi_source"] == "mpc"
+    assert attributes["supply_pi_error"] == 2.0
+
+
+def test_supply_correction_sensor_none_when_inactive() -> None:
+    sensor = PowerClimateSupplyCorrectionSensor(
+        _summary_hass({"supply_pi_active": False, "supply_pi_correction": None}),
+        make_entry([]),
+    )
+
+    assert sensor.native_value is None
+
+
+def test_hp1_behavior_shows_advice_and_correction_in_mpc_mode() -> None:
+    sensor = PowerClimateHP1BehaviorSensor(_summary_hass(), make_entry([]))
+    sensor._strings = {}
+
+    text = sensor._format_payload(
+        {
+            "hp_status": [{"role": "hp1", "name": "Water", "powerclimate_mode": "mpc"}],
+            "supply_pi_active": True,
+            "supply_pi_advised_temp": 30.0,
+            "supply_pi_correction": 0.45,
+        }
+    )
+
+    assert "Advice 30.0°C" in text
+    assert "Correction +0.5°C" in text

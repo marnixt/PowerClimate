@@ -16,6 +16,7 @@ from .const import (
     CONF_DEVICE_NAME,
     MODE_OFF,
 )
+from .pi_controller import PIResult
 from .utils import compute_eta_hours, safe_float
 
 
@@ -64,6 +65,43 @@ def build_thermal_summary(
         "thermal_u_building_updates": thermal_state.get("u_building_updates"),
         "thermal_is_converged": thermal_state.get("is_converged"),
         "thermal_recommended_temp": recommended_temp,
+    }
+
+
+def build_supply_pi_summary(
+    source: str | None,
+    *,
+    advised_temp: float | None = None,
+    supply_temp: float | None = None,
+    result: PIResult | None = None,
+    correction: float | None = None,
+) -> dict[str, Any]:
+    """Build diagnostics for the supply-temperature controller.
+
+    Args:
+        source: Where the advice came from ("mpc" or "thermal"); None while
+            the controller is not running.
+        advised_temp: Advised supply temperature.
+        supply_temp: Measured supply temperature.
+        result: Outcome of the controller update.
+        correction: Correction applied to the device temperature.
+    """
+
+    def rounded(value: float | None) -> float | None:
+        return round(value, 2) if value is not None else None
+
+    active = source is not None and result is not None
+    return {
+        "supply_pi_active": active,
+        "supply_pi_source": source if active else None,
+        "supply_pi_advised_temp": advised_temp if active else None,
+        "supply_pi_supply_temp": supply_temp if active else None,
+        "supply_pi_error": rounded(result.error) if active else None,
+        "supply_pi_p": rounded(result.p_term) if active else None,
+        "supply_pi_i": rounded(result.i_term) if active else None,
+        "supply_pi_correction": rounded(correction) if active else None,
+        "supply_pi_integrating": result.integrating if active else None,
+        "supply_pi_saturated": result.saturated if active else None,
     }
 
 
