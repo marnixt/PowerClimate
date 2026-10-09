@@ -11,7 +11,6 @@ from custom_components.powerclimate.const import (
     CONF_ASSIST_TIMER_SECONDS,
     CONF_DEVICE_ROLE,
     CONF_DEVICES,
-    CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MIN_SETPOINT_OVERRIDE,
@@ -79,12 +78,6 @@ class TestGlobalDefaults:
     def test_assist_stall_temp_delta_default(self) -> None:
         assert _make_accessor().assist_stall_temp_delta == DEFAULT_ASSIST_STALL_TEMP_DELTA
 
-    def test_house_power_sensor_none_by_default(self) -> None:
-        assert _make_accessor().house_power_sensor is None
-
-    def test_solar_disabled_by_default(self) -> None:
-        assert _make_accessor().solar_enabled is False
-
     def test_mpc_sensor_none_by_default(self) -> None:
         assert _make_accessor().mpc_temperature_sensor is None
 
@@ -132,16 +125,7 @@ class TestOptionsOverrideData:
 
 
 class TestOptionalSensors:
-    """house_power_sensor and mpc_temperature_sensor should strip blank values."""
-
-    def test_solar_enabled_when_sensor_configured(self) -> None:
-        accessor = _make_accessor(data={CONF_HOUSE_POWER_SENSOR: "sensor.net"})
-        assert accessor.solar_enabled is True
-        assert accessor.house_power_sensor == "sensor.net"
-
-    def test_solar_disabled_for_whitespace_only_value(self) -> None:
-        accessor = _make_accessor(data={CONF_HOUSE_POWER_SENSOR: "   "})
-        assert accessor.solar_enabled is False
+    """mpc_temperature_sensor should strip blank values."""
 
     def test_mpc_enabled_when_sensor_configured(self) -> None:
         accessor = _make_accessor(data={CONF_MPC_TEMPERATURE_SENSOR: "sensor.mpc"})
@@ -346,8 +330,6 @@ class TestToDict:
             "assist_water_temp_threshold",
             "assist_stall_temp_delta",
             "maximum_overshoot",
-            "solar_enabled",
-            "house_power_sensor",
             "mpc_enabled",
             "mpc_temperature_sensor",
             "mirror_thermostats",

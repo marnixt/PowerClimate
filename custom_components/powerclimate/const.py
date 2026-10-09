@@ -62,36 +62,16 @@ DEVICE_ROLE_AIR = "air"
 MODE_BOOST = "boost"
 MODE_SETPOINT = "setpoint"
 MODE_MINIMAL = "minimal"
-MODE_POWER = "power"
 MODE_MPC = "mpc"
 MODE_THERMAL_MPC = "thermal_mpc"  # Internal thermal-model MPC preset
 MODE_OFF = "off"
 
-# Power mode configuration
-# Interval between setpoint adjustments in power mode (prevents oscillation)
-DEFAULT_POWER_MODE_ADJUSTMENT_INTERVAL_SECONDS = 90.0
-# Deadband as fraction of target power (no adjustment if within this range)
-DEFAULT_POWER_MODE_DEADBAND_PERCENT = 0.15
-# Setpoint step size per adjustment
-DEFAULT_POWER_MODE_STEP_SIZE = 0.3
-
-# Power preset (orchestrator-level) configuration
-# House net active power sensor (negative when exporting/surplus).
-CONF_HOUSE_POWER_SENSOR = "house_power_sensor_entity_id"
 CONF_MPC_TEMPERATURE_SENSOR = "mpc_temperature_sensor_entity_id"
 # Outdoor temperature sensor — optional, used by the internal thermal MPC preset.
 CONF_OUTDOOR_TEMP_SENSOR = "outdoor_temp_sensor_entity_id"
 # MPC prediction horizon in minutes (how aggressively to pull room toward target).
 CONF_INTERNAL_MPC_HORIZON_MINUTES = "internal_mpc_horizon_minutes"
 DEFAULT_INTERNAL_MPC_HORIZON_MINUTES = 30.0
-# Keep some headroom to avoid oscillation due to household noise.
-DEFAULT_POWER_SURPLUS_RESERVE_W = 300.0
-# Update interval for recomputing per-HP budgets from the house power sensor.
-DEFAULT_POWER_BUDGET_UPDATE_INTERVAL_SECONDS = 30.0
-# Do not allocate tiny budgets that only cause churn.
-DEFAULT_POWER_MIN_BUDGET_W = 200.0
-# Cap per-device budget so we don't slam a single HP.
-DEFAULT_POWER_MAX_BUDGET_PER_DEVICE_W = 1200.0
 
 # Setpoint offset configuration
 # Floor = current_temp + lower_offset (lower is typically negative or zero)

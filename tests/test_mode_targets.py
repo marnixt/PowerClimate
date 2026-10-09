@@ -9,7 +9,6 @@ from custom_components.powerclimate.const import (
     MODE_MINIMAL,
     MODE_MPC,
     MODE_OFF,
-    MODE_POWER,
     MODE_SETPOINT,
     MODE_THERMAL_MPC,
 )
@@ -77,21 +76,15 @@ def test_thermal_mpc_uses_model_when_available():
     assert _target(MODE_THERMAL_MPC, thermal_target=lambda: None, target=21.0) == 21.0
 
 
-def test_power_mode_uses_power_target():
-    assert _target(MODE_POWER, power_target=lambda: 24.5) == 24.5
-
-
 def test_lazy_inputs_only_evaluated_for_their_mode():
     mpc = MagicMock(return_value=25.0)
     thermal = MagicMock(return_value=25.0)
-    power = MagicMock(return_value=25.0)
 
-    _target(MODE_SETPOINT, mpc_target=mpc, thermal_target=thermal, power_target=power)
-    _target(MODE_POWER, None, mpc_target=mpc, thermal_target=thermal, power_target=power)
+    _target(MODE_SETPOINT, mpc_target=mpc, thermal_target=thermal)
+    _target(MODE_MPC, None, mpc_target=mpc, thermal_target=thermal)
 
     mpc.assert_not_called()
     thermal.assert_not_called()
-    power.assert_not_called()
 
 
 def test_unknown_mode_returns_minimum():

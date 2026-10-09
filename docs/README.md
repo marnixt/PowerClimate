@@ -19,8 +19,7 @@ and coordinate their setpoints using temperature offsets.
 - **Multi-heatpump orchestration**: One virtual thermostat coordinates an optional water-based device and any number of air-based assist heat pumps.
 - **Offsets + guardrails**: Lower/upper offsets per device and global min/max setpoints.
 - **Assists: manual or automatic ON/OFF**: Optional timers + anti-short-cycle protections.
-- **Power-aware `Solar` preset (optional)**: Allocate per-device power budgets from a signed house net power sensor.
-- **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
+- **Diagnostics**: Thermal summary, per-HP behavior, derivatives and total power.
 - **Thermostat mirroring**: Mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off is ignored.
 - **Standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
@@ -108,10 +107,8 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **none** | Normal operation (HEAT mode, follows setpoint). If `Allow PowerClimate to turn device on and off` is enabled for the water device, sustained overshoot above `Maximum overshoot` can turn it OFF after the configured timer duration; it turns back ON as soon as there is any demand (room below target) | Setpoint-tracking if ON, untouched if OFF |
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) |
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
-| **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) |
 | **MPC** | Uses the configured external advised water temperature as the target temperature for the primary water device; falls back to normal setpoint logic if the sensor state is unavailable | Normal assist logic based on room demand |
 
-**Note:** Solar preset requires a configured house net power sensor. Budget allocation prioritizes the water-based device first; any remaining air-device budget rotates across assists to avoid starving the same device every cycle.
 MPC preset requires a configured experimental sensor that exposes an advised water temperature, such as `sensor.quatt_warmteanalyse_mpc_aanbevolen_aanvoertemperatuur` from Quatt Stooklijn. PowerClimate writes that value to the climate entity target temperature; if the underlying thermostat does not translate it into the actual heat-pump control setpoint, the effect depends on that integration.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
 Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
@@ -159,7 +156,6 @@ Some features are intentionally marked experimental and live under **Options →
 
 To access: **Settings → Devices & Services → Integrations → PowerClimate → Options → Experimental**
 
-- **House net power sensor (signed)**: Configure a sensor that reports net active power in W (negative = export/surplus). This is required to enable/select the `Solar` preset.
 - **MPC advised water temperature sensor**: Configure a sensor that exposes an advised water temperature. When set, PowerClimate enables the `MPC` preset and uses the sensor state when available.
 
 **Notes:**
@@ -197,7 +193,6 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, water temperature when available |
 | **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps, and PowerClimate mode for each configured assist pump |
 | Total Power | `sensor.powerclimate_total_power_*` | Aggregated power consumption from all configured pumps |
-| Power Budget | `sensor.powerclimate_power_budget_*` | Total + per-device budgets (used by `Solar` preset) |
 
 **Text Sensor Details:**
 - All text sensors (prefixed `powerclimate_text_*`) can be excluded from recorder:

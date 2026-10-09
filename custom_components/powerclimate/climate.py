@@ -39,7 +39,6 @@ from .const import (
     MODE_MINIMAL,
     MODE_MPC,
     MODE_OFF,
-    MODE_POWER,
     MODE_SETPOINT,
     MODE_THERMAL_MPC,
     TEMPERATURE_CHANGE_THRESHOLD,
@@ -50,7 +49,6 @@ from .helpers import (
     summary_signal,
 )
 from .mode_targets import SetpointLimits, calculate_mode_target
-from .power_budget import PowerBudgetManager
 from .summary_payload import (
     build_hp_status,
     build_mpc_summary,
@@ -62,7 +60,6 @@ _LOGGER = logging.getLogger(__name__)
 
 PRESET_NONE = "none"
 PRESET_BOOST = "boost"
-PRESET_SOLAR = "solar"
 PRESET_AWAY = "away"
 PRESET_MPC = "mpc"
 PRESET_THERMAL = "thermal"
@@ -92,17 +89,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.PRESET_MODE
     )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
-    _attr_preset_modes = [
-        PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_SOLAR, PRESET_MPC, PRESET_THERMAL
-    ]
+    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MPC, PRESET_THERMAL]
     # Bulky diagnostics that change every update; keep them out of the recorder.
     _unrecorded_attributes = frozenset({
         "hp_status",
         "active_devices",
         "room_sensor_values",
         "mpc_forecast_6h",
-        "power_budget_by_entity_w",
-        "power_budget_manual_w",
     })
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, coordinator) -> None:
@@ -121,7 +114,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._target_temperature = DEFAULT_TARGET_TEMPERATURE
         self._previous_target: float | None = None
         self._config = ConfigAccessor(entry)
-        self._power_manager = PowerBudgetManager(hass, self._config)
 
         # Initialize assist controller with persistent storage
         from .timer_storage import TimerStorage
@@ -155,8 +147,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def preset_modes(self) -> list[str] | None:
         """Return list of available preset modes."""
         modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY]
-        if self._config.solar_enabled:
-            modes.append(PRESET_SOLAR)
         if self._config.mpc_enabled:
             modes.append(PRESET_MPC)
         modes.append(PRESET_THERMAL)
@@ -305,8 +295,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_boost_mode()
         elif preset_mode == PRESET_AWAY:
             await self._enter_away_mode()
-        elif preset_mode == PRESET_SOLAR:
-            await self._enter_solar_mode()
         elif preset_mode == PRESET_MPC:
             await self._enter_mpc_mode()
         elif preset_mode == PRESET_THERMAL:
@@ -345,25 +333,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._attr_hvac_mode = HVACMode.HEAT
 
         self._attr_preset_mode = PRESET_AWAY
-        self._power_manager.clear_all()
 
         await self._apply_away_mode()
-
-    async def _enter_solar_mode(self) -> None:
-        """Enter solar preset mode."""
-        if self._attr_preset_mode == PRESET_SOLAR:
-            return
-
-        # Restore target if coming from Away
-        if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
-            self._target_temperature = self._previous_target
-        self._previous_target = None
-
-        self._attr_preset_mode = PRESET_SOLAR
-        # Preserve current HVAC mode (solar works for both heating and cooling)
-        if self._attr_hvac_mode == HVACMode.OFF:
-            self._attr_hvac_mode = HVACMode.HEAT
-        await self._apply_staging()
 
     async def _enter_mpc_mode(self) -> None:
         """Enter MPC preset mode."""
@@ -381,7 +352,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         # room setpoint for cool).
         if self._attr_hvac_mode == HVACMode.OFF:
             self._attr_hvac_mode = HVACMode.HEAT
-        self._power_manager.clear_all()
         await self._apply_staging()
 
     async def _enter_thermal_mode(self) -> None:
@@ -397,7 +367,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         # Preserve current HVAC mode — thermal MPC works for both heat and cool.
         if self._attr_hvac_mode == HVACMode.OFF:
             self._attr_hvac_mode = HVACMode.HEAT
-        self._power_manager.clear_all()
         await self._apply_staging()
 
     async def _exit_preset_mode(self) -> None:
@@ -411,7 +380,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._previous_target = None
 
         self._attr_preset_mode = PRESET_NONE
-        self._power_manager.clear_all()
         await self._apply_staging()
 
     async def _apply_staging(self) -> None:
@@ -422,20 +390,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
             return
-        if self._attr_preset_mode == PRESET_SOLAR:
-            if not self._config.solar_enabled:
-                self._attr_preset_mode = PRESET_NONE
-                self._power_manager.clear_all()
-            else:
-                self._power_manager.update_budgets(devices, is_cooling=self._is_cooling())
-        elif self._attr_preset_mode == PRESET_MPC:
-            if not self._config.mpc_enabled:
-                self._attr_preset_mode = PRESET_NONE
-            self._power_manager.clear_all()
-        elif self._attr_preset_mode == PRESET_THERMAL:
-            self._power_manager.clear_all()
-        else:
-            self._power_manager.clear_all()
+        if self._attr_preset_mode == PRESET_MPC and not self._config.mpc_enabled:
+            self._attr_preset_mode = PRESET_NONE
         if not devices:
             await self._handle_no_devices(device_payloads)
             return
@@ -884,8 +840,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return MODE_MPC
         if self._attr_preset_mode == PRESET_THERMAL:
             return MODE_THERMAL_MPC
-        if self._power_manager.get_budget(entity_id) > 0:
-            return MODE_POWER
         return MODE_SETPOINT
 
     def _determine_assist_mode(
@@ -909,8 +863,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return MODE_MPC
         if self._attr_preset_mode == PRESET_THERMAL and self._is_cooling():
             return MODE_THERMAL_MPC
-        if self._power_manager.get_budget(entity_id) > 0:
-            return MODE_POWER
         # For automatic pumps, check off_timer to keep running briefly after target is reached
         if is_automatic and off_timer > 0:
             return MODE_MINIMAL
@@ -952,14 +904,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             current_target=current_target,
             mpc_target=self._read_mpc_temperature_state,
             thermal_target=lambda: self._compute_thermal_mpc_target(min_sp, max_sp),
-            power_target=lambda: self._power_manager.calculate_setpoint(
-                device.get(CONF_CLIMATE_ENTITY, ""),
-                current_power,
-                min_sp,
-                max_sp,
-                current_target_setpoint=current_target,
-                is_cooling=cooling,
-            ),
         )
 
     def _compute_thermal_mpc_target(
@@ -1302,16 +1246,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """Ensure device has the given setpoint; see DeviceCommander.ensure_temperature."""
         await self._commands.ensure_temperature(entity_id, temperature)
 
-    async def async_set_power_budget(self, entity_id: str, power_watts: float) -> None:
-        """Set a manual power budget for a device (service API)."""
-        self._power_manager.set_budget(entity_id, power_watts)
-        await self._apply_staging()
-
-    async def async_clear_power_budget(self, entity_id: str) -> None:
-        """Clear the manual power budget for a device (service API)."""
-        self._power_manager.clear_budget(entity_id)
-        await self._apply_staging()
-
     def _emit_summary(
         self,
         devices: list[dict[str, Any]],
@@ -1347,7 +1281,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "maximum_overshoot": self._config.maximum_overshoot,
             **self._build_mpc_summary(),
             **self._build_thermal_summary(),
-            **self._power_manager.get_diagnostics(),
         }
 
         self._summary_payload = payload

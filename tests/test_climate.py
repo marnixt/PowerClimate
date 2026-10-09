@@ -80,18 +80,17 @@ def test_turn_off_water_device_forces_off_when_powerclimate_is_off() -> None:
 def test_async_set_preset_mode_accepts_legacy_case() -> None:
     """Preset setters should normalize legacy title-cased preset values."""
     entity = make_entity()
-    entity._config = SimpleNamespace(solar_enabled=True, mpc_enabled=True)
+    entity._config = SimpleNamespace(mpc_enabled=True)
     entity._enter_boost_mode = AsyncMock()
     entity._enter_away_mode = AsyncMock()
-    entity._enter_solar_mode = AsyncMock()
     entity._enter_mpc_mode = AsyncMock()
     entity._exit_preset_mode = AsyncMock()
 
-    asyncio.run(entity.async_set_preset_mode("Solar"))
+    asyncio.run(entity.async_set_preset_mode("Boost"))
     asyncio.run(entity.async_set_preset_mode("Away"))
     asyncio.run(entity.async_set_preset_mode("MPC"))
 
-    entity._enter_solar_mode.assert_awaited_once()
+    entity._enter_boost_mode.assert_awaited_once()
     entity._enter_away_mode.assert_awaited_once()
     entity._enter_mpc_mode.assert_awaited_once()
 
@@ -99,16 +98,26 @@ def test_async_set_preset_mode_accepts_legacy_case() -> None:
 def test_preset_modes_include_mpc_when_sensor_configured() -> None:
     """MPC preset should be exposed when an MPC sensor is configured."""
     entity = make_entity()
-    entity._config = SimpleNamespace(solar_enabled=False, mpc_enabled=True)
+    entity._config = SimpleNamespace(mpc_enabled=True)
 
     assert entity.preset_modes == ["none", "boost", "away", "mpc", "thermal"]
+
+
+def test_set_preset_mode_ignores_removed_solar_preset() -> None:
+    """The removed Solar preset is no longer accepted."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(mpc_enabled=True)
+    entity._exit_preset_mode = AsyncMock()
+
+    asyncio.run(entity.async_set_preset_mode("solar"))
+
+    entity._exit_preset_mode.assert_not_awaited()
 
 
 def test_determine_hp1_mode_returns_mpc_for_mpc_preset() -> None:
     """HP1 should use dedicated MPC mode when the MPC preset is active."""
     entity = make_entity()
     entity._attr_preset_mode = "mpc"
-    entity._power_manager = SimpleNamespace(get_budget=lambda _entity_id: 0.0)
 
     assert entity._determine_hp1_mode(False, "climate.hp1") == MODE_MPC
 
@@ -501,10 +510,8 @@ def test_enter_away_mode_in_cool_raises_target_to_max() -> None:
     entity._config = SimpleNamespace(
         min_setpoint=16.0,
         max_setpoint=30.0,
-        solar_enabled=False,
         mpc_enabled=False,
     )
-    entity._power_manager = SimpleNamespace(clear_all=MagicMock())
     entity._apply_away_mode = AsyncMock()
 
     asyncio.run(entity._enter_away_mode())
@@ -520,7 +527,6 @@ def test_enter_mpc_mode_preserves_cool_mode() -> None:
     entity._attr_hvac_mode = HVACMode.COOL
     entity._attr_preset_mode = "none"
     entity._previous_target = None
-    entity._power_manager = SimpleNamespace(clear_all=MagicMock())
     entity._apply_staging = AsyncMock()
 
     asyncio.run(entity._enter_mpc_mode())
@@ -742,17 +748,6 @@ def test_handle_assist_control_allows_mode_change_when_hvac_modes_unknown() -> N
     entity._ensure_device_mode.assert_awaited_once_with(
         "climate.air1", HVACMode.COOL, force=True
     )
-
-
-def test_set_power_budget_triggers_staging() -> None:
-    entity = make_entity()
-    entity._power_manager = MagicMock()
-    entity._apply_staging = AsyncMock()
-
-    asyncio.run(entity.async_set_power_budget("climate.hp1", 800.0))
-
-    entity._power_manager.set_budget.assert_called_once_with("climate.hp1", 800.0)
-    entity._apply_staging.assert_awaited_once()
 
 
 def test_handle_hp_state_change_forwards_mirror_while_refresh_pending() -> None:

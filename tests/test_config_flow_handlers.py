@@ -26,7 +26,6 @@ from custom_components.powerclimate.const import (
     CONF_CLIMATE_ENTITY,
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
-    CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIRROR_CLIMATE_ENTITIES,
@@ -134,27 +133,19 @@ class TestExperimentalOptions:
 
     def test_experimental_form_defaults_include_mpc_sensor(self):
         """Defaults should include the configured MPC sensor."""
-        base = {
-            CONF_HOUSE_POWER_SENSOR: "sensor.house_net",
-            CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
-        }
+        base = {CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc"}
 
         defaults = experimental_form_defaults(base, None)
 
-        assert defaults[CONF_HOUSE_POWER_SENSOR] == "sensor.house_net"
         assert defaults[CONF_MPC_TEMPERATURE_SENSOR] == "sensor.quatt_mpc"
 
     def test_process_experimental_input_keeps_mpc_sensor(self):
         """Experimental input should normalize the optional MPC sensor."""
         processed = process_experimental_input(
-            {
-                CONF_HOUSE_POWER_SENSOR: " sensor.house_net ",
-                CONF_MPC_TEMPERATURE_SENSOR: " sensor.quatt_mpc ",
-            }
+            {CONF_MPC_TEMPERATURE_SENSOR: " sensor.quatt_mpc "}
         )
 
         assert processed == {
-            CONF_HOUSE_POWER_SENSOR: "sensor.house_net",
             CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
             CONF_OUTDOOR_TEMP_SENSOR: None,
         }
@@ -164,7 +155,6 @@ class TestExperimentalOptions:
         processed = process_experimental_input({})
 
         assert processed == {
-            CONF_HOUSE_POWER_SENSOR: None,
             CONF_MPC_TEMPERATURE_SENSOR: None,
             CONF_OUTDOOR_TEMP_SENSOR: None,
         }

@@ -27,9 +27,8 @@ Not affiliated with Home Assistant.
 - **Per-device offsets + guardrails**: Separate lower/upper offsets for heating and cooling per device, plus global min/max setpoint limits.
 - **Heating and cooling modes**: Air-based heat pumps that support both heat and cool can be used in either mode. The water-based heat pump (if configured) is automatically excluded from cooling.
 - **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
-- **Power-aware control (optional)**: `Solar` preset can allocate per-device power budgets from a signed house net power sensor.
 - **Thermostat mirroring**: Optionally mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off state is ignored.
-- **Diagnostics**: Thermal summary, per-HP behavior, derivatives, total power, and budget diagnostics.
+- **Diagnostics**: Thermal summary, per-HP behavior, derivatives and total power.
 - **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
 ![Config air warmtepomp](docs/images/Dashboard%20example%201.png)
@@ -111,10 +110,8 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF | Air HPs follow cooling setpoint |
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) | Air HPs: aggressive cooling (current + lower offset) |
 | **Away** | Minimal mode (let temp drop to 16 °C) | OFF (if allow_on_off enabled), otherwise minimal | Target raised to max setpoint (disables cooling) |
-| **Solar** | Power-budgeted setpoint (uses surplus energy) | Power-budgeted setpoint (priority after water HP) | Heating-only; no effect in cool mode |
 | **MPC** | MPC-advised setpoint | — | Heating-only; no effect in cool mode |
 
-**Note:** Solar preset requires a configured house net power sensor. Budget allocation prioritises the water-based device first; any remaining air-device budget rotates across assists to avoid starving the same device every cycle.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
 Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
 
@@ -145,7 +142,6 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | HP1 Behavior | HVAC status, temps, water temperature when available |
 | HP2+ Behavior | HVAC status, temps, and PowerClimate mode for each configured assist pump |
 | Total Power | Aggregated power from all configured pumps |
-| Power Budget | Allocated budget totals + per-device budgets (when enabled) |
 
 Behavior sensors are created for every configured pump, not only the first five.
 

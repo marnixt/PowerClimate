@@ -28,7 +28,6 @@ from .const import (
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
-    CONF_HOUSE_POWER_SENSOR,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAX_SETPOINT_OVERRIDE,
@@ -786,7 +785,6 @@ def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
     sensor_fields = build_fields(
         defaults,
         (
-            (CONF_HOUSE_POWER_SENSOR, entity_selector("sensor")),
             (CONF_MPC_TEMPERATURE_SENSOR, entity_selector("sensor")),
             (CONF_OUTDOOR_TEMP_SENSOR, entity_selector("sensor")),
         ),
@@ -806,7 +804,6 @@ def experimental_form_defaults(
         return dict(user_input)
 
     return {
-        CONF_HOUSE_POWER_SENSOR: base.get(CONF_HOUSE_POWER_SENSOR),
         CONF_MPC_TEMPERATURE_SENSOR: base.get(CONF_MPC_TEMPERATURE_SENSOR),
         CONF_OUTDOOR_TEMP_SENSOR: base.get(CONF_OUTDOOR_TEMP_SENSOR),
     }
@@ -818,7 +815,6 @@ def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     # missing key means "cleared".
     data: dict[str, Any] = {}
     for key in (
-        CONF_HOUSE_POWER_SENSOR,
         CONF_MPC_TEMPERATURE_SENSOR,
         CONF_OUTDOOR_TEMP_SENSOR,
     ):

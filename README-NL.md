@@ -23,8 +23,7 @@ Niet gelieerd aan Home Assistant.
 - **Multi-warmtepomp orchestration**: een virtuele thermostaat coordineert een optionele waterwarmtepomp (0 of 1) en nul of meer lucht- (assist) warmtepompen.
 - **Per-apparaat offsets + guardrails**: lower/upper offsets per apparaat, plus globale min/max setpoint limieten.
 - **Assists handmatig (default) + optioneel automatisch aan/uit**: jij bepaalt of assists draaien, of laat PowerClimate assist HVAC mode beheren met timers en anti-short-cycle.
-- **Vermogensbewuste regeling (optioneel)**: preset `Solar` kan per-apparaat vermogensbudgetten verdelen op basis van een signed house net power sensor.
-- **Diagnostiek**: thermische samenvatting, per-HP gedrag, afgeleides, totaal vermogen en budgetdiagnostiek.
+- **Diagnostiek**: thermische samenvatting, per-HP gedrag, afgeleides en totaal vermogen.
 - **Thermostaat-mirroring**: kopieer alleen setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate; HVAC aan/uit van die thermostaten wordt genegeerd.
 - **Werkt met standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 
@@ -85,9 +84,7 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **none** | Normale werking (HEAT mode, volgt setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost (huidig + upper offset) | Boost (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
-| **Solar** | Vermogensgebudgetteerde setpoint (gebruik surplus) | Vermogensgebudgetteerd (prioriteit na water-HP) |
 
-**Let op:** `Solar` vereist een geconfigureerde house net power sensor. Budgetten geven eerst prioriteit aan het water-apparaat; resterend assist-budget roteert daarna over luchtpompen zodat niet steeds dezelfde assist achterblijft.
 `Away` schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
 HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
 
@@ -116,7 +113,6 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 | HP1 Behavior | HVAC status, temps, watertemperatuur (indien beschikbaar) |
 | HP2+ Behavior | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
 | Total Power | Opgeteld vermogen van alle geconfigureerde pompen |
-| Power Budget | Totale + per-apparaat budgetten (wanneer actief) |
 
 Behavior-sensoren worden aangemaakt voor elke geconfigureerde pomp, niet alleen voor de eerste vijf.
 

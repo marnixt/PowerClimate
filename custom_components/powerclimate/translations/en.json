@@ -298,12 +298,10 @@
           "sensors": {
             "name": "Experimental sensors",
             "data": {
-              "house_power_sensor_entity_id": "House net power sensor (W, negative = export)",
               "mpc_temperature_sensor_entity_id": "MPC temperature sensor",
               "outdoor_temp_sensor_entity_id": "Outdoor temperature sensor"
             },
             "data_description": {
-              "house_power_sensor_entity_id": "Signed net active power. If negative, PowerClimate treats it as export/surplus and will allocate budgets in the Solar preset.",
               "mpc_temperature_sensor_entity_id": "Optional sensor used as the MPC control temperature.",
               "outdoor_temp_sensor_entity_id": "Optional outdoor temperature sensor for experimental control logic."
             }
@@ -331,7 +329,6 @@
               "none": "None",
               "boost": "Boost",
               "away": "Away",
-              "solar": "Solar",
               "mpc": "MPC",
               "thermal": "Thermal"
             }
@@ -348,9 +345,6 @@
       },
       "internal_mpc": {
         "name": "Internal MPC"
-      },
-      "power_budget": {
-        "name": "Power Budget"
       },
       "thermal_advised_temperature": {
         "name": "Thermal Advised Temperature"
@@ -370,14 +364,6 @@
       "hp_behavior": {
         "name": "{label} Behavior"
       }
-    }
-  },
-  "exceptions": {
-    "unknown_target": {
-      "message": "No PowerClimate entry manages {entity_id}."
-    },
-    "ambiguous_target": {
-      "message": "Multiple PowerClimate entries manage {entity_id}; the target is ambiguous."
     }
   }
 }

@@ -13,59 +13,28 @@ Key features:
 - Per-device temperature offsets for minimal and setpoint modes
 - Room demand-based mode switching (minimal vs setpoint mode)
 - Absolute setpoint guardrails between 16-30°C
-- Power mode: steer heat pump to match a power budget
 
 See README.md for detailed documentation of the control algorithm.
 """
 
 import logging
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.typing import ConfigType
 
 from .const import (
-    CONF_CLIMATE_ENTITY,
-    CONF_DEVICES,
     COORDINATOR,
     DOMAIN,
     PLATFORMS,
 )
 from .coordinator import OSDataUpdateCoordinator
-from .helpers import merged_entry_data
 from .thermal_model import STORAGE_VERSION as THERMAL_STORAGE_VERSION
 from .thermal_model import storage_key as thermal_storage_key
 from .timer_storage import STORAGE_VERSION as TIMER_STORAGE_VERSION
 from .timer_storage import storage_key as timer_storage_key
 
 LOGGER = logging.getLogger(__name__)
-
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-
-# Service names
-SERVICE_SET_POWER_BUDGET = "set_power_budget"
-SERVICE_CLEAR_POWER_BUDGET = "clear_power_budget"
-
-# Service schema
-SERVICE_SET_POWER_BUDGET_SCHEMA = vol.Schema({
-    vol.Required("entity_id"): cv.entity_id,
-    vol.Required("power_watts"): vol.All(vol.Coerce(float), vol.Range(min=0)),
-})
-
-SERVICE_CLEAR_POWER_BUDGET_SCHEMA = vol.Schema({
-    vol.Required("entity_id"): cv.entity_id,
-})
-
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the integration and register its services (once)."""
-    hass.data.setdefault(DOMAIN, {})
-    await _async_register_services(hass)
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -98,87 +67,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
-
-
-async def _async_register_services(hass: HomeAssistant) -> None:
-    """Register PowerClimate services."""
-
-    def resolve_climate_entity(target_entity_id: str):
-        """Resolve the climate entity that owns a controlled device."""
-        matches = []
-        all_entities = []
-
-        for data in hass.data.get(DOMAIN, {}).values():
-            climate_entity = data.get("climate_entity")
-            if climate_entity is None:
-                continue
-
-            all_entities.append(climate_entity)
-
-            entry = data.get("entry")
-            if entry is None:
-                continue
-
-            devices = merged_entry_data(entry).get(CONF_DEVICES) or []
-            if any(
-                str(device.get(CONF_CLIMATE_ENTITY) or "").strip() == target_entity_id
-                for device in devices
-            ):
-                matches.append(climate_entity)
-
-        if len(matches) == 1:
-            return matches[0]
-
-        if len(matches) > 1:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="ambiguous_target",
-                translation_placeholders={"entity_id": target_entity_id},
-            )
-
-        if len(all_entities) == 1:
-            return all_entities[0]
-
-        raise ServiceValidationError(
-            translation_domain=DOMAIN,
-            translation_key="unknown_target",
-            translation_placeholders={"entity_id": target_entity_id},
-        )
-
-    async def handle_set_power_budget(call: ServiceCall) -> None:
-        """Handle set_power_budget service call."""
-        entity_id = str(call.data["entity_id"]).strip()
-        power_watts = call.data["power_watts"]
-
-        climate_entity = resolve_climate_entity(entity_id)
-        await climate_entity.async_set_power_budget(entity_id, power_watts)
-        LOGGER.info(
-            "Power budget set for %s: %.0f W via service",
-            entity_id,
-            power_watts,
-        )
-
-    async def handle_clear_power_budget(call: ServiceCall) -> None:
-        """Handle clear_power_budget service call."""
-        entity_id = str(call.data["entity_id"]).strip()
-
-        climate_entity = resolve_climate_entity(entity_id)
-        await climate_entity.async_clear_power_budget(entity_id)
-        LOGGER.info("Power budget cleared for %s via service", entity_id)
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SET_POWER_BUDGET,
-        handle_set_power_budget,
-        schema=SERVICE_SET_POWER_BUDGET_SCHEMA,
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_CLEAR_POWER_BUDGET,
-        handle_clear_power_budget,
-        schema=SERVICE_CLEAR_POWER_BUDGET_SCHEMA,
-    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

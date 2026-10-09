@@ -1,4 +1,4 @@
-"""Numeric sensors: derivatives, internal MPC, power budget and total power."""
+"""Numeric sensors: derivatives, internal MPC and total power."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -31,10 +30,8 @@ from ..const import (
 from ..helpers import (
     integration_device_info,
     merged_entry_data,
-    summary_signal,
 )
 from ..utils import power_to_watts
-from .common import TranslationMixin, snapshot_summary
 
 
 class PowerClimateDerivativeSensor(CoordinatorEntity, SensorEntity):
@@ -133,70 +130,6 @@ class PowerClimateInternalMPCSensor(CoordinatorEntity, SensorEntity):
             "thermal_recommended_temp": summary.get("thermal_recommended_temp"),
             "preset_mode": summary.get("preset_mode"),
         }
-
-
-class PowerClimatePowerBudgetSensor(TranslationMixin, SensorEntity):
-    """Diagnostic sensor exposing current Solar preset budgets."""
-
-    _attr_should_poll = False
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_device_class = SensorDeviceClass.POWER
-    _attr_native_unit_of_measurement = "W"
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:flash"
-
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        super().__init__()
-        TranslationMixin.__init__(self)
-        self.hass = hass
-        self._entry = entry
-        self._entry_id = entry.entry_id
-        self._signal = summary_signal(self._entry_id)
-        self._unsub = None
-        self._attr_translation_key = "power_budget"
-        self._attr_unique_id = f"powerclimate_power_budget_{self._entry_id}"
-        self._attr_has_entity_name = True
-        self._attr_device_info = integration_device_info(entry)
-        self._payload: dict[str, Any] | None = snapshot_summary(hass, self._entry_id)
-
-    @property
-    def native_value(self) -> float | None:
-        payload = self._payload
-        if not payload:
-            return None
-        value = payload.get("power_budget_total_w")
-        return float(value) if isinstance(value, (int, float)) else None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        payload = self._payload or {}
-        return {
-            "preset_mode": payload.get("preset_mode"),
-            "house_net_power_w": payload.get("house_net_power_w"),
-            "power_available_w": payload.get("power_available_w"),
-            "power_budget_remaining_w": payload.get("power_budget_remaining_w"),
-            "power_budget_by_entity_w": payload.get("power_budget_by_entity_w") or {},
-        }
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        await self._load_strings(self.hass)
-        self._payload = snapshot_summary(self.hass, self._entry_id)
-        self._unsub = async_dispatcher_connect(
-            self.hass,
-            self._signal,
-            self._handle_summary,
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        if self._unsub:
-            self._unsub()
-            self._unsub = None
-        await super().async_will_remove_from_hass()
-
-    def _handle_summary(self, payload: dict | None) -> None:
-        self._payload = payload
-        self.schedule_update_ha_state()
 
 
 class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):

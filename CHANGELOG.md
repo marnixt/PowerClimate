@@ -2,6 +2,11 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
+## Unreleased
+
+**Removed**
+- **Solar preset and power budgets**: the `Solar` preset, the house net power sensor option, the `Power Budget` sensor and the `powerclimate.set_power_budget` / `powerclimate.clear_power_budget` services are gone. A saved `Solar` preset falls back to `none`; remove the orphaned `Power Budget` entity by hand.
+
 ## 0.8.0 — 2026-10-04
 
 **Summary**

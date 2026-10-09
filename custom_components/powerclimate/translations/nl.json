@@ -298,12 +298,10 @@
           "sensors": {
             "name": "Experimentele sensoren",
             "data": {
-              "house_power_sensor_entity_id": "Netto vermogenssensor van het huis (W, negatief = teruglevering)",
               "mpc_temperature_sensor_entity_id": "MPC-temperatuursensor",
               "outdoor_temp_sensor_entity_id": "Buitentemperatuursensor"
             },
             "data_description": {
-              "house_power_sensor_entity_id": "Netto actief vermogen met teken. Bij een negatieve waarde ziet PowerClimate dit als teruglevering/overschot en verdeelt het budgetten in de Solar-preset.",
               "mpc_temperature_sensor_entity_id": "Optionele sensor die als regeltemperatuur voor MPC wordt gebruikt.",
               "outdoor_temp_sensor_entity_id": "Optionele buitentemperatuursensor voor experimentele regellogica."
             }
@@ -331,7 +329,6 @@
               "none": "Geen",
               "boost": "Boost",
               "away": "Afwezig",
-              "solar": "Zon",
               "mpc": "MPC",
               "thermal": "Thermisch"
             }
@@ -348,9 +345,6 @@
       },
       "internal_mpc": {
         "name": "Interne MPC"
-      },
-      "power_budget": {
-        "name": "Vermogensbudget"
       },
       "thermal_advised_temperature": {
         "name": "Thermisch geadviseerde temperatuur"
@@ -370,14 +364,6 @@
       "hp_behavior": {
         "name": "{label} gedrag"
       }
-    }
-  },
-  "exceptions": {
-    "unknown_target": {
-      "message": "Geen enkele PowerClimate-integratie beheert {entity_id}."
-    },
-    "ambiguous_target": {
-      "message": "Meerdere PowerClimate-integraties beheren {entity_id}; het doel is niet eenduidig."
     }
   }
 }

@@ -61,7 +61,7 @@ def test_thermal_summary_formats_lowercase_preset_modes() -> None:
 
     text = sensor._format_payload(
         {
-            "preset_mode": "solar",
+            "preset_mode": "away",
             "room_temperature": 20.0,
             "target_temperature": 21.0,
             "derivative": 0.4,
@@ -70,7 +70,7 @@ def test_thermal_summary_formats_lowercase_preset_modes() -> None:
         }
     )
 
-    assert "Preset: Solar" in text
+    assert "Preset: Away" in text
 
 
 def test_thermal_summary_handles_missing_optional_fields() -> None:

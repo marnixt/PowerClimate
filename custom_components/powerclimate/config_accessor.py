@@ -17,7 +17,6 @@ from .const import (
     CONF_ASSIST_TIMER_SECONDS,
     CONF_ASSIST_WATER_TEMP_THRESHOLD,
     CONF_DEVICES,
-    CONF_HOUSE_POWER_SENSOR,
     CONF_INTERNAL_MPC_HORIZON_MINUTES,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
@@ -103,17 +102,6 @@ class ConfigAccessor:
     def room_sensors(self) -> list[str]:
         """Get list of room sensor entity IDs."""
         return self._get_config().get(CONF_ROOM_SENSORS) or []
-
-    @property
-    def house_power_sensor(self) -> str | None:
-        """Get the house power sensor entity ID."""
-        sensor = str(self._get_config().get(CONF_HOUSE_POWER_SENSOR) or "").strip()
-        return sensor if sensor else None
-
-    @property
-    def solar_enabled(self) -> bool:
-        """Check if Solar preset is available."""
-        return bool(self.house_power_sensor)
 
     @property
     def mpc_temperature_sensor(self) -> str | None:
@@ -344,8 +332,6 @@ class ConfigAccessor:
             "assist_water_temp_threshold": self.assist_water_temp_threshold,
             "assist_stall_temp_delta": self.assist_stall_temp_delta,
             "maximum_overshoot": self.maximum_overshoot,
-            "solar_enabled": self.solar_enabled,
-            "house_power_sensor": self.house_power_sensor,
             "mpc_enabled": self.mpc_enabled,
             "mpc_temperature_sensor": self.mpc_temperature_sensor,
             "mirror_thermostats": self.mirror_thermostats,

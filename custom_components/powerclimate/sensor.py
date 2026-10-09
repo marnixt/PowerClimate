@@ -41,7 +41,6 @@ from .sensors.assist import (
 from .sensors.measurements import (
     PowerClimateDerivativeSensor,
     PowerClimateInternalMPCSensor,
-    PowerClimatePowerBudgetSensor,
     PowerClimateTotalPowerSensor,
     PowerClimateWaterDerivativeSensor,
 )
@@ -57,7 +56,6 @@ __all__ = [
     "PowerClimateHP1BehaviorSensor",
     "PowerClimateHPBehaviorSensor",
     "PowerClimateInternalMPCSensor",
-    "PowerClimatePowerBudgetSensor",
     "PowerClimateThermalModelTextSensor",
     "PowerClimateThermalRecommendedSensor",
     "PowerClimateThermalSummarySensor",
@@ -88,7 +86,6 @@ async def async_setup_entry(
         coordinator,
         entry,
     )
-    power_budget_sensor = PowerClimatePowerBudgetSensor(hass, entry)
     internal_mpc_sensor = PowerClimateInternalMPCSensor(coordinator, entry)
     thermal_model_text_sensor = PowerClimateThermalModelTextSensor(hass, entry)
     thermal_recommended_sensor = PowerClimateThermalRecommendedSensor(hass, entry)
@@ -99,7 +96,6 @@ async def async_setup_entry(
         thermal_summary_sensor,
         assist_summary_sensor,
         total_power_sensor,
-        power_budget_sensor,
         internal_mpc_sensor,
         thermal_model_text_sensor,
         thermal_recommended_sensor,

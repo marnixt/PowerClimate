@@ -27,5 +27,4 @@ def mock_config():
     config.assist_stall_temp_delta = 0.5
     config.assist_min_on_seconds = 300
     config.assist_min_off_seconds = 300
-    config.house_power_sensor = None
     return config

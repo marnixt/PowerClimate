@@ -14,8 +14,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 - **Combineren meerdere warmtepompen**: een virtuele thermostaat die een water-warmtepomp en lucht warmtepompen (Airco's) bestuurt.
 - **Offsets + guardrails**: lower/upper offset per apparaat en globale min/max setpoints.
 - **Assists: handmatig of automatisch AAN/UIT**: optionele timers + anti-short-cycle beveiliging.
-- **Vermogensbewuste `Solar` preset (optioneel)**: verdeel per-apparaat vermogensbudgetten op basis van een signed house net power sensor.
-- **Diagnostiek**: thermische samenvatting, per-HP behavior, afgeleides, totaal vermogen en budgetdiagnostiek.
+- **Diagnostiek**: thermische samenvatting, per-HP behavior, afgeleides en totaal vermogen.
 - **Thermostaat-mirroring**: kopieer alleen setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate; HVAC aan/uit van die thermostaten wordt genegeerd.
 - **Standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 
@@ -95,10 +94,8 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **none** | Normale werking (HEAT mode, volgt setpoint). Als `Allow PowerClimate to turn device on and off` voor het water-apparaat aan staat, kan aanhoudende overshoot boven `Maximum overshoot` het apparaat na de ingestelde timerduur UIT zetten; het gaat meteen weer AAN zodra er enige warmtevraag is (kamer onder setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost mode (huidig + upper offset) | Boost mode (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
-| **Solar** | Vermogensgebudgetteerde setpoint (gebruik surplus) | Vermogensgebudgetteerde setpoint (prioriteit na water-HP) |
 | **MPC** | Gebruikt de geconfigureerde externe geadviseerde watertemperatuur als target temperature voor het primaire water-apparaat; valt terug op normale setpoint-logica als de sensorstate niet beschikbaar is | Normale assist-logica op basis van warmtevraag in de ruimte |
 
-**Let op:** Solar preset vereist een geconfigureerde house net power sensor. Budgetten geven eerst prioriteit aan het water-apparaat; resterend assist-budget roteert daarna over luchtpompen zodat niet steeds dezelfde assist achterblijft.
 MPC preset vereist een geconfigureerde experimentele sensor met een geadviseerde watertemperatuur, bijvoorbeeld `sensor.quatt_warmteanalyse_mpc_aanbevolen_aanvoertemperatuur` uit Quatt Stooklijn. PowerClimate schrijft die waarde naar de target temperature van de climate entity; als de onderliggende thermostaat dat niet omzet naar de echte warmtepomp-aanvoertemperatuur, hangt het effect af van die integratie.
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
 HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
@@ -146,7 +143,6 @@ Sommige features zijn bewust experimenteel en staan onder **Opties -> Experiment
 
 Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerClimate -> Opties -> Experimental**
 
-- **House net power sensor (signed)**: kies een sensor die net active power in W rapporteert (negatief = export/surplus). Dit is vereist om de preset `Solar` te kunnen selecteren.
 - **MPC geadviseerde watertemperatuur sensor**: kies een sensor die een geadviseerde watertemperatuur exposeert. Als deze is ingesteld, wordt de preset `MPC` beschikbaar en gebruikt PowerClimate de sensorstate wanneer die beschikbaar is.
 
 **Notes:**
@@ -184,7 +180,6 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 | **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, watertemperatuur wanneer beschikbaar |
 | **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
 | Total Power | `sensor.powerclimate_total_power_*` | Opgeteld vermogen van geconfigureerde pompen |
-| Power Budget | `sensor.powerclimate_power_budget_*` | Totaal + per-apparaat budgetten (gebruikt door `Solar` preset) |
 
 **Text sensor details:**
 - Alle text sensors (prefix `powerclimate_text_*`) kun je excluden uit recorder:
