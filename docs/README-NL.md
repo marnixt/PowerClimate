@@ -94,11 +94,13 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **none** | Normale werking (HEAT mode, volgt setpoint). Als `Allow PowerClimate to turn device on and off` voor het water-apparaat aan staat, kan aanhoudende overshoot boven `Maximum overshoot` het apparaat na de ingestelde timerduur UIT zetten; het gaat meteen weer AAN zodra er enige warmtevraag is (kamer onder setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost mode (huidig + upper offset) | Boost mode (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
+| **Main only** | Zoals `none` | Alleen de hoofdwarmtepomp draait, zoals bij `none`; de rest gaat UIT (als allow_on_off aan staat) en wordt nooit aangezet, anders niet aanpassen |
 | **MPC** | Stuurt de aanvoertemperatuur naar het advies van de geconfigureerde MPC-sensor door het kamersetpoint binnen de heating-offsets van het apparaat te verschuiven (zie hieronder); valt zonder advies terug op normale setpoint-logica | Normale assist-logica op basis van warmtevraag in de ruimte |
 | **Thermal** | Verwarmen: dezelfde aanvoertemperatuurregeling, met het interne thermische model als advies | Verwarmen: normale assist-logica. Koelen: setpoint uit het thermische model |
 
 MPC preset vereist een geconfigureerde experimentele sensor met een geadviseerde aanvoertemperatuur, bijvoorbeeld de MPC aanbevolen aanvoertemperatuur van de integratie Quatt Warmteanalyse (stooklijn).
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
+Main only laat PowerClimate met één warmtepomp werken: de waterwarmtepomp, of de eerste luchtwarmtepomp als er geen waterwarmtepomp is. Met een waterwarmtepomp als hoofd koelt Main only niet, want een waterwarmtepomp kan niet koelen.
 HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
 Wanneer `Allow PowerClimate to turn device on and off` op het water-apparaat is ingeschakeld, mag PowerClimate deze bij aanhoudende overshoot boven `Maximum overshoot` ook UIT schakelen. Terug inschakelen gebeurt zodra de ruimtetemperatuur weer onder het setpoint zakt (elk beetje vraag), ruim vóór de assistpompen zouden starten.
 

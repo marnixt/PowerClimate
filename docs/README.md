@@ -107,11 +107,13 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **none** | Normal operation (HEAT mode, follows setpoint). If `Allow PowerClimate to turn device on and off` is enabled for the water device, sustained overshoot above `Maximum overshoot` can turn it OFF after the configured timer duration; it turns back ON as soon as there is any demand (room below target) | Setpoint-tracking if ON, untouched if OFF |
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) |
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
+| **Main only** | Same as `none` | Only the main heat pump runs, as in `none`; the others are turned OFF (if allow_on_off enabled) and never turned on, otherwise left untouched |
 | **MPC** | Steers the supply temperature towards the advice of the configured MPC sensor by moving the room setpoint within the device's heating offsets (see below); falls back to normal setpoint logic without advice | Normal assist logic based on room demand |
 | **Thermal** | Heating: same supply-temperature control, with the internal thermal model as advice | Heating: normal assist logic. Cooling: setpoint from the thermal model |
 
 MPC preset requires a configured experimental sensor that exposes an advised supply (flow) temperature, such as the MPC recommended supply temperature of the Quatt Warmteanalyse (stooklijn) integration.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
+Main only runs PowerClimate with one heat pump: the water heat pump, or the first air heat pump when there is no water heat pump. With a water heat pump as main, Main only does not cool, because water heat pumps cannot cool.
 Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
 When `Allow PowerClimate to turn device on and off` is enabled on the water device, PowerClimate may switch it OFF after a sustained overshoot above `Maximum overshoot`. It turns the water device back ON only when the regular `ON: ETA threshold` condition is met again.
 

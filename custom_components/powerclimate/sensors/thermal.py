@@ -84,6 +84,8 @@ class PowerClimateThermalSummarySensor(SummaryPayloadTextSensor):
             preset_value = self._t("preset_boost", "Boost")
         elif preset_mode == "away":
             preset_value = self._t("preset_away", "Away")
+        elif preset_mode == "main_only":
+            preset_value = self._t("preset_main_only", "Main only")
         elif preset_mode == "mpc":
             preset_value = self._t("preset_mpc", "MPC")
         elif preset_mode == "thermal":

@@ -11,6 +11,7 @@ This file consolidates release notes and highlights useful for HACS and users.
 - **Thermal preset, heating**: the model's supply temperature is no longer clamped to the room setpoint limits.
 
 **Added**
+- **Main only preset**: PowerClimate runs as in `none`, but with only the main heat pump — the water heat pump, or the first air heat pump without one. Other heat pumps with on/off control are turned off and stay off; the rest are left untouched.
 - **Target Temperature sensor**: PowerClimate's room target as a sensor, for integrations that only accept a sensor — for example as the comfort target of an external MPC source, which avoids a feedback loop through the thermostat setpoint.
 - **Supply Correction sensor**: the controller's correction with advice, measured supply temperature, error and P/I parts as attributes.
 

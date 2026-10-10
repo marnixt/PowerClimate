@@ -342,6 +342,7 @@
               "none": "None",
               "boost": "Boost",
               "away": "Away",
+              "main_only": "Main only",
               "mpc": "MPC",
               "thermal": "Thermal"
             }

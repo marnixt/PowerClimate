@@ -342,6 +342,7 @@
               "none": "Geen",
               "boost": "Boost",
               "away": "Afwezig",
+              "main_only": "Alleen hoofdwarmtepomp",
               "mpc": "MPC",
               "thermal": "Thermisch"
             }

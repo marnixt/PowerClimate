@@ -69,6 +69,7 @@ _LOGGER = logging.getLogger(__name__)
 PRESET_NONE = "none"
 PRESET_BOOST = "boost"
 PRESET_AWAY = "away"
+PRESET_MAIN_ONLY = "main_only"
 PRESET_MPC = "mpc"
 PRESET_THERMAL = "thermal"
 
@@ -163,7 +164,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @property
     def preset_modes(self) -> list[str] | None:
         """Return list of available preset modes."""
-        modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY]
+        modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MAIN_ONLY]
         if self._config.mpc_enabled:
             modes.append(PRESET_MPC)
         modes.append(PRESET_THERMAL)
@@ -317,6 +318,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_boost_mode()
         elif preset_mode == PRESET_AWAY:
             await self._enter_away_mode()
+        elif preset_mode == PRESET_MAIN_ONLY:
+            await self._enter_main_only_mode()
         elif preset_mode == PRESET_MPC:
             await self._enter_mpc_mode()
         elif preset_mode == PRESET_THERMAL:
@@ -357,6 +360,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._attr_preset_mode = PRESET_AWAY
 
         await self._apply_away_mode()
+
+    async def _enter_main_only_mode(self) -> None:
+        """Enter main only preset: only the first heat pump runs, as in none."""
+        if self._attr_preset_mode == PRESET_MAIN_ONLY:
+            return
+
+        if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
+            self._target_temperature = self._previous_target
+        self._previous_target = None
+
+        self._attr_preset_mode = PRESET_MAIN_ONLY
+        await self._apply_staging()
 
     async def _enter_mpc_mode(self) -> None:
         """Enter MPC preset mode."""
@@ -715,6 +730,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
             is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
 
+            if (
+                self._attr_preset_mode == PRESET_MAIN_ONLY
+                and entity_id != self._main_entity_id()
+            ):
+                await self._hold_assist_off(device, entity_id, is_running)
+                continue
+
             # Update assist controller timers
             current_hvac_mode = self._attr_hvac_mode.value if self._attr_hvac_mode else "heat"
             self._assist_controller.update_timers(
@@ -780,6 +802,30 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             )
 
         return "air_hp_assist" if managed_any else None
+
+    def _main_entity_id(self) -> str | None:
+        """Return the main heat pump: the water one, otherwise the first air one."""
+        water = self._config.get_water_device()
+        if water:
+            return water[0].get(CONF_CLIMATE_ENTITY)
+        air_devices = self._config.get_air_devices()
+        if air_devices:
+            return air_devices[0][1].get(CONF_CLIMATE_ENTITY)
+        return None
+
+    async def _hold_assist_off(
+        self,
+        device: dict[str, Any],
+        entity_id: str,
+        is_running: bool,
+    ) -> None:
+        """Main only: turn a non-main pump off when allowed, otherwise leave it alone."""
+        self._assist_modes[entity_id] = MODE_OFF
+        self._hp_modes[entity_id] = MODE_OFF
+        if not device.get(CONF_ALLOW_ON_OFF_CONTROL) or not is_running:
+            return
+        if await self._ensure_device_mode(entity_id, HVACMode.OFF):
+            self._assist_controller.force_off(entity_id)
 
     async def _handle_assist_control(
         self,

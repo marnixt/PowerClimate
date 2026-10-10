@@ -110,6 +110,7 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF | Air HPs follow cooling setpoint |
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) | Air HPs: aggressive cooling (current + lower offset) |
 | **Away** | Minimal mode (let temp drop to 16 °C) | OFF (if allow_on_off enabled), otherwise minimal | Target raised to max setpoint (disables cooling) |
+| **Main only** | Same as `none` | Main air HP (only without a water HP) as in `none`; the others OFF (if allow_on_off enabled), otherwise untouched | Only the main heat pump cools |
 | **MPC** | PI control of the supply temperature towards the MPC advice, via the room setpoint within the device offsets | Normal assist logic | Air HPs follow cooling setpoint |
 | **Thermal** | Same supply-temperature control, advice from the internal thermal model | Normal assist logic | Air HPs: setpoint from the thermal model |
 

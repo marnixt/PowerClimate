@@ -42,6 +42,7 @@
   "assist_condition_overshoot": "Overshoot",
   "preset_boost": "Boost",
   "preset_away": "Away",
+  "preset_main_only": "Main only",
   "preset_mpc": "MPC",
   "preset_none": "None",
   "preset_thermal": "Thermal",

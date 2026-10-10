@@ -105,7 +105,7 @@ def test_turn_off_water_device_leaves_device_without_on_off_control() -> None:
 def test_async_set_preset_mode_accepts_legacy_case() -> None:
     """Preset setters should normalize legacy title-cased preset values."""
     entity = make_entity()
-    entity._config = SimpleNamespace(mpc_enabled=True)
+    entity._config = SimpleNamespace(mpc_enabled=True, get_water_device=lambda: None)
     entity._attr_preset_mode = "none"
     entity._supply_pi = PIController()
     entity._supply_filter = SupplyFilter(120.0, 5.0, 600.0)
@@ -126,15 +126,109 @@ def test_async_set_preset_mode_accepts_legacy_case() -> None:
 def test_preset_modes_include_mpc_when_sensor_configured() -> None:
     """MPC preset should be exposed when an MPC sensor is configured."""
     entity = make_entity()
-    entity._config = SimpleNamespace(mpc_enabled=True)
+    entity._config = SimpleNamespace(mpc_enabled=True, get_water_device=lambda: None)
 
-    assert entity.preset_modes == ["none", "boost", "away", "mpc", "thermal"]
+    assert entity.preset_modes == ["none", "boost", "away", "main_only", "mpc", "thermal"]
+
+
+def _make_main_only_entity(
+    *,
+    water: bool,
+    allow_on_off: bool = True,
+    air2_mode: str = "heat",
+) -> PowerClimateClimate:
+    entity = make_entity()
+    entity._attr_preset_mode = "main_only"
+    entity._attr_hvac_mode = HVACMode.HEAT
+    entity._target_temperature = 21.0
+    entity._room_eta_hours = None
+    air_devices = [
+        (1, {CONF_CLIMATE_ENTITY: "climate.air1", CONF_ALLOW_ON_OFF_CONTROL: False}),
+        (2, {CONF_CLIMATE_ENTITY: "climate.air2", CONF_ALLOW_ON_OFF_CONTROL: allow_on_off}),
+    ]
+    entity._config = SimpleNamespace(
+        get_water_device=lambda: ({CONF_CLIMATE_ENTITY: "climate.hp1"}, 0) if water else None,
+        get_air_devices=lambda: air_devices,
+    )
+    entity.coordinator = SimpleNamespace(data={})
+    entity._assist_controller = MagicMock()
+    entity._assist_controller.get_timer_state.return_value = SimpleNamespace(
+        off_timer_seconds=0.0, on_timer_seconds=0.0, active_condition="none"
+    )
+    entity._ensure_device_mode = AsyncMock(return_value=True)
+    entity._calculate_mode_target = MagicMock(return_value=21.0)
+    entity._assist_modes = {}
+    entity._hp_modes = {}
+    entity._payloads = {
+        "climate.air1": {"hvac_mode": "heat"},
+        "climate.air2": {"hvac_mode": air2_mode},
+    }
+    return entity
+
+
+def _process_main_only(entity: PowerClimateClimate) -> set[str]:
+    desired: set[str] = set()
+    asyncio.run(
+        entity._process_air_devices(20.0, False, None, entity._payloads, desired, {})
+    )
+    return desired
+
+
+def test_main_only_keeps_water_main_as_in_none() -> None:
+    """With a water heat pump, main only runs it like the none preset."""
+    entity = make_entity()
+    entity._attr_preset_mode = "main_only"
+
+    assert entity._determine_hp1_mode(False, "climate.hp1") == MODE_SETPOINT
+
+
+def test_main_only_turns_off_assists_with_on_off_control() -> None:
+    """With a water main, air pumps with on/off control are turned off."""
+    entity = _make_main_only_entity(water=True)
+
+    desired = _process_main_only(entity)
+
+    entity._ensure_device_mode.assert_awaited_once_with("climate.air2", HVACMode.OFF)
+    entity._assist_controller.force_off.assert_called_once_with("climate.air2")
+    entity._assist_controller.evaluate_action.assert_not_called()
+    assert desired == set()
+    assert entity._assist_modes["climate.air2"] == MODE_OFF
+
+
+def test_main_only_never_turns_on_other_pumps() -> None:
+    """A stopped non-main pump stays off."""
+    entity = _make_main_only_entity(water=True, air2_mode="off")
+
+    _process_main_only(entity)
+
+    entity._ensure_device_mode.assert_not_awaited()
+    entity._assist_controller.evaluate_action.assert_not_called()
+
+
+def test_main_only_leaves_pump_without_on_off_control() -> None:
+    """Without on/off control a non-main pump keeps running untouched."""
+    entity = _make_main_only_entity(water=True, allow_on_off=False)
+
+    desired = _process_main_only(entity)
+
+    entity._ensure_device_mode.assert_not_awaited()
+    assert desired == set()
+
+
+def test_main_only_runs_first_air_pump_without_water() -> None:
+    """Without a water heat pump, the first air pump is the main one."""
+    entity = _make_main_only_entity(water=False)
+
+    desired = _process_main_only(entity)
+
+    assert desired == {"climate.air1"}
+    entity._ensure_device_mode.assert_awaited_once_with("climate.air2", HVACMode.OFF)
 
 
 def test_set_preset_mode_ignores_removed_solar_preset() -> None:
     """The removed Solar preset is no longer accepted."""
     entity = make_entity()
-    entity._config = SimpleNamespace(mpc_enabled=True)
+    entity._config = SimpleNamespace(mpc_enabled=True, get_water_device=lambda: None)
     entity._exit_preset_mode = AsyncMock()
 
     asyncio.run(entity.async_set_preset_mode("solar"))
@@ -360,7 +454,7 @@ def test_assist_follows_room_demand_in_mpc_preset() -> None:
 def test_preset_change_resets_supply_controller() -> None:
     """A new preset starts the supply-temperature control afresh."""
     entity = make_entity()
-    entity._config = SimpleNamespace(mpc_enabled=True)
+    entity._config = SimpleNamespace(mpc_enabled=True, get_water_device=lambda: None)
     entity._attr_preset_mode = "none"
     entity._supply_pi = MagicMock()
     entity._supply_filter = MagicMock()

@@ -84,6 +84,7 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **none** | Normale werking (HEAT mode, volgt setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
 | **boost** | Boost (huidig + upper offset) | Boost (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
+| **Main only** | Zoals `none` | Hoofd-luchtpomp (alleen zonder waterpomp) zoals bij `none`; de rest UIT (als allow_on_off aan staat), anders niet aanpassen |
 | **MPC** | PI-regeling van de aanvoertemperatuur naar het MPC-advies, via het kamersetpoint binnen de offsets | Normale assist-logica |
 | **Thermal** | Dezelfde aanvoertemperatuurregeling, advies uit het interne thermische model | Normale assist-logica (koelen: setpoint uit het model) |
 
