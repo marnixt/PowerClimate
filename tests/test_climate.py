@@ -64,7 +64,7 @@ def test_turn_off_water_device_forces_off_when_powerclimate_is_off() -> None:
     entity = make_entity()
     entity._config = SimpleNamespace(
         get_water_device=lambda: (
-            {CONF_CLIMATE_ENTITY: "climate.hp1"},
+            {CONF_CLIMATE_ENTITY: "climate.hp1", CONF_ALLOW_ON_OFF_CONTROL: True},
             0,
         )
     )
@@ -81,6 +81,25 @@ def test_turn_off_water_device_forces_off_when_powerclimate_is_off() -> None:
         force=True,
     )
     assert payloads["climate.hp1"]["hvac_mode"] == HVACMode.OFF.value
+
+
+def test_turn_off_water_device_leaves_device_without_on_off_control() -> None:
+    """Without on/off control the water device stays as the user set it."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(
+        get_water_device=lambda: (
+            {CONF_CLIMATE_ENTITY: "climate.hp1", CONF_ALLOW_ON_OFF_CONTROL: False},
+            0,
+        )
+    )
+    entity._ensure_device_mode = AsyncMock()
+    entity._hp_modes = {}
+    payloads = {"climate.hp1": {"hvac_mode": "heat"}}
+
+    asyncio.run(entity._turn_off_water_device(payloads))
+
+    entity._ensure_device_mode.assert_not_awaited()
+    assert payloads["climate.hp1"]["hvac_mode"] == "heat"
 
 
 def test_async_set_preset_mode_accepts_legacy_case() -> None:

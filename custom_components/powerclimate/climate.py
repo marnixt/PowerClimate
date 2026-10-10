@@ -1172,7 +1172,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self,
         device_payloads: dict[str, dict[str, Any]],
     ) -> None:
-        """Turn off the owned water device when PowerClimate is OFF."""
+        """Turn off the water device when PowerClimate is OFF.
+
+        Only when the device allows on/off control; otherwise the user keeps
+        control and can run it by hand while PowerClimate is off.
+        """
         water_device_tuple = self._config.get_water_device()
         if not water_device_tuple:
             return
@@ -1184,7 +1188,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         payload = dict(device_payloads.get(entity_id, {}) or {})
         hvac_mode = str(payload.get("hvac_mode") or "").lower()
-        if hvac_mode != HVACMode.OFF.value:
+        if device.get(CONF_ALLOW_ON_OFF_CONTROL) and hvac_mode != HVACMode.OFF.value:
             await self._ensure_device_mode(
                 entity_id,
                 HVACMode.OFF,
