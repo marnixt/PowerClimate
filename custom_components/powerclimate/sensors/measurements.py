@@ -1,4 +1,4 @@
-"""Numeric sensors: derivatives, internal MPC, supply control and total power."""
+"""Numeric sensors: derivatives, supply control, target and total power."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ from homeassistant.helpers.update_coordinator import (
 from ..const import (
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
-    DOMAIN,
 )
 from ..helpers import (
     integration_device_info,
@@ -74,7 +73,7 @@ class PowerClimateTargetTemperatureSensor(SummaryPayloadValueSensor):
 
 
 class PowerClimateSupplyCorrectionSensor(SummaryPayloadValueSensor):
-    """Correction the supply-temperature controller applies (MPC presets)."""
+    """Correction the supply-temperature controller applies (MPC preset)."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -145,54 +144,6 @@ class PowerClimateWaterDerivativeSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         return self.coordinator.data.get("water_derivative")
-
-
-class PowerClimateInternalMPCSensor(CoordinatorEntity, SensorEntity):
-    """Diagnostic sensor exposing the internal thermal model state."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_native_unit_of_measurement = "W/K"
-    _attr_icon = "mdi:thermometer-auto"
-    _attr_state_class = SensorStateClass.MEASUREMENT
-
-    def __init__(
-        self,
-        coordinator: DataUpdateCoordinator,
-        entry: ConfigEntry,
-    ) -> None:
-        """Initialize the internal MPC sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._entry_id = entry.entry_id
-        self._attr_unique_id = f"powerclimate_internal_mpc_{entry.entry_id}"
-        self._attr_translation_key = "internal_mpc"
-        self._attr_has_entity_name = True
-        self._attr_device_info = integration_device_info(entry)
-
-    @property
-    def native_value(self) -> float | None:
-        state = (self.coordinator.data or {}).get("thermal_model_state") or {}
-        value = state.get("ua_emitter")
-        return float(value) if isinstance(value, (int, float)) else None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        state = (self.coordinator.data or {}).get("thermal_model_state") or {}
-        outdoor_temp = (self.coordinator.data or {}).get("outdoor_temperature")
-        summary = (
-            (self.hass.data.get(DOMAIN, {}).get(self._entry_id) or {})
-            .get("summary_payload") or {}
-        )
-        return {
-            "ua_emitter": state.get("ua_emitter"),
-            "u_building": state.get("u_building"),
-            "ua_emitter_updates": state.get("ua_emitter_updates"),
-            "u_building_updates": state.get("u_building_updates"),
-            "is_converged": state.get("is_converged"),
-            "outdoor_temperature": outdoor_temp,
-            "thermal_recommended_temp": summary.get("thermal_recommended_temp"),
-            "preset_mode": summary.get("preset_mode"),
-        }
 
 
 class PowerClimateTotalPowerSensor(CoordinatorEntity, SensorEntity):

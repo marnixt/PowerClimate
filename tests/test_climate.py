@@ -16,7 +16,6 @@ from custom_components.powerclimate.const import (
     MODE_MPC,
     MODE_OFF,
     MODE_SETPOINT,
-    MODE_THERMAL_MPC,
 )
 from custom_components.powerclimate.pi_controller import PIController
 from custom_components.powerclimate.supply_filter import SupplyFilter
@@ -128,7 +127,7 @@ def test_preset_modes_include_mpc_when_sensor_configured() -> None:
     entity = make_entity()
     entity._config = SimpleNamespace(mpc_enabled=True, get_water_device=lambda: None)
 
-    assert entity.preset_modes == ["none", "boost", "away", "main_only", "mpc", "thermal"]
+    assert entity.preset_modes == ["none", "boost", "away", "main_only", "mpc"]
 
 
 def _make_main_only_entity(
@@ -427,18 +426,6 @@ def test_mpc_falls_back_without_supply_reading() -> None:
 
     assert target == 21.0
     assert entity._supply_pi.initialized is False
-
-
-def test_thermal_preset_steers_supply_to_thermal_model_advice() -> None:
-    """The thermal preset uses the internal model's supply temperature as advice."""
-    entity = _make_mpc_entity(advice=None, preset="thermal")
-    entity._compute_thermal_mpc_target = MagicMock(return_value=32.0)
-
-    _water_target(entity, mode=MODE_THERMAL_MPC)
-
-    assert entity._supply_pi_summary["supply_pi_source"] == "thermal"
-    assert entity._supply_pi_summary["supply_pi_advised_temp"] == 32.0
-    entity._read_mpc_temperature_state.assert_not_called()
 
 
 def test_assist_follows_room_demand_in_mpc_preset() -> None:

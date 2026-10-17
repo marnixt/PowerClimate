@@ -38,7 +38,6 @@ def test_diagnostics_include_runtime_state():
     coordinator = MagicMock()
     coordinator.last_update_success = True
     coordinator.data = {"room_temperature": 20.5, "devices": []}
-    coordinator.thermal_model.to_dict.return_value = {"is_converged": False}
 
     climate = MagicMock()
     climate.entity_id = "climate.living"
@@ -56,7 +55,6 @@ def test_diagnostics_include_runtime_state():
     result = asyncio.run(async_get_config_entry_diagnostics(hass, _entry()))
 
     assert result["coordinator"]["data"]["room_temperature"] == 20.5
-    assert result["thermal_model"] == {"is_converged": False}
     assert result["climate"]["state"] == "heat"
     assert result["climate"]["attributes"] == {"preset_mode": "none"}
     assert result["climate"]["mode_state"] == "heat"

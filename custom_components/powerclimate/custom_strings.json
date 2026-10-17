@@ -45,12 +45,6 @@
   "preset_main_only": "Main only",
   "preset_mpc": "MPC",
   "preset_none": "None",
-  "preset_thermal": "Thermal",
-  "thermal_converged": "Converged",
-  "thermal_learning": "Learning",
-  "label_ua_emitter": "Emitter",
-  "label_u_building": "Building",
-  "label_suggested": "Suggested",
   "label_advice": "Advice",
   "label_correction": "Correction"
 }

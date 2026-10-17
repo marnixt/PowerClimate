@@ -6,10 +6,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
-    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_ENERGY_SENSOR,
-    CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSOR_VALUES,
     CONF_ROOM_SENSORS,
     CONF_ROOM_TEMPERATURE_KEY,
@@ -17,14 +15,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DERIVATIVE_WATER_WINDOW_SECONDS,
     DERIVATIVE_WINDOW_SECONDS,
-    DEVICE_ROLE_WATER,
 )
 from .helpers import merged_entry_data
-from .thermal_model import (
-    MIN_UPDATE_INTERVAL_SECONDS,
-    SAVE_INTERVAL_SECONDS,
-    ThermalModel,
-)
 from .utils import power_to_watts, safe_float
 
 
@@ -58,9 +50,6 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             logger: Logger for debug/error output.
         """
         self.entry = entry
-        self.thermal_model = ThermalModel(hass, entry.entry_id)
-        self._last_model_update: datetime | None = None
-        self._last_model_save: datetime | None = None
         self._room_temp_history: list[tuple[datetime, float]] = []
         self._device_temp_history: dict[
             str,
@@ -77,10 +66,6 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
 
-    async def async_setup(self) -> None:
-        """Load persistent state (thermal model). Call before first refresh."""
-        await self.thermal_model.async_load()
-
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from Home Assistant states.
 
@@ -89,8 +74,6 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             - room_temperature: Averaged room temperature from configured sensors
             - room_derivative: Room temperature change rate (°C/hour)
             - water_derivative: Water temperature change rate (°C/hour)
-            - outdoor_temperature: Outdoor temperature if sensor configured
-            - thermal_model_state: Current thermal model parameters
             - devices: List of device payloads with state and temps
         """
         data: dict[str, Any] = {
@@ -179,46 +162,6 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         if water_derivative is not None:
             water_derivative = round(water_derivative, 1)
         data["water_derivative"] = water_derivative
-
-        # --- Outdoor temperature ---
-        outdoor_temp = self._read_float(entry_data.get(CONF_OUTDOOR_TEMP_SENSOR))
-        data["outdoor_temperature"] = outdoor_temp
-
-        # --- Update thermal model ---
-        room_temp = data.get(CONF_ROOM_TEMPERATURE_KEY)
-        water_payload = next(
-            (
-                d for d in data["devices"]
-                if d.get(CONF_DEVICE_ROLE) == DEVICE_ROLE_WATER
-            ),
-            None,
-        )
-        # Extra refreshes are requested on every heat pump state change; only
-        # feed the model one observation per poll interval so the EWMA
-        # learning rate stays time-based.
-        now = datetime.now(timezone.utc)
-        model_due = (
-            self._last_model_update is None
-            or (now - self._last_model_update).total_seconds()
-            >= MIN_UPDATE_INTERVAL_SECONDS
-        )
-        if model_due and room_temp is not None and water_payload is not None:
-            self._last_model_update = now
-            self.thermal_model.update(
-                room_temp=room_temp,
-                water_temp=water_payload.get("water_temperature"),
-                hp_power=water_payload.get("energy"),
-                outdoor_temp=outdoor_temp,
-                room_derivative_per_hour=data.get("room_derivative"),
-            )
-
-        if self._last_model_save is None:
-            self._last_model_save = now
-        elif (now - self._last_model_save).total_seconds() >= SAVE_INTERVAL_SECONDS:
-            self._last_model_save = now
-            await self.thermal_model.async_save()
-
-        data["thermal_model_state"] = self.thermal_model.to_dict()
 
         return data
 

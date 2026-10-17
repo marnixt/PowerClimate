@@ -96,7 +96,6 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
 | **Main only** | Zoals `none` | Alleen de hoofdwarmtepomp draait, zoals bij `none`; de rest gaat UIT (als allow_on_off aan staat) en wordt nooit aangezet, anders niet aanpassen |
 | **MPC** | Stuurt de aanvoertemperatuur naar het advies van de geconfigureerde MPC-sensor door het kamersetpoint binnen de heating-offsets van het apparaat te verschuiven (zie hieronder); valt zonder advies terug op normale setpoint-logica | Normale assist-logica op basis van warmtevraag in de ruimte |
-| **Thermal** | Verwarmen: dezelfde aanvoertemperatuurregeling, met het interne thermische model als advies | Verwarmen: normale assist-logica. Koelen: setpoint uit het thermische model |
 
 MPC preset vereist een geconfigureerde experimentele sensor met een geadviseerde aanvoertemperatuur, bijvoorbeeld de MPC aanbevolen aanvoertemperatuur van de integratie Quatt Warmteanalyse (stooklijn).
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
@@ -191,8 +190,7 @@ Sommige features zijn bewust experimenteel en staan onder **Opties -> Experiment
 Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerClimate -> Opties -> Experimental**
 
 - **MPC geadviseerde aanvoertemperatuur sensor**: kies een sensor met een geadviseerde aanvoertemperatuur. Als deze is ingesteld, wordt de preset `MPC` beschikbaar.
-- **Buitentemperatuursensor**: gebruikt door het interne thermische model (preset `Thermal`).
-- **Aanvoertemperatuurregeling** (presets MPC en Thermal, verwarmen):
+- **Aanvoertemperatuurregeling** (MPC-preset, verwarmen):
 
 | Optie | Default | Range | Beschrijving |
 |--------|---------|-------|-------------|
@@ -236,7 +234,7 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 | **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
 | Total Power | `sensor.powerclimate_total_power_*` | Opgeteld vermogen van geconfigureerde pompen |
 | Doeltemperatuur | `sensor.powerclimate_target_temperature_*` | Kamerdoel van PowerClimate, voor integraties die alleen een sensor accepteren (geen diagnostische entity) |
-| Aanvoercorrectie | `sensor.powerclimate_supply_correction_*` | Setpointcorrectie van de aanvoertemperatuurregeling (presets MPC/Thermal), met de toestand als attributen |
+| Aanvoercorrectie | `sensor.powerclimate_supply_correction_*` | Setpointcorrectie van de aanvoertemperatuurregeling (MPC-preset), met de toestand als attributen |
 
 **Text sensor details:**
 - Alle text sensors (prefix `powerclimate_text_*`) kun je excluden uit recorder:

@@ -5,13 +5,13 @@ and calculations from the PowerClimate integration:
 
 - **Temperature Derivative**: Rate of room temperature change (°C/hour)
 - **Water Derivative**: Rate of water temperature change (°C/hour)
-- **Thermal Summary**: Human-readable summary of system state
+- **Summary**: Human-readable summary of system state
 - **Assist Behavior**: Simple per-stage view showing HVAC state and assist mode
 - **Total Power**: Aggregated power consumption from all configured heat pumps
 - **Target Temperature**: PowerClimate's room target, for integrations that
   only accept a sensor
 - **Supply Correction**: Setpoint correction of the supply-temperature
-  controller in the MPC presets
+  controller in the MPC preset
 
 All sensors except Target Temperature are diagnostic entities. They are
 grouped under the integration's virtual device in the Home Assistant device
@@ -45,29 +45,21 @@ from .sensors.assist import (
 )
 from .sensors.measurements import (
     PowerClimateDerivativeSensor,
-    PowerClimateInternalMPCSensor,
     PowerClimateSupplyCorrectionSensor,
     PowerClimateTargetTemperatureSensor,
     PowerClimateTotalPowerSensor,
     PowerClimateWaterDerivativeSensor,
 )
-from .sensors.thermal import (
-    PowerClimateThermalModelTextSensor,
-    PowerClimateThermalRecommendedSensor,
-    PowerClimateThermalSummarySensor,
-)
+from .sensors.summary import PowerClimateSummarySensor
 
 __all__ = [
     "PowerClimateAssistSummarySensor",
     "PowerClimateDerivativeSensor",
     "PowerClimateHP1BehaviorSensor",
     "PowerClimateHPBehaviorSensor",
-    "PowerClimateInternalMPCSensor",
     "PowerClimateSupplyCorrectionSensor",
+    "PowerClimateSummarySensor",
     "PowerClimateTargetTemperatureSensor",
-    "PowerClimateThermalModelTextSensor",
-    "PowerClimateThermalRecommendedSensor",
-    "PowerClimateThermalSummarySensor",
     "PowerClimateTotalPowerSensor",
     "PowerClimateWaterDerivativeSensor",
     "async_setup_entry",
@@ -88,26 +80,20 @@ async def async_setup_entry(
         coordinator,
         entry,
     )
-    thermal_summary_sensor = PowerClimateThermalSummarySensor(hass, entry)
+    summary_sensor = PowerClimateSummarySensor(hass, entry)
     assist_summary_sensor = PowerClimateAssistSummarySensor(hass, entry)
     total_power_sensor = PowerClimateTotalPowerSensor(
         hass,
         coordinator,
         entry,
     )
-    internal_mpc_sensor = PowerClimateInternalMPCSensor(coordinator, entry)
-    thermal_model_text_sensor = PowerClimateThermalModelTextSensor(hass, entry)
-    thermal_recommended_sensor = PowerClimateThermalRecommendedSensor(hass, entry)
 
     sensors: list[SensorEntity] = [
         derivative_sensor,
         water_derivative_sensor,
-        thermal_summary_sensor,
+        summary_sensor,
         assist_summary_sensor,
         total_power_sensor,
-        internal_mpc_sensor,
-        thermal_model_text_sensor,
-        thermal_recommended_sensor,
         PowerClimateTargetTemperatureSensor(hass, entry),
         PowerClimateSupplyCorrectionSensor(hass, entry),
     ]

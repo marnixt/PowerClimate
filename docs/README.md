@@ -109,7 +109,6 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
 | **Main only** | Same as `none` | Only the main heat pump runs, as in `none`; the others are turned OFF (if allow_on_off enabled) and never turned on, otherwise left untouched |
 | **MPC** | Steers the supply temperature towards the advice of the configured MPC sensor by moving the room setpoint within the device's heating offsets (see below); falls back to normal setpoint logic without advice | Normal assist logic based on room demand |
-| **Thermal** | Heating: same supply-temperature control, with the internal thermal model as advice | Heating: normal assist logic. Cooling: setpoint from the thermal model |
 
 MPC preset requires a configured experimental sensor that exposes an advised supply (flow) temperature, such as the MPC recommended supply temperature of the Quatt Warmteanalyse (stooklijn) integration.
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
@@ -199,8 +198,7 @@ Some features are intentionally marked experimental and live under **Options →
 To access: **Settings → Devices & Services → Integrations → PowerClimate → Options → Experimental**
 
 - **MPC advised supply temperature sensor**: Configure a sensor that exposes an advised supply temperature. When set, PowerClimate enables the `MPC` preset.
-- **Outdoor temperature sensor**: Used by the internal thermal model (`Thermal` preset).
-- **Supply temperature control** (MPC and Thermal presets, heating):
+- **Supply temperature control** (MPC preset, heating):
 
 | Option | Default | Range | Description |
 |--------|---------|-------|-------------|
@@ -244,7 +242,7 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps, and PowerClimate mode for each configured assist pump |
 | Total Power | `sensor.powerclimate_total_power_*` | Aggregated power consumption from all configured pumps |
 | Target Temperature | `sensor.powerclimate_target_temperature_*` | PowerClimate's room target, for integrations that only accept a sensor (not a diagnostic entity) |
-| Supply Correction | `sensor.powerclimate_supply_correction_*` | Setpoint correction of the supply-temperature controller (MPC/Thermal presets), with its state as attributes |
+| Supply Correction | `sensor.powerclimate_supply_correction_*` | Setpoint correction of the supply-temperature controller (MPC preset), with its state as attributes |
 
 **Text Sensor Details:**
 - All text sensors (prefixed `powerclimate_text_*`) can be excluded from recorder:

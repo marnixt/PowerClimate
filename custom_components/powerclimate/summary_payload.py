@@ -53,21 +53,6 @@ def build_mpc_summary(
     }
 
 
-def build_thermal_summary(
-    thermal_state: Mapping[str, Any],
-    recommended_temp: float | None,
-) -> dict[str, Any]:
-    """Build diagnostics for the internal thermal MPC model."""
-    return {
-        "thermal_ua_emitter": thermal_state.get("ua_emitter"),
-        "thermal_u_building": thermal_state.get("u_building"),
-        "thermal_ua_emitter_updates": thermal_state.get("ua_emitter_updates"),
-        "thermal_u_building_updates": thermal_state.get("u_building_updates"),
-        "thermal_is_converged": thermal_state.get("is_converged"),
-        "thermal_recommended_temp": recommended_temp,
-    }
-
-
 def build_supply_pi_summary(
     source: str | None,
     *,
@@ -81,7 +66,7 @@ def build_supply_pi_summary(
     """Build diagnostics for the supply-temperature controller.
 
     Args:
-        source: Where the advice came from ("mpc" or "thermal"); None while
+        source: Where the advice came from ("mpc"); None while
             the controller is not running.
         advised_temp: Advised supply temperature.
         supply_temp: Measured (raw) supply temperature.

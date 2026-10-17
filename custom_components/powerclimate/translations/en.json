@@ -298,12 +298,10 @@
           "sensors": {
             "name": "Experimental sensors",
             "data": {
-              "mpc_temperature_sensor_entity_id": "MPC temperature sensor",
-              "outdoor_temp_sensor_entity_id": "Outdoor temperature sensor"
+              "mpc_temperature_sensor_entity_id": "MPC temperature sensor"
             },
             "data_description": {
-              "mpc_temperature_sensor_entity_id": "Optional sensor with an advised supply temperature. Enables the MPC preset; PowerClimate steers the water heat pump's setpoint so the measured supply temperature follows the advice.",
-              "outdoor_temp_sensor_entity_id": "Optional outdoor temperature sensor for experimental control logic."
+              "mpc_temperature_sensor_entity_id": "Optional sensor with an advised supply temperature. Enables the MPC preset; PowerClimate steers the water heat pump's setpoint so the measured supply temperature follows the advice."
             }
           },
           "supply_control": {
@@ -343,8 +341,7 @@
               "boost": "Boost",
               "away": "Away",
               "main_only": "Main only",
-              "mpc": "MPC",
-              "thermal": "Thermal"
+              "mpc": "MPC"
             }
           }
         }
@@ -357,20 +354,11 @@
       "water_derivative": {
         "name": "Water Derivative"
       },
-      "internal_mpc": {
-        "name": "Internal MPC"
-      },
-      "thermal_advised_temperature": {
-        "name": "Thermal Advised Temperature"
-      },
       "total_power": {
         "name": "Total Power"
       },
       "thermal_summary": {
         "name": "Thermal Summary"
-      },
-      "thermal_model_status": {
-        "name": "Thermal Model Status"
       },
       "assist_summary": {
         "name": "Assist Summary"

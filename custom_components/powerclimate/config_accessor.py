@@ -17,7 +17,6 @@ from .const import (
     CONF_ASSIST_TIMER_SECONDS,
     CONF_ASSIST_WATER_TEMP_THRESHOLD,
     CONF_DEVICES,
-    CONF_INTERNAL_MPC_HORIZON_MINUTES,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAX_SETPOINT_OVERRIDE,
@@ -25,7 +24,6 @@ from .const import (
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_MPC_TEMPERATURE_SENSOR,
-    CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
     CONF_SUPPLY_PI_KP,
     CONF_SUPPLY_PI_MIN_POWER_W,
@@ -39,7 +37,6 @@ from .const import (
     DEFAULT_ASSIST_STALL_TEMP_DELTA,
     DEFAULT_ASSIST_TIMER_SECONDS,
     DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
-    DEFAULT_INTERNAL_MPC_HORIZON_MINUTES,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
@@ -119,22 +116,6 @@ class ConfigAccessor:
     def mpc_enabled(self) -> bool:
         """Check if MPC preset is available."""
         return bool(self.mpc_temperature_sensor)
-
-    @property
-    def outdoor_temp_sensor(self) -> str | None:
-        """Get the outdoor temperature sensor entity ID."""
-        sensor = str(self._get_config().get(CONF_OUTDOOR_TEMP_SENSOR) or "").strip()
-        return sensor if sensor else None
-
-    @property
-    def internal_mpc_horizon_minutes(self) -> float:
-        """Get the internal MPC prediction horizon in minutes."""
-        return float(
-            self._get_config().get(
-                CONF_INTERNAL_MPC_HORIZON_MINUTES,
-                DEFAULT_INTERNAL_MPC_HORIZON_MINUTES,
-            )
-        )
 
     @property
     def supply_pi_kp(self) -> float:

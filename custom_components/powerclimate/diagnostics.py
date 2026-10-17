@@ -32,7 +32,6 @@ async def async_get_config_entry_diagnostics(
         },
         "coordinator": None,
         "climate": None,
-        "thermal_model": None,
     }
 
     if coordinator is not None:
@@ -40,7 +39,6 @@ async def async_get_config_entry_diagnostics(
             "last_update_success": coordinator.last_update_success,
             "data": coordinator.data,
         }
-        diagnostics["thermal_model"] = coordinator.thermal_model.to_dict()
 
     if climate_entity is not None:
         state = (

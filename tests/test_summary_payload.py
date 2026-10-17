@@ -6,7 +6,6 @@ from custom_components.powerclimate.summary_payload import (
     build_hp_status,
     build_mpc_summary,
     build_supply_pi_summary,
-    build_thermal_summary,
 )
 
 
@@ -59,13 +58,6 @@ def test_mpc_summary_ignores_invalid_forecast():
     summary = build_mpc_summary("sensor.mpc", None, "unknown", {"forecast_6h": "x"})
     assert summary["mpc_forecast_6h"] is None
     assert summary["mpc_state_available"] is False
-
-
-def test_thermal_summary():
-    summary = build_thermal_summary({"ua_emitter": 150.0, "is_converged": True}, 32.0)
-    assert summary["thermal_ua_emitter"] == 150.0
-    assert summary["thermal_is_converged"] is True
-    assert summary["thermal_recommended_temp"] == 32.0
 
 
 def _status(devices, payloads, **overrides):

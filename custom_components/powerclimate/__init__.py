@@ -29,8 +29,6 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import OSDataUpdateCoordinator
-from .thermal_model import STORAGE_VERSION as THERMAL_STORAGE_VERSION
-from .thermal_model import storage_key as thermal_storage_key
 from .timer_storage import STORAGE_VERSION as TIMER_STORAGE_VERSION
 from .timer_storage import storage_key as timer_storage_key
 
@@ -53,7 +51,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = OSDataUpdateCoordinator(hass, entry, LOGGER)
-    await coordinator.async_setup()
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -86,17 +83,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         PLATFORMS,
     )
     if unload_ok:
-        entry_data = hass.data[DOMAIN].pop(entry.entry_id)
-        await entry_data[COORDINATOR].thermal_model.async_save()
+        hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove persisted state when a config entry is deleted."""
     await Store(hass, TIMER_STORAGE_VERSION, timer_storage_key(entry.entry_id)).async_remove()
-    await Store(
-        hass, THERMAL_STORAGE_VERSION, thermal_storage_key(entry.entry_id)
-    ).async_remove()
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

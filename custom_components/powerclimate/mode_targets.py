@@ -2,7 +2,7 @@
 
 Pure logic: every input is passed in explicitly, so the rules can be tested
 without a climate entity. Inputs that are expensive or only meaningful for
-one mode (MPC sensor, thermal model) are passed as callables and only
+one mode (the supply-temperature correction) are passed as callables and only
 evaluated when that mode needs them.
 """
 
@@ -16,7 +16,6 @@ from .const import (
     MODE_MINIMAL,
     MODE_MPC,
     MODE_SETPOINT,
-    MODE_THERMAL_MPC,
 )
 from .utils import clamp_setpoint, safe_float
 
@@ -40,7 +39,6 @@ def calculate_mode_target(
     is_cooling: bool,
     current_target: float | None = None,
     supply_correction: Callable[[], float | None] | None = None,
-    thermal_target: Callable[[], float | None] | None = None,
 ) -> float:
     """Calculate the setpoint for a device in the given mode.
 
@@ -54,9 +52,7 @@ def calculate_mode_target(
         current_target: The device's current setpoint.
         supply_correction: Returns the correction (°C) on the device
             temperature that steers the supply temperature towards the MPC
-            advice (MPC modes, heating).
-        thermal_target: Returns the internal thermal model's setpoint
-            (thermal MPC, cooling).
+            advice (MPC mode, heating).
     """
     min_sp = limits.min_setpoint
     max_sp = limits.max_setpoint
@@ -70,18 +66,12 @@ def calculate_mode_target(
             return min_sp
         return max(min_sp, min(fallback, max_sp))
 
-    mpc_mode = mode in (MODE_MPC, MODE_THERMAL_MPC)
-    if mpc_mode and not is_cooling and supply_correction is not None:
+    if mode == MODE_MPC and not is_cooling and supply_correction is not None:
         # The device setpoint is a room setpoint: steer the supply temperature
         # by moving it relative to the temperature the device measures.
         correction = supply_correction()
         if correction is not None:
             return round(max(min_sp, min(current_temp + correction, max_sp)), 1)
-
-    if mode == MODE_THERMAL_MPC and is_cooling and thermal_target is not None:
-        value = thermal_target()
-        if value is not None:
-            return value
 
     lower_offset = limits.lower_offset
     upper_offset = limits.upper_offset
@@ -96,8 +86,8 @@ def calculate_mode_target(
         target = current_temp + (upper_offset if is_cooling else lower_offset)
         return clamp_setpoint(target, current_temp, lower_offset, upper_offset, min_sp, max_sp)
 
-    if mode in (MODE_SETPOINT, MODE_MPC, MODE_THERMAL_MPC):
-        # MPC modes fall back to the room target when no advice is available.
+    if mode in (MODE_SETPOINT, MODE_MPC):
+        # MPC falls back to the room target when no advice is available.
         return clamp_setpoint(
             target_temperature, current_temp, lower_offset, upper_offset, min_sp, max_sp
         )

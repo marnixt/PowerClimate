@@ -5,10 +5,9 @@ This file consolidates release notes and highlights useful for HACS and users.
 ## Unreleased
 
 **Changed**
-- **MPC and Thermal presets steer the supply temperature**: the advised supply temperature is no longer sent as the water heat pump's setpoint. A PI controller moves the room setpoint within the device's heating offsets until the measured supply temperature follows the advice. Tuning (gain, integral time, minimum compressor power) lives under Options → Experimental.
+- **MPC preset steers the supply temperature**: the advised supply temperature is no longer sent as the water heat pump's setpoint. A PI controller moves the room setpoint within the device's heating offsets until the measured supply temperature follows the advice. Tuning (gain, integral time, minimum compressor power) lives under Options → Experimental.
 - **Supply-temperature control is calm and spike-proof**: the controller uses a moving average of the supply temperature, holds its correction during a sudden supply spike (such as a boiler making hot water through the same pipe) and only moves the setpoint by at least 0.2 °C.
 - **Assist pumps in the MPC preset** follow room demand instead of receiving the advised supply temperature as their setpoint.
-- **Thermal preset, heating**: the model's supply temperature is no longer clamped to the room setpoint limits.
 
 **Added**
 - **Main only preset**: PowerClimate runs as in `none`, but with only the main heat pump — the water heat pump, or the first air heat pump without one. Other heat pumps with on/off control are turned off and stay off; the rest are left untouched.
@@ -16,6 +15,7 @@ This file consolidates release notes and highlights useful for HACS and users.
 - **Supply Correction sensor**: the controller's correction with advice, measured supply temperature, error and P/I parts as attributes.
 
 **Removed**
+- **Thermal preset and internal thermal model**: the `Thermal` preset, the outdoor temperature sensor option and the `Internal MPC`, `Thermal Model Status` and `Thermal Advised Temperature` sensors are gone. Without an outdoor sensor the model's advice stayed at its 55 °C maximum. Use an external source for the advised supply temperature instead. A saved `Thermal` preset falls back to `none`; remove the orphaned entities by hand. The model's storage file is no longer used.
 - **Solar preset and power budgets**: the `Solar` preset, the house net power sensor option, the `Power Budget` sensor and the `powerclimate.set_power_budget` / `powerclimate.clear_power_budget` services are gone. A saved `Solar` preset falls back to `none`; remove the orphaned `Power Budget` entity by hand.
 
 ## 0.8.0 — 2026-10-04

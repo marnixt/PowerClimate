@@ -31,7 +31,6 @@ from custom_components.powerclimate.const import (
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_MPC_TEMPERATURE_SENSOR,
-    CONF_OUTDOOR_TEMP_SENSOR,
     CONF_ROOM_SENSORS,
     CONF_SUPPLY_PI_KP,
     CONF_SUPPLY_PI_MIN_POWER_W,
@@ -161,7 +160,6 @@ class TestExperimentalOptions:
 
         assert processed == {
             CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
-            CONF_OUTDOOR_TEMP_SENSOR: None,
         }
 
     def test_process_experimental_input_keeps_supply_control(self):
@@ -200,7 +198,6 @@ class TestExperimentalOptions:
 
         assert processed == {
             CONF_MPC_TEMPERATURE_SENSOR: None,
-            CONF_OUTDOOR_TEMP_SENSOR: None,
         }
 
 

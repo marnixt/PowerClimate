@@ -298,12 +298,10 @@
           "sensors": {
             "name": "Experimentele sensoren",
             "data": {
-              "mpc_temperature_sensor_entity_id": "MPC-temperatuursensor",
-              "outdoor_temp_sensor_entity_id": "Buitentemperatuursensor"
+              "mpc_temperature_sensor_entity_id": "MPC-temperatuursensor"
             },
             "data_description": {
-              "mpc_temperature_sensor_entity_id": "Optionele sensor met een geadviseerde aanvoertemperatuur. Maakt de MPC-preset beschikbaar; PowerClimate stuurt het setpoint van de waterwarmtepomp zo bij dat de gemeten aanvoertemperatuur het advies volgt.",
-              "outdoor_temp_sensor_entity_id": "Optionele buitentemperatuursensor voor experimentele regellogica."
+              "mpc_temperature_sensor_entity_id": "Optionele sensor met een geadviseerde aanvoertemperatuur. Maakt de MPC-preset beschikbaar; PowerClimate stuurt het setpoint van de waterwarmtepomp zo bij dat de gemeten aanvoertemperatuur het advies volgt."
             }
           },
           "supply_control": {
@@ -343,8 +341,7 @@
               "boost": "Boost",
               "away": "Afwezig",
               "main_only": "Alleen hoofdwarmtepomp",
-              "mpc": "MPC",
-              "thermal": "Thermisch"
+              "mpc": "MPC"
             }
           }
         }
@@ -357,20 +354,11 @@
       "water_derivative": {
         "name": "Waterverloop"
       },
-      "internal_mpc": {
-        "name": "Interne MPC"
-      },
-      "thermal_advised_temperature": {
-        "name": "Thermisch geadviseerde temperatuur"
-      },
       "total_power": {
         "name": "Totaal vermogen"
       },
       "thermal_summary": {
         "name": "Thermisch overzicht"
-      },
-      "thermal_model_status": {
-        "name": "Status thermisch model"
       },
       "assist_summary": {
         "name": "Assist-overzicht"

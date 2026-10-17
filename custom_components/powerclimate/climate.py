@@ -41,7 +41,6 @@ from .const import (
     MODE_MPC,
     MODE_OFF,
     MODE_SETPOINT,
-    MODE_THERMAL_MPC,
     SUPPLY_FILTER_TAU_SECONDS,
     SUPPLY_SETPOINT_DEADBAND,
     SUPPLY_SPIKE_KELVIN,
@@ -59,7 +58,6 @@ from .summary_payload import (
     build_hp_status,
     build_mpc_summary,
     build_supply_pi_summary,
-    build_thermal_summary,
 )
 from .supply_filter import SupplyFilter
 from .utils import clamp_value, compute_eta_hours, safe_float
@@ -71,7 +69,6 @@ PRESET_BOOST = "boost"
 PRESET_AWAY = "away"
 PRESET_MAIN_ONLY = "main_only"
 PRESET_MPC = "mpc"
-PRESET_THERMAL = "thermal"
 
 
 async def async_setup_entry(
@@ -98,7 +95,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.PRESET_MODE
     )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
-    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MPC, PRESET_THERMAL]
+    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MAIN_ONLY, PRESET_MPC]
     # Bulky diagnostics that change every update; keep them out of the recorder.
     _unrecorded_attributes = frozenset({
         "hp_status",
@@ -151,7 +148,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._water_overshoot_since: datetime | None = None
         self._coordinator_update_pending = False
         self._coordinator_update_task: asyncio.Task[None] | None = None
-        # Steers the water heat pump's supply temperature in the MPC presets.
+        # Steers the water heat pump's supply temperature in the MPC preset.
         self._supply_pi = PIController()
         self._supply_filter = SupplyFilter(
             SUPPLY_FILTER_TAU_SECONDS, SUPPLY_SPIKE_KELVIN, SUPPLY_SPIKE_MAX_SECONDS
@@ -167,7 +164,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MAIN_ONLY]
         if self._config.mpc_enabled:
             modes.append(PRESET_MPC)
-        modes.append(PRESET_THERMAL)
         return modes
 
     @property
@@ -322,8 +318,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_main_only_mode()
         elif preset_mode == PRESET_MPC:
             await self._enter_mpc_mode()
-        elif preset_mode == PRESET_THERMAL:
-            await self._enter_thermal_mode()
         elif preset_mode == PRESET_NONE:
             await self._exit_preset_mode()
 
@@ -387,21 +381,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         # The external MPC sensor is expected to provide a suitable setpoint
         # for whichever mode is active (water supply temp for heat,
         # room setpoint for cool).
-        if self._attr_hvac_mode == HVACMode.OFF:
-            self._attr_hvac_mode = HVACMode.HEAT
-        await self._apply_staging()
-
-    async def _enter_thermal_mode(self) -> None:
-        """Enter Thermal MPC preset mode (works for both heat and cool)."""
-        if self._attr_preset_mode == PRESET_THERMAL:
-            return
-
-        if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
-            self._target_temperature = self._previous_target
-        self._previous_target = None
-
-        self._attr_preset_mode = PRESET_THERMAL
-        # Preserve current HVAC mode — thermal MPC works for both heat and cool.
         if self._attr_hvac_mode == HVACMode.OFF:
             self._attr_hvac_mode = HVACMode.HEAT
         await self._apply_staging()
@@ -909,8 +888,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return MODE_MINIMAL
         if self._attr_preset_mode == PRESET_MPC:
             return MODE_MPC
-        if self._attr_preset_mode == PRESET_THERMAL:
-            return MODE_THERMAL_MPC
         return MODE_SETPOINT
 
     def _determine_assist_mode(
@@ -932,8 +909,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return MODE_BOOST
         # The MPC advice is a supply temperature for the water heat pump;
         # assists keep following room demand in the MPC preset.
-        if self._attr_preset_mode == PRESET_THERMAL and self._is_cooling():
-            return MODE_THERMAL_MPC
         # For automatic pumps, check off_timer to keep running briefly after target is reached
         if is_automatic and off_timer > 0:
             return MODE_MINIMAL
@@ -977,7 +952,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             supply_correction=lambda: self._supply_correction(
                 limits, current_temp, current_target, water_temp, current_power
             ),
-            thermal_target=self._compute_thermal_mpc_target,
         )
 
     def _supply_correction(
@@ -998,11 +972,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         Returns None (normal setpoint logic) without an advice, a supply
         reading or a device temperature; the controller then keeps its state.
         """
-        source = "thermal" if self._attr_preset_mode == PRESET_THERMAL else "mpc"
-        if source == "thermal":
-            advice = self._compute_thermal_mpc_target()
-        else:
-            advice = self._read_mpc_temperature_state()
+        source = "mpc"
+        advice = self._read_mpc_temperature_state()
         if advice is None or water_temp is None or current_temp is None:
             return None
 
@@ -1083,44 +1054,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._supply_last_result = None
         self._supply_last_correction = None
         self._supply_held_target = None
-
-    def _compute_thermal_mpc_target(self) -> float | None:
-        """Compute the internal thermal model's advice.
-
-        For heating: returns the recommended water supply temperature.
-        For cooling: returns the recommended AC setpoint.
-
-        Returns None when coordinator data or model is unavailable so that
-        ``_calculate_mode_target`` can fall back to the offset-based path.
-        """
-        thermal_model = getattr(self.coordinator, "thermal_model", None)
-        if thermal_model is None:
-            return None
-
-        target_room = self._target_temperature
-        current_room = self.current_temperature
-        if target_room is None or current_room is None:
-            return None
-
-        outdoor_temp = self.coordinator.data.get("outdoor_temperature")
-        horizon = self._config.internal_mpc_horizon_minutes
-
-        if self._is_cooling():
-            return thermal_model.recommended_setpoint_cooling(
-                target_room=target_room,
-                current_room=current_room,
-                outdoor_temp=outdoor_temp,
-                horizon_minutes=horizon,
-                min_setpoint=self._config.min_setpoint,
-                max_setpoint=self._config.max_setpoint,
-            )
-        # A supply temperature: the room setpoint limits do not apply.
-        return thermal_model.recommended_supply_temp_heating(
-            target_room=target_room,
-            current_room=current_room,
-            outdoor_temp=outdoor_temp,
-            horizon_minutes=horizon,
-        )
 
     def _read_mpc_sensor_state(self) -> tuple[float | None, Any, dict[str, Any]]:
         """Read the configured external MPC sensor state and attributes."""
@@ -1456,7 +1389,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "assist_min_off_minutes": self._config.assist_min_off_minutes,
             "maximum_overshoot": self._config.maximum_overshoot,
             **self._build_mpc_summary(),
-            **self._build_thermal_summary(),
             **self._supply_pi_summary,
         }
 
@@ -1475,12 +1407,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._read_mpc_sensor_state() if sensor_id else (None, None, {})
         )
         return build_mpc_summary(sensor_id, advised_temp, raw_state, attrs)
-
-    def _build_thermal_summary(self) -> dict[str, Any]:
-        """Build diagnostics for the internal thermal MPC model."""
-        thermal_state = (self.coordinator.data or {}).get("thermal_model_state") or {}
-        recommended_temp = self._compute_thermal_mpc_target()
-        return build_thermal_summary(thermal_state, recommended_temp)
 
     def _build_hp_status(
         self,

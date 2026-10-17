@@ -412,13 +412,6 @@ class _AssistBehaviorSensor(_AssistBehaviorFormatter, SensorEntity):
         if mode:
             mode_label = self._t("label_mode", "Mode")
             parts.append(f"{mode_label}: {mode}")
-        # Show thermal recommended temp when in thermal MPC mode
-        if mode == "thermal_mpc":
-            payload = self._payload or {}
-            recommended = payload.get("thermal_recommended_temp")
-            if isinstance(recommended, (int, float)):
-                suggested_label = self._t("label_suggested", "Suggested")
-                parts.append(f"{suggested_label} {recommended:.1f}\u00b0C")
         return parts
 
 
@@ -475,7 +468,7 @@ class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
         # In the MPC modes show the advised supply temperature and the
         # correction the supply-temperature controller applies.
         payload = self._payload or {}
-        if mode in ("mpc", "thermal_mpc") and payload.get("supply_pi_active"):
+        if mode == "mpc" and payload.get("supply_pi_active"):
             advised = payload.get("supply_pi_advised_temp")
             if isinstance(advised, (int, float)):
                 advice_label = self._t("label_advice", "Advice")

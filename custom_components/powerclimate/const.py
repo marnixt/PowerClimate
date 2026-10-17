@@ -63,15 +63,9 @@ MODE_BOOST = "boost"
 MODE_SETPOINT = "setpoint"
 MODE_MINIMAL = "minimal"
 MODE_MPC = "mpc"
-MODE_THERMAL_MPC = "thermal_mpc"  # Internal thermal-model MPC preset
 MODE_OFF = "off"
 
 CONF_MPC_TEMPERATURE_SENSOR = "mpc_temperature_sensor_entity_id"
-# Outdoor temperature sensor — optional, used by the internal thermal MPC preset.
-CONF_OUTDOOR_TEMP_SENSOR = "outdoor_temp_sensor_entity_id"
-# MPC prediction horizon in minutes (how aggressively to pull room toward target).
-CONF_INTERNAL_MPC_HORIZON_MINUTES = "internal_mpc_horizon_minutes"
-DEFAULT_INTERNAL_MPC_HORIZON_MINUTES = 30.0
 
 # Supply-temperature control (MPC presets, water heat pump, heating).
 # The water heat pump's setpoint is a room setpoint; a PI controller moves it
@@ -156,6 +150,6 @@ DEFAULT_ASSIST_STALL_TEMP_DELTA = 0.5
 DEFAULT_MAXIMUM_OVERSHOOT = 0.5
 
 # Sensor polling intervals
-SENSOR_POLL_INTERVAL_SECONDS = 30  # Thermal summary and HP2/HP3 behavior
+SENSOR_POLL_INTERVAL_SECONDS = 30  # Summary and HP2/HP3 behavior
 
 SUMMARY_SIGNAL_TEMPLATE = "powerclimate_summary_update_{entry_id}"
