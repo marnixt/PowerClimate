@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "Z:/"
+		},
+		{
+			"path": "../stooklijn-pr"
 		}
 	],
 	"settings": {
