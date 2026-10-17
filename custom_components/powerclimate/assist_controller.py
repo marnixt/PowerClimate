@@ -340,18 +340,6 @@ class AssistPumpController:
         )
         self._schedule_persist()
 
-    def reset_timers(self, entity_id: str) -> None:
-        """Reset all timers for an entity.
-
-        Args:
-            entity_id: Climate entity ID.
-        """
-        state = self.get_timer_state(entity_id)
-        state.on_timer_seconds = 0.0
-        state.off_timer_seconds = 0.0
-        state.active_condition = "none"
-        self._schedule_persist()
-
     def force_off(self, entity_id: str) -> None:
         """Force a device to off state (e.g., for Away mode).
 

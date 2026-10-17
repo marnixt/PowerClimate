@@ -27,16 +27,6 @@ def power_to_watts(value: Any, unit: Any = None) -> float | None:
     return numeric
 
 
-def safe_int(value: Any, default: int | None = None) -> int | None:
-    """Safely convert value to int."""
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def parse_device_offset(value: Any) -> float | None:
     """Parse offset while preserving -0 for UI display."""
     if value is None:

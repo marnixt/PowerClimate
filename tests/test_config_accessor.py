@@ -128,13 +128,6 @@ class TestOptionsOverrideData:
         accessor = _make_accessor(options={CONF_ASSIST_TIMER_SECONDS: 600.0})
         assert accessor.assist_timer_seconds == 600.0
 
-    def test_invalidate_cache_reloads_options(self) -> None:
-        entry = _make_entry(data={}, options={CONF_MIN_SETPOINT_OVERRIDE: 17.0})
-        accessor = ConfigAccessor(entry)
-        assert accessor.min_setpoint == 17.0
-        entry.options = {CONF_MIN_SETPOINT_OVERRIDE: 19.0}
-        accessor.invalidate_cache()
-        assert accessor.min_setpoint == 19.0
 
 
 # ---------------------------------------------------------------------------

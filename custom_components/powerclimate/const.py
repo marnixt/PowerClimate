@@ -31,15 +31,6 @@ TEMPERATURE_CHANGE_THRESHOLD = 0.01
 # Setpoint comparison threshold (0.1°C precision)
 SETPOINT_COMPARISON_THRESHOLD = 0.1
 
-# Outlier detection threshold multiplier for derivative calculation
-OUTLIER_THRESHOLD_MULTIPLIER = 3.0
-
-# Default MAD threshold when MAD is zero
-DEFAULT_MAD_THRESHOLD = 0.5
-
-# Timer minimum value for condition checking
-TIMER_MIN_DELTA_SECONDS = 0.0
-
 
 CONF_DEVICES = "devices"
 CONF_ROOM_SENSORS = "room_sensor_entity_ids"
@@ -150,8 +141,5 @@ DEFAULT_ASSIST_MIN_OFF_MINUTES = 10.0
 DEFAULT_ASSIST_WATER_TEMP_THRESHOLD = 40.0
 DEFAULT_ASSIST_STALL_TEMP_DELTA = 0.5
 DEFAULT_MAXIMUM_OVERSHOOT = 0.5
-
-# Sensor polling intervals
-SENSOR_POLL_INTERVAL_SECONDS = 30  # Summary and HP2/HP3 behavior
 
 SUMMARY_SIGNAL_TEMPLATE = "powerclimate_summary_update_{entry_id}"

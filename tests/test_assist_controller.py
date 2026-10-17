@@ -118,25 +118,6 @@ def test_force_off_resets_timers_and_marks_last_off() -> None:
 
 
 # ---------------------------------------------------------------------------
-# reset_timers
-# ---------------------------------------------------------------------------
-
-
-def test_reset_timers_clears_both_timers_and_condition() -> None:
-    controller = _make_controller()
-    state = controller.get_timer_state("climate.hp3")
-    state.on_timer_seconds = 55.0
-    state.off_timer_seconds = 30.0
-    state.active_condition = "overshoot"
-
-    controller.reset_timers("climate.hp3")
-
-    assert state.on_timer_seconds == 0.0
-    assert state.off_timer_seconds == 0.0
-    assert state.active_condition == "none"
-
-
-# ---------------------------------------------------------------------------
 # update_timers
 # ---------------------------------------------------------------------------
 

@@ -81,10 +81,6 @@ class ConfigAccessor:
             self._cache = merged_entry_data(self._entry)
         return self._cache
 
-    def invalidate_cache(self) -> None:
-        """Invalidate the config cache to force a reload."""
-        self._cache = None
-
     # --- Global Settings ---
 
     @property

@@ -16,6 +16,7 @@ from ..helpers import (
     integration_device_info,
     summary_signal,
 )
+from ..utils import format_timer
 from .common import SummaryPayloadTextSensor, TranslationMixin, snapshot_summary
 
 
@@ -134,12 +135,12 @@ class PowerClimateAssistSummarySensor(SummaryPayloadTextSensor):
                     if isinstance(on_timer, (int, float)) and on_timer > 0:
                         hp_parts.append(
                             f"{condition_text} "
-                            f"ON:{self._format_timer(int(on_timer), int(timer_total_seconds))}"
+                            f"ON:{format_timer(int(on_timer), int(timer_total_seconds))}"
                         )
                     elif isinstance(off_timer, (int, float)) and off_timer > 0:
                         hp_parts.append(
                             f"{condition_text} "
-                            f"OFF:{self._format_timer(int(off_timer), int(timer_total_seconds))}"
+                            f"OFF:{format_timer(int(off_timer), int(timer_total_seconds))}"
                         )
                 else:
                     hp_parts.append(self._t("assist_no_condition", "No condition"))
@@ -209,16 +210,6 @@ class PowerClimateAssistSummarySensor(SummaryPayloadTextSensor):
             ),
         }
 
-    @staticmethod
-    def _format_timer(elapsed_seconds: int, total_seconds: int) -> str:
-        elapsed_seconds = max(0, int(elapsed_seconds))
-        total_seconds = max(0, int(total_seconds))
-
-        timer_min = int(elapsed_seconds // 60)
-        timer_sec = int(elapsed_seconds % 60)
-        total_min = int(total_seconds // 60)
-        total_sec = int(total_seconds % 60)
-        return f"{timer_min}:{timer_sec:02d}/{total_min}:{total_sec:02d}"
 
 
 class _AssistBehaviorFormatter(TranslationMixin):

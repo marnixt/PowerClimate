@@ -10,7 +10,6 @@ from custom_components.powerclimate.utils import (
     parse_device_offset,
     parse_offset_with_default,
     safe_float,
-    safe_int,
     slugify,
 )
 
@@ -37,26 +36,6 @@ class TestSafeFloat:
 
     def test_empty_string(self):
         assert safe_float("") is None
-
-
-class TestSafeInt:
-    """Tests for safe_int function."""
-
-    def test_valid_int(self):
-        assert safe_int(42) == 42
-
-    def test_valid_float(self):
-        assert safe_int(3.7) == 3
-
-    def test_valid_string(self):
-        assert safe_int("42") == 42
-
-    def test_none_returns_default(self):
-        assert safe_int(None) is None
-        assert safe_int(None, 0) == 0
-
-    def test_invalid_string(self):
-        assert safe_int("invalid") is None
 
 
 class TestParseDeviceOffset:
