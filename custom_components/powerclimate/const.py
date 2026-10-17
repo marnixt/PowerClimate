@@ -53,6 +53,13 @@ MODE_MINIMAL = "minimal"
 MODE_SUPPLY_ADVICE = "supply_advice"
 MODE_OFF = "off"
 
+# Preset modes of the climate entity
+PRESET_NONE = "none"
+PRESET_BOOST = "boost"
+PRESET_AWAY = "away"
+PRESET_MAIN_ONLY = "main_only"
+PRESET_SUPPLY_ADVICE = "supply_advice"
+
 # Sensor with an advised supply temperature from any source (heating curve,
 # MPC, ...); enables the supply advice preset.
 CONF_SUPPLY_ADVICE_SENSOR = "supply_advice_sensor_entity_id"

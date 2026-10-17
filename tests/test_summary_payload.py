@@ -110,3 +110,18 @@ def test_hp_status_skips_devices_without_entity_and_handles_bad_values():
 
     assert air["role"] == "hp2"
     assert air["eta_hours"] is None
+
+
+def test_hp_status_air_only_includes_assist_info():
+    """Without a water device the first air device still gets assist info."""
+    (air,) = _status(
+        [{CONF_CLIMATE_ENTITY: "climate.ac1"}],
+        {"climate.ac1": {"hvac_mode": "heat"}},
+        is_water_device=lambda device, index: False,
+        assist_modes={"climate.ac1": "setpoint"},
+    )
+
+    assert air["assist_mode"] == "setpoint"
+    assert air["on_timer_seconds"] == 5.0
+    # The coordinator's water derivative belongs to the water device only.
+    assert air["water_derivative"] is None

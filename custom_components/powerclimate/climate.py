@@ -12,7 +12,6 @@ from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     SERVICE_SET_TEMPERATURE,
     ClimateEntityFeature,
-    HVACAction,
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -24,6 +23,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import staging
 from .assist_controller import AssistPumpController
 from .config_accessor import ConfigAccessor
 from .const import (
@@ -34,16 +34,13 @@ from .const import (
     COORDINATOR,
     DEFAULT_TARGET_TEMPERATURE,
     DOMAIN,
-    FLOAT_COMPARISON_EPSILON,
     MODE_BOOST,
-    MODE_MINIMAL,
     MODE_OFF,
-    MODE_SETPOINT,
-    MODE_SUPPLY_ADVICE,
-    SUPPLY_FILTER_TAU_SECONDS,
-    SUPPLY_SETPOINT_DEADBAND,
-    SUPPLY_SPIKE_KELVIN,
-    SUPPLY_SPIKE_MAX_SECONDS,
+    PRESET_AWAY,
+    PRESET_BOOST,
+    PRESET_MAIN_ONLY,
+    PRESET_NONE,
+    PRESET_SUPPLY_ADVICE,
     TEMPERATURE_CHANGE_THRESHOLD,
 )
 from .device_commands import DeviceCommander
@@ -52,22 +49,12 @@ from .helpers import (
     summary_signal,
 )
 from .mode_targets import SetpointLimits, calculate_mode_target
-from .pi_controller import PIConfig, PIController, PIResult
-from .summary_payload import (
-    build_hp_status,
-    build_supply_advice_summary,
-    build_supply_pi_summary,
-)
-from .supply_filter import SupplyFilter
-from .utils import clamp_value, compute_eta_hours, safe_float
+from .summary_payload import build_hp_status, build_supply_advice_summary
+from .supply_control import SupplyController
+from .timer_storage import TimerStorage
+from .utils import safe_float
 
 _LOGGER = logging.getLogger(__name__)
-
-PRESET_NONE = "none"
-PRESET_BOOST = "boost"
-PRESET_AWAY = "away"
-PRESET_MAIN_ONLY = "main_only"
-PRESET_SUPPLY_ADVICE = "supply_advice"
 
 
 async def async_setup_entry(
@@ -80,6 +67,17 @@ async def async_setup_entry(
     entity = PowerClimateClimate(hass, entry, coordinator)
     hass.data[DOMAIN][entry.entry_id]["climate_entity"] = entity
     async_add_entities([entity])
+
+
+def _changed_setpoint(old_state, new_state) -> float | None:
+    """Return the new setpoint of a state change, or None when it did not change."""
+    new_temp = safe_float((new_state.attributes if new_state else {}).get(ATTR_TEMPERATURE))
+    old_temp = safe_float((old_state.attributes if old_state else {}).get(ATTR_TEMPERATURE))
+    if new_temp is None:
+        return None
+    if old_temp is not None and abs(new_temp - old_temp) < TEMPERATURE_CHANGE_THRESHOLD:
+        return None
+    return new_temp
 
 
 class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
@@ -117,13 +115,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._target_temperature = DEFAULT_TARGET_TEMPERATURE
         self._previous_target: float | None = None
         self._config = ConfigAccessor(entry)
-
-        # Initialize assist controller with persistent storage
-        from .timer_storage import TimerStorage
-
-        self._timer_storage = TimerStorage(hass, entry.entry_id)
         self._assist_controller = AssistPumpController(
-            self._config, hass=hass, storage=self._timer_storage
+            self._config, hass=hass, storage=TimerStorage(hass, entry.entry_id)
+        )
+        # Steers the water heat pump's supply temperature in the supply advice preset.
+        self._supply = SupplyController(self._config)
+        self._commands = DeviceCommander(
+            hass, lambda: self.hvac_mode == HVACMode.OFF
         )
 
         self._active_devices: set[str] = set()
@@ -138,21 +136,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._summary_signal = summary_signal(entry.entry_id)
         self._pending_state_refresh = False
         self._mirror_entities: set[str] = set()
-        self._commands = DeviceCommander(
-            hass, lambda: self.hvac_mode == HVACMode.OFF
-        )
         self._water_overshoot_since: datetime | None = None
         self._coordinator_update_pending = False
         self._coordinator_update_task: asyncio.Task[None] | None = None
-        # Steers the water heat pump's supply temperature in the supply advice preset.
-        self._supply_pi = PIController()
-        self._supply_filter = SupplyFilter(
-            SUPPLY_FILTER_TAU_SECONDS, SUPPLY_SPIKE_KELVIN, SUPPLY_SPIKE_MAX_SECONDS
-        )
-        self._supply_last_result: PIResult | None = None
-        self._supply_last_correction: float | None = None
-        self._supply_held_target: float | None = None
-        self._supply_pi_summary: dict[str, Any] = build_supply_pi_summary(None)
 
     @property
     def preset_modes(self) -> list[str] | None:
@@ -277,7 +263,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if hvac_mode not in self.hvac_modes:
             return
         if hvac_mode != self._attr_hvac_mode:
-            self._reset_supply_control()
+            self._supply.reset()
         self._attr_hvac_mode = hvac_mode
         if self._attr_preset_mode != PRESET_NONE:
             self._attr_preset_mode = PRESET_NONE
@@ -287,12 +273,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set preset mode."""
-        preset_mode = self._normalize_preset_mode(preset_mode)
+        # Accept legacy title-cased preset values.
+        preset_mode = str(preset_mode or PRESET_NONE).strip().lower()
         if preset_mode not in self.preset_modes:
             return
         if preset_mode != self._attr_preset_mode:
             # Start the supply-temperature control afresh in the new preset.
-            self._reset_supply_control()
+            self._supply.reset()
 
         if preset_mode == PRESET_BOOST:
             await self._enter_boost_mode()
@@ -300,11 +287,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_away_mode()
         else:
             await self._enter_staged_preset(preset_mode)
-
-    @staticmethod
-    def _normalize_preset_mode(preset_mode: str | None) -> str:
-        """Normalize preset mode values while keeping legacy compatibility."""
-        return str(preset_mode or PRESET_NONE).strip().lower()
 
     async def _enter_boost_mode(self) -> None:
         """Enter boost preset mode."""
@@ -357,8 +339,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         devices = self._config.devices
         device_payloads = self._get_device_payloads()
         self._mirror_entities = set(self._config.mirror_thermostats)
-        # Filled again by _supply_correction when the controller runs.
-        self._supply_pi_summary = build_supply_pi_summary(None)
+        # Filled again by the supply controller when it runs.
+        self._supply.clear_summary()
         if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
             return
@@ -389,11 +371,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         mode = "off"
 
         if not hvac_disabled:
-            room_at_target = self._is_room_at_target(room_temp)
+            room_at_target = staging.room_at_target(
+                room_temp, self._target_temperature, self._is_cooling()
+            )
 
             # Process water device
             water_result = await self._process_water_device(
-                room_at_target, device_payloads, desired_devices, desired_targets
+                device_payloads, desired_devices, desired_targets
             )
             if water_result:
                 water_temp, mode = water_result
@@ -423,53 +407,25 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._active_devices = desired_devices | actual_running
         self._water_temperature = water_temp
         self._mode_state = mode
-
-        # Set HVACAction so the UI shows heating/cooling/idle/off
-        if self._attr_hvac_mode == HVACMode.OFF:
-            self._attr_hvac_action = HVACAction.OFF
-        elif self._attr_hvac_mode == HVACMode.COOL:
-            self._attr_hvac_action = (
-                HVACAction.COOLING if self._active_devices else HVACAction.IDLE
-            )
-        else:
-            self._attr_hvac_action = (
-                HVACAction.HEATING if self._active_devices else HVACAction.IDLE
-            )
+        self._attr_hvac_action = staging.hvac_action(
+            self._attr_hvac_mode, bool(self._active_devices)
+        )
 
         self.async_write_ha_state()
         self._emit_summary(devices, device_payloads)
 
     def _update_room_state(self, room_temp: float | None) -> None:
-        """Update room temperature state and ETA."""
-        room_derivative = safe_float(self.coordinator.data.get("room_derivative"))
-
-        if room_temp is not None and self._target_temperature is not None:
-            self._delta = room_temp - self._target_temperature
-
-            if self._is_cooling():
-                # Cooling: ETA = (room - target) / cooling_rate
-                # Cooling rate is |derivative| when derivative < 0 (room getting cooler)
-                delta_to_target = room_temp - self._target_temperature
-                cooling_rate = -room_derivative if room_derivative is not None else None
-                self._room_eta_hours = compute_eta_hours(delta_to_target, cooling_rate)
-            else:
-                delta_to_target = self._target_temperature - room_temp
-                self._room_eta_hours = compute_eta_hours(delta_to_target, room_derivative)
-        else:
-            self._delta = None
-            self._room_eta_hours = None
-
-    def _is_room_at_target(self, room_temp: float | None) -> bool:
-        """Check if room temperature has reached the target.
-
-        In heat mode: room is at or above target.
-        In cool mode: room is at or below target.
-        """
-        if room_temp is None or self._target_temperature is None:
-            return False
-        if self._is_cooling():
-            return room_temp <= self._target_temperature
-        return room_temp >= self._target_temperature
+        """Update room temperature delta and ETA."""
+        target = self._target_temperature
+        self._delta = (
+            room_temp - target if room_temp is not None and target is not None else None
+        )
+        self._room_eta_hours = staging.room_eta_hours(
+            room_temp,
+            target,
+            safe_float(self.coordinator.data.get("room_derivative")),
+            self._is_cooling(),
+        )
 
     async def _handle_no_devices(
         self,
@@ -488,7 +444,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
     async def _process_water_device(
         self,
-        room_at_target: bool,
         device_payloads: dict[str, dict[str, Any]],
         desired_devices: set[str],
         desired_targets: dict[str, float],
@@ -516,7 +471,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if self._is_cooling():
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
             if device.get(CONF_ALLOW_ON_OFF_CONTROL) and hvac_mode != HVACMode.OFF.value:
-                await self._ensure_device_mode(entity_id, HVACMode.OFF)
+                await self._commands.ensure_mode(entity_id, HVACMode.OFF)
             self._hp_modes[entity_id] = MODE_OFF
             return water_temp, "off"
 
@@ -533,14 +488,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if (
             device.get(CONF_ALLOW_ON_OFF_CONTROL)
             and hvac_mode == HVACMode.OFF.value
-            and not self._is_water_turn_on_condition_true()
+            and not self._water_demand()
         ):
             self._hp_modes[entity_id] = MODE_OFF
             return water_temp, "off"
 
         desired_devices.add(entity_id)
         if device.get(CONF_ALLOW_ON_OFF_CONTROL) and hvac_mode == HVACMode.OFF.value:
-            await self._ensure_device_mode(entity_id, HVACMode.HEAT)
+            await self._commands.ensure_mode(entity_id, HVACMode.HEAT)
             device_payloads.update(self._get_device_payloads())
             payload = device_payloads.get(entity_id, payload)
             current_temp = safe_float(payload.get("current_temperature"))
@@ -548,11 +503,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             current_power = safe_float(payload.get("energy"))
             water_temp = safe_float(payload.get("water_temperature"))
 
-        # Determine mode
-        hp_mode = self._determine_hp1_mode(room_at_target, entity_id)
+        hp_mode = staging.water_mode(self._attr_preset_mode)
         self._hp_modes[entity_id] = hp_mode
 
-        # Calculate target
         target = self._calculate_mode_target(
             hp_mode,
             current_temp,
@@ -581,11 +534,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         is_running: bool,
     ) -> bool:
         """Optionally turn the water device off after sustained overshoot."""
-        if not device.get(CONF_ALLOW_ON_OFF_CONTROL):
-            self._water_overshoot_since = None
-            return False
-
-        if not self._is_water_overshoot_condition_true():
+        if not device.get(CONF_ALLOW_ON_OFF_CONTROL) or not self._water_overshoot():
             self._water_overshoot_since = None
             return False
 
@@ -599,37 +548,24 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return False
 
         if is_running:
-            await self._ensure_device_mode(entity_id, HVACMode.OFF)
+            await self._commands.ensure_mode(entity_id, HVACMode.OFF)
 
         return True
 
-    def _is_water_overshoot_condition_true(self) -> bool:
-        """Return true when room overshoot exceeds the configured maximum (heating only)."""
-        if self._is_cooling():
-            return False
-        room_temp = self.current_temperature
-        target_temp = self._target_temperature
-        if room_temp is None or target_temp is None:
-            return False
-        return room_temp > (target_temp + self._config.maximum_overshoot)
+    def _water_overshoot(self) -> bool:
+        """Return True when the room is above target plus the maximum overshoot."""
+        return staging.water_overshoot(
+            self.current_temperature,
+            self._target_temperature,
+            self._config.maximum_overshoot,
+            self._is_cooling(),
+        )
 
-    def _is_water_turn_on_condition_true(self) -> bool:
-        """Return true when there is any heating demand (room below target).
-
-        The water heat pump is the primary device and must turn on as soon as
-        there is any demand — well before the assist pumps.  Applying the same
-        ETA threshold used for assist would cause the water HP to turn on at the
-        same time as the assist, which is incorrect.
-
-        In cooling mode this always returns False because water HPs cannot cool.
-        """
-        if self._is_cooling():
-            return False
-        room_temp = self.current_temperature
-        target_temp = self._target_temperature
-        if room_temp is None or target_temp is None:
-            return False
-        return room_temp < target_temp
+    def _water_demand(self) -> bool:
+        """Return True when the water heat pump should turn on."""
+        return staging.water_demand(
+            self.current_temperature, self._target_temperature, self._is_cooling()
+        )
 
     async def _process_air_devices(
         self,
@@ -659,12 +595,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         for assist_index, device in assist_devices:
             entity_id = device.get(CONF_CLIMATE_ENTITY)
-            if not entity_id:
-                continue
-
             payload = device_payloads.get(entity_id, {}) or {}
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
-            is_running = hvac_mode and hvac_mode != HVACMode.OFF.value
+            is_running = bool(hvac_mode) and hvac_mode != HVACMode.OFF.value
 
             if (
                 self._attr_preset_mode == PRESET_MAIN_ONLY
@@ -703,10 +636,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             current_target = safe_float(payload.get("target_temperature"))
             current_power = safe_float(payload.get("energy"))
             timer_state = self._assist_controller.get_timer_state(entity_id)
-            is_automatic = device.get(CONF_ALLOW_ON_OFF_CONTROL, False)
 
-            assist_mode = self._determine_assist_mode(
-                room_at_target, timer_state.off_timer_seconds, entity_id, is_automatic
+            assist_mode = staging.assist_mode(
+                self._attr_preset_mode,
+                room_at_target,
+                timer_state.off_timer_seconds,
+                bool(device.get(CONF_ALLOW_ON_OFF_CONTROL)),
             )
             self._hp_modes[entity_id] = assist_mode
 
@@ -760,7 +695,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._hp_modes[entity_id] = MODE_OFF
         if not device.get(CONF_ALLOW_ON_OFF_CONTROL) or not is_running:
             return
-        if await self._ensure_device_mode(entity_id, HVACMode.OFF):
+        if await self._commands.ensure_mode(entity_id, HVACMode.OFF):
             self._assist_controller.force_off(entity_id)
 
     async def _handle_assist_control(
@@ -789,19 +724,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                     "Switching %s from %s to %s due to mode change",
                     entity_id, device_hvac_mode, current_hvac_mode,
                 )
-                await self._ensure_device_mode(entity_id, target_mode, force=True)
+                await self._commands.ensure_mode(entity_id, target_mode, force=True)
                 device_payloads.update(self._get_device_payloads())
                 return True
-            else:
-                _LOGGER.info(
-                    "Turning OFF %s: mode %s not supported (supported: %s)",
-                    entity_id, current_hvac_mode, supported_modes,
-                )
-                if not await self._ensure_device_mode(entity_id, HVACMode.OFF):
-                    return True
-                self._assist_controller.record_turn_off(entity_id)
-                device_payloads.update(self._get_device_payloads())
-                return False
+            _LOGGER.info(
+                "Turning OFF %s: mode %s not supported (supported: %s)",
+                entity_id, current_hvac_mode, supported_modes,
+            )
+            if not await self._commands.ensure_mode(entity_id, HVACMode.OFF):
+                return True
+            self._assist_controller.record_turn_off(entity_id)
+            device_payloads.update(self._get_device_payloads())
+            return False
 
         action, reason = self._assist_controller.evaluate_action(
             entity_id, is_running, hvac_mode=current_hvac_mode
@@ -817,61 +751,21 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 return False
             target_mode = HVACMode.COOL if action == "cool" else HVACMode.HEAT
             _LOGGER.info("Turning ON %s (mode=%s): condition=%s", entity_id, action, reason)
-            if not await self._ensure_device_mode(entity_id, target_mode):
+            if not await self._commands.ensure_mode(entity_id, target_mode):
                 return False
             self._assist_controller.record_turn_on(entity_id)
-            # Refresh payload
             device_payloads.update(self._get_device_payloads())
             return True
 
-        elif action == "off" and is_running:
+        if action == "off" and is_running:
             _LOGGER.info("Turning OFF %s: condition=%s", entity_id, reason)
-            if not await self._ensure_device_mode(entity_id, HVACMode.OFF):
+            if not await self._commands.ensure_mode(entity_id, HVACMode.OFF):
                 return True
             self._assist_controller.record_turn_off(entity_id)
             device_payloads.update(self._get_device_payloads())
             return False
 
         return is_running
-
-    def _determine_hp1_mode(self, room_at_target: bool, entity_id: str) -> str:
-        """Determine operating mode for HP1 (water-based heat pump)."""
-        # Water HP cannot cool; should not be called in cool mode (handled upstream)
-        if self._is_cooling():
-            return MODE_OFF
-        if self._attr_preset_mode == PRESET_BOOST:
-            return MODE_BOOST
-        if self._attr_preset_mode == PRESET_AWAY:
-            return MODE_MINIMAL
-        if self._attr_preset_mode == PRESET_SUPPLY_ADVICE:
-            return MODE_SUPPLY_ADVICE
-        return MODE_SETPOINT
-
-    def _determine_assist_mode(
-        self,
-        room_at_target: bool,
-        off_timer: float,
-        entity_id: str,
-        is_automatic: bool = False,
-    ) -> str:
-        """Determine operating mode for assist pump.
-
-        Args:
-            room_at_target: Whether room temperature is at or above target.
-            off_timer: Time since OFF condition was met (for automatic pumps).
-            entity_id: The entity ID of the heat pump.
-            is_automatic: Whether this is an automatic pump (allow_on_off_control=True).
-        """
-        if self._attr_preset_mode == PRESET_BOOST:
-            return MODE_BOOST
-        # The advice is a supply temperature for the water heat pump;
-        # assists keep following room demand in the supply advice preset.
-        # For automatic pumps, check off_timer to keep running briefly after target is reached
-        if is_automatic and off_timer > 0:
-            return MODE_MINIMAL
-        if room_at_target:
-            return MODE_MINIMAL
-        return MODE_SETPOINT
 
     def _is_cooling(self) -> bool:
         """Return True when the integration is in cooling mode."""
@@ -895,9 +789,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         else:
             lower_offset = self._config.get_device_lower_offset(device, index)
             upper_offset = self._config.get_device_upper_offset(device, index)
-        min_sp = self._config.min_setpoint
-        max_sp = self._config.max_setpoint
-        limits = SetpointLimits(min_sp, max_sp, lower_offset, upper_offset)
+        limits = SetpointLimits(
+            self._config.min_setpoint, self._config.max_setpoint, lower_offset, upper_offset
+        )
 
         return calculate_mode_target(
             mode,
@@ -906,111 +800,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             target_temperature=self._target_temperature,
             is_cooling=cooling,
             current_target=current_target,
-            supply_correction=lambda: self._supply_correction(
-                limits, current_temp, current_target, water_temp, current_power
+            supply_correction=lambda: self._supply.correction(
+                source=self._config.supply_advice_sensor,
+                advice=self._read_supply_advice()[0],
+                limits=limits,
+                current_temp=current_temp,
+                current_target=current_target,
+                water_temp=water_temp,
+                power=current_power,
+                overshoot=self._water_overshoot(),
+                now=datetime.now(timezone.utc),
             ),
         )
-
-    def _supply_correction(
-        self,
-        limits: SetpointLimits,
-        current_temp: float | None,
-        current_target: float | None,
-        water_temp: float | None,
-        power: float | None,
-    ) -> float | None:
-        """Return the setpoint correction that steers the supply temperature.
-
-        The water heat pump's setpoint is a room setpoint, so an advised supply
-        temperature cannot be sent as is. A PI controller on
-        ``advice - measured supply`` moves the setpoint within the device's
-        offsets around the temperature the device measures.
-
-        Returns None (normal setpoint logic) without an advice, a supply
-        reading or a device temperature; the controller then keeps its state.
-        """
-        source = self._config.supply_advice_sensor
-        advice, _raw_state = self._read_supply_advice()
-        if advice is None or water_temp is None or current_temp is None:
-            return None
-
-        now = datetime.now(timezone.utc)
-        reading = self._supply_filter.update(water_temp, now)
-        if reading.spike and self._supply_last_correction is not None:
-            # Something else is heating the supply pipe (e.g. hot water from
-            # a boiler): hold the last correction until the spike is over.
-            self._supply_pi_summary = build_supply_pi_summary(
-                source,
-                advised_temp=advice,
-                supply_temp=water_temp,
-                supply_filtered=reading.filtered,
-                spike=True,
-                result=self._supply_last_result,
-                correction=self._supply_last_correction,
-            )
-            return self._supply_last_correction
-
-        config = PIConfig(
-            kp=self._config.supply_pi_kp,
-            ti_seconds=self._config.supply_pi_ti_minutes * 60.0,
-            output_min=limits.lower_offset,
-            output_max=limits.upper_offset,
-        )
-        error = advice - reading.filtered
-        if not self._supply_pi.initialized:
-            # Start from the device's current offset, so entering the preset
-            # or restarting does not make the setpoint jump.
-            start = current_target - current_temp if current_target is not None else 0.0
-            self._supply_pi.initialize(
-                clamp_value(start, config.output_min, config.output_max), error, config
-            )
-
-        # Without compressor output the supply temperature says nothing about
-        # the heat delivered, and above the overshoot limit the room has
-        # enough: freeze the integral in both cases.
-        compressor_running = power is not None and power >= self._config.supply_pi_min_power_w
-        overshoot = self._is_water_overshoot_condition_true()
-        result = self._supply_pi.update(
-            error,
-            now,
-            config,
-            integrate=compressor_running and not overshoot,
-        )
-        correction = config.output_min if overshoot else result.output
-
-        # Keep the setpoint unless it moves by at least the deadband, so the
-        # heat pump does not get a new setpoint for every bit of noise.
-        target = current_temp + correction
-        held = self._supply_held_target
-        if (
-            not overshoot
-            and held is not None
-            and abs(target - held) < SUPPLY_SETPOINT_DEADBAND - FLOAT_COMPARISON_EPSILON
-            and config.output_min <= held - current_temp <= config.output_max
-        ):
-            correction = held - current_temp
-        else:
-            self._supply_held_target = target
-
-        self._supply_last_result = result
-        self._supply_last_correction = correction
-        self._supply_pi_summary = build_supply_pi_summary(
-            source,
-            advised_temp=advice,
-            supply_temp=water_temp,
-            supply_filtered=reading.filtered,
-            result=result,
-            correction=correction,
-        )
-        return correction
-
-    def _reset_supply_control(self) -> None:
-        """Start the supply-temperature control afresh."""
-        self._supply_pi.reset()
-        self._supply_filter.reset()
-        self._supply_last_result = None
-        self._supply_last_correction = None
-        self._supply_held_target = None
 
     def _read_supply_advice(self) -> tuple[float | None, Any]:
         """Return the advised supply temperature and the sensor's raw state."""
@@ -1027,7 +828,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     async def _apply_boost_mode(self) -> None:
         """Apply boost preset to all controllable heat pumps."""
         devices = self._config.devices
-        device_payloads = self._get_device_payloads()
 
         # Target HVAC mode depends on current heat/cool selection
         active_hvac = (
@@ -1040,9 +840,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 continue
             if self._is_cooling() and self._config.is_water_device(device, index):
                 continue
-            await self._ensure_device_mode(device.get(CONF_CLIMATE_ENTITY), active_hvac)
+            await self._commands.ensure_mode(device.get(CONF_CLIMATE_ENTITY), active_hvac)
 
-        # Refresh payloads
         device_payloads = self._get_device_payloads()
 
         # Set boost targets for all active devices
@@ -1073,7 +872,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                     "Boost preset: Setting %s to mode=%s, target=%.1f°C",
                     entity_id, MODE_BOOST, boost_target,
                 )
-                await self._ensure_device_temperature(entity_id, boost_target)
+                await self._commands.ensure_temperature(entity_id, boost_target)
             else:
                 _LOGGER.warning("Boost preset: No current temperature for %s", entity_id)
 
@@ -1094,7 +893,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             if not entity_id:
                 continue
 
-            await self._ensure_device_mode(entity_id, HVACMode.OFF)
+            await self._commands.ensure_mode(entity_id, HVACMode.OFF)
             self._assist_controller.force_off(entity_id)
 
         await self._apply_staging()
@@ -1120,7 +919,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         payload = dict(device_payloads.get(entity_id, {}) or {})
         hvac_mode = str(payload.get("hvac_mode") or "").lower()
         if device.get(CONF_ALLOW_ON_OFF_CONTROL) and hvac_mode != HVACMode.OFF.value:
-            await self._ensure_device_mode(
+            await self._commands.ensure_mode(
                 entity_id,
                 HVACMode.OFF,
                 allow_when_off=True,
@@ -1168,7 +967,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
 
             if hvac_mode in (HVACMode.HEAT.value, HVACMode.COOL.value):
-                await self._ensure_device_temperature(entity_id, target)
+                await self._commands.ensure_temperature(entity_id, target)
             else:
                 _LOGGER.debug(
                     "Skip setpoint for %s because mode=%s (not active)",
@@ -1221,91 +1020,22 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self.hass.async_create_task(async_refresh_coordinator())
 
     def _maybe_forward_setpoint(self, entity_id: str, old_state, new_state) -> None:
-        """Forward setpoint changes to PowerClimate."""
-        if new_state is None:
-            return
-        if self._state_context_is_integration(new_state):
+        """Forward a setpoint change of a mirrored thermostat to PowerClimate."""
+        if new_state is None or self._commands.is_own_state(new_state):
             return
 
-        changed, temperature = self._has_temperature_change(old_state, new_state)
-        if not changed or temperature is None:
+        temperature = _changed_setpoint(old_state, new_state)
+        if temperature is None or not self.entity_id:
             return
 
         self.hass.async_create_task(
-            self._forward_setpoint_to_powerclimate(temperature, entity_id)
+            self._commands.call_service(
+                self.entity_id,
+                SERVICE_SET_TEMPERATURE,
+                {ATTR_ENTITY_ID: self.entity_id, ATTR_TEMPERATURE: temperature},
+                f"forwarding setpoint from {entity_id}",
+            )
         )
-
-    def _state_context_is_integration(self, state) -> bool:
-        """Check if state change originated from this integration."""
-        return self._commands.is_own_state(state)
-
-    def _has_temperature_change(
-        self, old_state, new_state
-    ) -> tuple[bool, float | None]:
-        """Detect if temperature attribute changed."""
-        new_temp = safe_float(
-            (new_state.attributes if new_state else {}).get(ATTR_TEMPERATURE)
-        )
-        old_temp = safe_float(
-            (old_state.attributes if old_state else {}).get(ATTR_TEMPERATURE)
-        )
-
-        if new_temp is None:
-            return False, None
-        if old_temp is not None and abs(new_temp - old_temp) < TEMPERATURE_CHANGE_THRESHOLD:
-            return False, new_temp
-        return True, new_temp
-
-    async def _forward_setpoint_to_powerclimate(
-        self, temperature: float, source_entity: str | None = None
-    ) -> None:
-        """Forward temperature setpoint to PowerClimate entity."""
-        if not self.entity_id:
-            return
-
-        await self._call_climate_service(
-            self.entity_id,
-            SERVICE_SET_TEMPERATURE,
-            {ATTR_ENTITY_ID: self.entity_id, ATTR_TEMPERATURE: temperature},
-            f"forwarding setpoint from {source_entity or 'unknown'}",
-        )
-
-    async def _call_climate_service(
-        self,
-        entity_id: str,
-        service_name: str,
-        service_data: dict[str, Any],
-        action_description: str,
-        *,
-        allow_when_off: bool = False,
-    ) -> bool:
-        """Call a climate service; see DeviceCommander.call_service."""
-        return await self._commands.call_service(
-            entity_id,
-            service_name,
-            service_data,
-            action_description,
-            allow_when_off=allow_when_off,
-        )
-
-    async def _ensure_device_mode(
-        self,
-        entity_id: str,
-        mode: HVACMode,
-        *,
-        allow_when_off: bool = False,
-        force: bool = False,
-    ) -> bool:
-        """Ensure device is in the given HVAC mode; see DeviceCommander.ensure_mode."""
-        return await self._commands.ensure_mode(
-            entity_id, mode, allow_when_off=allow_when_off, force=force
-        )
-
-    async def _ensure_device_temperature(
-        self, entity_id: str, temperature: float
-    ) -> None:
-        """Ensure device has the given setpoint; see DeviceCommander.ensure_temperature."""
-        await self._commands.ensure_temperature(entity_id, temperature)
 
     def _emit_summary(
         self,
@@ -1313,8 +1043,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         device_payloads: dict[str, dict[str, Any]],
     ) -> None:
         """Emit summary payload via dispatcher."""
-        target_temp = self._current_target_temperature()
-        hp_status = self._build_hp_status(devices, device_payloads)
+        data = self.coordinator.data or {}
+        hp_status = build_hp_status(
+            devices,
+            device_payloads,
+            data,
+            is_water_device=self._config.is_water_device,
+            active_devices=self._active_devices,
+            assist_modes=self._assist_modes,
+            hp_modes=self._hp_modes,
+            assist_status=self._assist_controller.get_hp_status_info,
+        )
+        advised_temp, raw_state = self._read_supply_advice()
 
         payload = {
             "mode": self._mode_state,
@@ -1323,19 +1063,21 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "active_devices": sorted(self._active_devices),
             "delta": self._delta,
             "room_temperature": self.current_temperature,
-            "room_sensor_values": self.coordinator.data.get(CONF_ROOM_SENSOR_VALUES),
-            "derivative": self.coordinator.data.get("room_derivative"),
+            "room_sensor_values": data.get(CONF_ROOM_SENSOR_VALUES),
+            "derivative": data.get("room_derivative"),
             "room_eta_hours": self._room_eta_hours,
             "room_eta_minutes": (
                 self._room_eta_hours * 60.0 if self._room_eta_hours is not None else None
             ),
             "water_temperature": self._water_temperature,
-            "water_derivative": self.coordinator.data.get("water_derivative"),
+            "water_derivative": data.get("water_derivative"),
             "hp_status": hp_status,
-            "target_temperature": target_temp,
+            "target_temperature": self._target_temperature,
             "preset_mode": self._attr_preset_mode,
-            **self._build_supply_advice_summary(),
-            **self._supply_pi_summary,
+            **build_supply_advice_summary(
+                self._config.supply_advice_sensor, advised_temp, raw_state
+            ),
+            **self._supply.summary,
         }
 
         self._summary_payload = payload
@@ -1345,31 +1087,3 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             entry_data["summary_payload"] = payload
 
         async_dispatcher_send(self.hass, self._summary_signal, payload)
-
-    def _build_supply_advice_summary(self) -> dict[str, Any]:
-        """Build diagnostics for the optional supply advice sensor."""
-        advised_temp, raw_state = self._read_supply_advice()
-        return build_supply_advice_summary(
-            self._config.supply_advice_sensor, advised_temp, raw_state
-        )
-
-    def _build_hp_status(
-        self,
-        devices: list[dict[str, Any]],
-        device_payloads: dict[str, dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """Build HP status list for summary payload."""
-        return build_hp_status(
-            devices,
-            device_payloads,
-            self.coordinator.data or {},
-            is_water_device=self._config.is_water_device,
-            active_devices=self._active_devices,
-            assist_modes=self._assist_modes,
-            hp_modes=self._hp_modes,
-            assist_status=self._assist_controller.get_hp_status_info,
-        )
-
-    def _current_target_temperature(self) -> float | None:
-        """Get the current target temperature."""
-        return self._target_temperature
