@@ -15,7 +15,7 @@ from custom_components.powerclimate.const import (
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
-    CONF_MPC_TEMPERATURE_SENSOR,
+    CONF_SUPPLY_ADVICE_SENSOR,
     CONF_SUPPLY_PI_KP,
     CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
@@ -83,11 +83,11 @@ class TestGlobalDefaults:
     def test_assist_stall_temp_delta_default(self) -> None:
         assert _make_accessor().assist_stall_temp_delta == DEFAULT_ASSIST_STALL_TEMP_DELTA
 
-    def test_mpc_sensor_none_by_default(self) -> None:
-        assert _make_accessor().mpc_temperature_sensor is None
+    def test_supply_advice_sensor_none_by_default(self) -> None:
+        assert _make_accessor().supply_advice_sensor is None
 
-    def test_mpc_disabled_by_default(self) -> None:
-        assert _make_accessor().mpc_enabled is False
+    def test_supply_advice_disabled_by_default(self) -> None:
+        assert _make_accessor().supply_advice_enabled is False
 
     def test_supply_pi_defaults(self) -> None:
         accessor = _make_accessor()
@@ -143,15 +143,15 @@ class TestOptionsOverrideData:
 
 
 class TestOptionalSensors:
-    """mpc_temperature_sensor should strip blank values."""
+    """supply_advice_sensor should strip blank values."""
 
-    def test_mpc_enabled_when_sensor_configured(self) -> None:
-        accessor = _make_accessor(data={CONF_MPC_TEMPERATURE_SENSOR: "sensor.mpc"})
-        assert accessor.mpc_enabled is True
+    def test_supply_advice_enabled_when_sensor_configured(self) -> None:
+        accessor = _make_accessor(data={CONF_SUPPLY_ADVICE_SENSOR: "sensor.supply_advice"})
+        assert accessor.supply_advice_enabled is True
 
-    def test_mpc_disabled_for_empty_string(self) -> None:
-        accessor = _make_accessor(data={CONF_MPC_TEMPERATURE_SENSOR: ""})
-        assert accessor.mpc_enabled is False
+    def test_supply_advice_disabled_for_empty_string(self) -> None:
+        accessor = _make_accessor(data={CONF_SUPPLY_ADVICE_SENSOR: ""})
+        assert accessor.supply_advice_enabled is False
 
 
 # ---------------------------------------------------------------------------
@@ -348,8 +348,8 @@ class TestToDict:
             "assist_water_temp_threshold",
             "assist_stall_temp_delta",
             "maximum_overshoot",
-            "mpc_enabled",
-            "mpc_temperature_sensor",
+            "supply_advice_enabled",
+            "supply_advice_sensor",
             "supply_pi_kp",
             "supply_pi_ti_minutes",
             "supply_pi_min_power_w",

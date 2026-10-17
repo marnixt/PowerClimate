@@ -108,15 +108,15 @@ PowerClimate presets control how heat pumps operate in different scenarios:
 | **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) |
 | **Away** | Minimal mode (let temp drop to 16°C) | OFF (if allow_on_off enabled), otherwise minimal |
 | **Main only** | Same as `none` | Only the main heat pump runs, as in `none`; the others are turned OFF (if allow_on_off enabled) and never turned on, otherwise left untouched |
-| **MPC** | Steers the supply temperature towards the advice of the configured MPC sensor by moving the room setpoint within the device's heating offsets (see below); falls back to normal setpoint logic without advice | Normal assist logic based on room demand |
+| **Supply advice** | Steers the supply temperature towards the advice of the configured supply advice sensor by moving the room setpoint within the device's heating offsets (see below); falls back to normal setpoint logic without advice | Normal assist logic based on room demand |
 
-MPC preset requires a configured experimental sensor that exposes an advised supply (flow) temperature, such as the MPC recommended supply temperature of the Quatt Warmteanalyse (stooklijn) integration.
+The Supply advice preset requires a configured experimental sensor that exposes an advised supply (flow) temperature; see [Advice sources](#advice-sources).
 Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
 Main only runs PowerClimate with one heat pump: the water heat pump, or the first air heat pump when there is no water heat pump. With a water heat pump as main, Main only does not cool, because water heat pumps cannot cool.
 Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
 When `Allow PowerClimate to turn device on and off` is enabled on the water device, PowerClimate may switch it OFF after a sustained overshoot above `Maximum overshoot`. It turns the water device back ON only when the regular `ON: ETA threshold` condition is met again.
 
-### MPC Control Logic
+### Supply Advice Control Logic
 
 Many water heat pumps are controlled through a room thermostat: the setpoint of
 their climate entity is a **room** setpoint, and the heat pump picks the supply
@@ -140,7 +140,7 @@ setpoint so that the **measured** supply temperature follows the advice.
 - **Overshoot**: when the room is above target + `Maximum overshoot`, the
   correction goes to the lower offset. The water overshoot shutoff still
   applies independently.
-- **No advice**: if the advice sensor is `unknown`/`unavailable` (some MPC
+- **No advice**: if the advice sensor is `unknown`/`unavailable` (some advice
   sources report this when no heat is needed) or there is no supply reading,
   the normal setpoint logic applies and the controller keeps its state.
 - **Smoothed supply**: the controller uses a moving average of the supply
@@ -157,16 +157,37 @@ The **Supply Correction** sensor shows the correction, with the advice, the
 measured supply temperature, the error and the P and I parts as attributes, so
 you can graph the controller while tuning.
 
-**Avoid a feedback loop.** If the MPC source calculates its advice from the
+**Avoid a feedback loop.** If the advice source calculates its advice from the
 thermostat's room setpoint, it sees the setpoint PowerClimate itself moves: a
 higher setpoint raises the advice, which raises the setpoint further. Point
-the MPC source's room setpoint at PowerClimate's **Target Temperature** sensor
+the advice source's room setpoint at PowerClimate's **Target Temperature** sensor
 instead, which always holds the room target you set.
 
 **Other controllers.** If something else acts on the same advice (for example
 a compressor sound-level or power limiter driven by the same supply error),
 the two corrections add up. Keep PowerClimate the slower of the two (a longer
 integral time) and watch the number of compressor starts.
+
+### Advice sources
+
+PowerClimate does not calculate the advice itself; any sensor with an advised
+supply temperature in °C works:
+
+- an integration that calculates an advised supply temperature, such as an MPC
+  or heat-curve integration for your heat pump;
+- a simple **heating curve** as a template sensor. Create it under
+  **Settings → Devices & Services → Helpers → Create helper → Template → Template
+  sensor**, with unit `°C` and device class *Temperature*. This example gives
+  50 °C at −10 °C outside and 30 °C at 15 °C outside, linear in between and
+  limited to that range:
+
+  ```jinja
+  {{ [[50 - 0.8 * (states('sensor.outdoor_temperature') | float + 10), 50] | min, 30] | max | round(1) }}
+  ```
+
+  Set its availability to `{{ has_value('sensor.outdoor_temperature') }}`, so
+  the preset falls back to normal setpoint logic when the outdoor sensor is
+  missing. Use an outdoor sensor that is not warmed by a running outdoor unit.
 
 **Configuration Ranges:**
 - Lower setpoint offset: -5.0–0.0 °C
@@ -197,8 +218,8 @@ Some features are intentionally marked experimental and live under **Options →
 
 To access: **Settings → Devices & Services → Integrations → PowerClimate → Options → Experimental**
 
-- **MPC advised supply temperature sensor**: Configure a sensor that exposes an advised supply temperature. When set, PowerClimate enables the `MPC` preset.
-- **Supply temperature control** (MPC preset, heating):
+- **Supply advice sensor**: Configure a sensor that exposes an advised supply temperature. When set, PowerClimate enables the `Supply advice` preset.
+- **Supply temperature control** (Supply advice preset, heating):
 
 | Option | Default | Range | Description |
 |--------|---------|-------|-------------|
@@ -242,7 +263,7 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 | **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps, and PowerClimate mode for each configured assist pump |
 | Total Power | `sensor.powerclimate_total_power_*` | Aggregated power consumption from all configured pumps |
 | Target Temperature | `sensor.powerclimate_target_temperature_*` | PowerClimate's room target, for integrations that only accept a sensor (not a diagnostic entity) |
-| Supply Correction | `sensor.powerclimate_supply_correction_*` | Setpoint correction of the supply-temperature controller (MPC preset), with its state as attributes |
+| Supply Correction | `sensor.powerclimate_supply_correction_*` | Setpoint correction of the supply-temperature controller (Supply advice preset), with its state as attributes |
 
 **Text Sensor Details:**
 - All text sensors (prefixed `powerclimate_text_*`) can be excluded from recorder:

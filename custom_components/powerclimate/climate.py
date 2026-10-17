@@ -38,9 +38,9 @@ from .const import (
     FLOAT_COMPARISON_EPSILON,
     MODE_BOOST,
     MODE_MINIMAL,
-    MODE_MPC,
     MODE_OFF,
     MODE_SETPOINT,
+    MODE_SUPPLY_ADVICE,
     SUPPLY_FILTER_TAU_SECONDS,
     SUPPLY_SETPOINT_DEADBAND,
     SUPPLY_SPIKE_KELVIN,
@@ -56,7 +56,7 @@ from .mode_targets import SetpointLimits, calculate_mode_target
 from .pi_controller import PIConfig, PIController, PIResult
 from .summary_payload import (
     build_hp_status,
-    build_mpc_summary,
+    build_supply_advice_summary,
     build_supply_pi_summary,
 )
 from .supply_filter import SupplyFilter
@@ -68,7 +68,7 @@ PRESET_NONE = "none"
 PRESET_BOOST = "boost"
 PRESET_AWAY = "away"
 PRESET_MAIN_ONLY = "main_only"
-PRESET_MPC = "mpc"
+PRESET_SUPPLY_ADVICE = "supply_advice"
 
 
 async def async_setup_entry(
@@ -95,13 +95,11 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.PRESET_MODE
     )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
-    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MAIN_ONLY, PRESET_MPC]
     # Bulky diagnostics that change every update; keep them out of the recorder.
     _unrecorded_attributes = frozenset({
         "hp_status",
         "active_devices",
         "room_sensor_values",
-        "mpc_forecast_6h",
     })
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, coordinator) -> None:
@@ -148,7 +146,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._water_overshoot_since: datetime | None = None
         self._coordinator_update_pending = False
         self._coordinator_update_task: asyncio.Task[None] | None = None
-        # Steers the water heat pump's supply temperature in the MPC preset.
+        # Steers the water heat pump's supply temperature in the supply advice preset.
         self._supply_pi = PIController()
         self._supply_filter = SupplyFilter(
             SUPPLY_FILTER_TAU_SECONDS, SUPPLY_SPIKE_KELVIN, SUPPLY_SPIKE_MAX_SECONDS
@@ -162,8 +160,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     def preset_modes(self) -> list[str] | None:
         """Return list of available preset modes."""
         modes = [PRESET_NONE, PRESET_BOOST, PRESET_AWAY, PRESET_MAIN_ONLY]
-        if self._config.mpc_enabled:
-            modes.append(PRESET_MPC)
+        if self._config.supply_advice_enabled:
+            modes.append(PRESET_SUPPLY_ADVICE)
         return modes
 
     @property
@@ -316,8 +314,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_away_mode()
         elif preset_mode == PRESET_MAIN_ONLY:
             await self._enter_main_only_mode()
-        elif preset_mode == PRESET_MPC:
-            await self._enter_mpc_mode()
+        elif preset_mode == PRESET_SUPPLY_ADVICE:
+            await self._enter_supply_advice_mode()
         elif preset_mode == PRESET_NONE:
             await self._exit_preset_mode()
 
@@ -367,20 +365,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._attr_preset_mode = PRESET_MAIN_ONLY
         await self._apply_staging()
 
-    async def _enter_mpc_mode(self) -> None:
-        """Enter MPC preset mode."""
-        if self._attr_preset_mode == PRESET_MPC:
+    async def _enter_supply_advice_mode(self) -> None:
+        """Enter the supply advice preset."""
+        if self._attr_preset_mode == PRESET_SUPPLY_ADVICE:
             return
 
         if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
             self._target_temperature = self._previous_target
         self._previous_target = None
 
-        self._attr_preset_mode = PRESET_MPC
-        # Preserve current HVAC mode — MPC works for both heat and cool.
-        # The external MPC sensor is expected to provide a suitable setpoint
-        # for whichever mode is active (water supply temp for heat,
-        # room setpoint for cool).
+        self._attr_preset_mode = PRESET_SUPPLY_ADVICE
+        # Preserve current HVAC mode. The advice is a supply temperature for
+        # heating; in Cool mode the preset behaves like none.
         if self._attr_hvac_mode == HVACMode.OFF:
             self._attr_hvac_mode = HVACMode.HEAT
         await self._apply_staging()
@@ -408,7 +404,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
             return
-        if self._attr_preset_mode == PRESET_MPC and not self._config.mpc_enabled:
+        if (
+            self._attr_preset_mode == PRESET_SUPPLY_ADVICE
+            and not self._config.supply_advice_enabled
+        ):
             self._attr_preset_mode = PRESET_NONE
         if not devices:
             await self._handle_no_devices(device_payloads)
@@ -886,8 +885,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return MODE_BOOST
         if self._attr_preset_mode == PRESET_AWAY:
             return MODE_MINIMAL
-        if self._attr_preset_mode == PRESET_MPC:
-            return MODE_MPC
+        if self._attr_preset_mode == PRESET_SUPPLY_ADVICE:
+            return MODE_SUPPLY_ADVICE
         return MODE_SETPOINT
 
     def _determine_assist_mode(
@@ -907,8 +906,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         """
         if self._attr_preset_mode == PRESET_BOOST:
             return MODE_BOOST
-        # The MPC advice is a supply temperature for the water heat pump;
-        # assists keep following room demand in the MPC preset.
+        # The advice is a supply temperature for the water heat pump;
+        # assists keep following room demand in the supply advice preset.
         # For automatic pumps, check off_timer to keep running briefly after target is reached
         if is_automatic and off_timer > 0:
             return MODE_MINIMAL
@@ -972,8 +971,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         Returns None (normal setpoint logic) without an advice, a supply
         reading or a device temperature; the controller then keeps its state.
         """
-        source = "mpc"
-        advice = self._read_mpc_temperature_state()
+        source = self._config.supply_advice_sensor
+        advice, _raw_state = self._read_supply_advice()
         if advice is None or water_temp is None or current_temp is None:
             return None
 
@@ -1055,22 +1054,17 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._supply_last_correction = None
         self._supply_held_target = None
 
-    def _read_mpc_sensor_state(self) -> tuple[float | None, Any, dict[str, Any]]:
-        """Read the configured external MPC sensor state and attributes."""
-        sensor_id = self._config.mpc_temperature_sensor
+    def _read_supply_advice(self) -> tuple[float | None, Any]:
+        """Return the advised supply temperature and the sensor's raw state."""
+        sensor_id = self._config.supply_advice_sensor
         if not sensor_id:
-            return None, None, {}
+            return None, None
 
         state = self.hass.states.get(sensor_id)
         if state is None:
-            return None, None, {}
+            return None, None
 
-        return safe_float(state.state), state.state, dict(state.attributes)
-
-    def _read_mpc_temperature_state(self) -> float | None:
-        """Return the advised water temperature from the MPC sensor."""
-        value, _raw_state, _attrs = self._read_mpc_sensor_state()
-        return value
+        return safe_float(state.state), state.state
 
     async def _apply_boost_mode(self) -> None:
         """Apply boost preset to all controllable heat pumps."""
@@ -1388,7 +1382,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "assist_min_on_minutes": self._config.assist_min_on_minutes,
             "assist_min_off_minutes": self._config.assist_min_off_minutes,
             "maximum_overshoot": self._config.maximum_overshoot,
-            **self._build_mpc_summary(),
+            **self._build_supply_advice_summary(),
             **self._supply_pi_summary,
         }
 
@@ -1400,13 +1394,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         async_dispatcher_send(self.hass, self._summary_signal, payload)
 
-    def _build_mpc_summary(self) -> dict[str, Any]:
-        """Build diagnostics for the optional external MPC sensor."""
-        sensor_id = self._config.mpc_temperature_sensor
-        advised_temp, raw_state, attrs = (
-            self._read_mpc_sensor_state() if sensor_id else (None, None, {})
+    def _build_supply_advice_summary(self) -> dict[str, Any]:
+        """Build diagnostics for the optional supply advice sensor."""
+        advised_temp, raw_state = self._read_supply_advice()
+        return build_supply_advice_summary(
+            self._config.supply_advice_sensor, advised_temp, raw_state
         )
-        return build_mpc_summary(sensor_id, advised_temp, raw_state, attrs)
 
     def _build_hp_status(
         self,

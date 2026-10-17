@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from .const import (
     MODE_BOOST,
     MODE_MINIMAL,
-    MODE_MPC,
     MODE_SETPOINT,
+    MODE_SUPPLY_ADVICE,
 )
 from .utils import clamp_setpoint, safe_float
 
@@ -51,8 +51,8 @@ def calculate_mode_target(
         is_cooling: True when PowerClimate is in cooling mode.
         current_target: The device's current setpoint.
         supply_correction: Returns the correction (°C) on the device
-            temperature that steers the supply temperature towards the MPC
-            advice (MPC mode, heating).
+            temperature that steers the supply temperature towards the
+            advice (supply advice mode, heating).
     """
     min_sp = limits.min_setpoint
     max_sp = limits.max_setpoint
@@ -66,7 +66,7 @@ def calculate_mode_target(
             return min_sp
         return max(min_sp, min(fallback, max_sp))
 
-    if mode == MODE_MPC and not is_cooling and supply_correction is not None:
+    if mode == MODE_SUPPLY_ADVICE and not is_cooling and supply_correction is not None:
         # The device setpoint is a room setpoint: steer the supply temperature
         # by moving it relative to the temperature the device measures.
         correction = supply_correction()
@@ -86,8 +86,8 @@ def calculate_mode_target(
         target = current_temp + (upper_offset if is_cooling else lower_offset)
         return clamp_setpoint(target, current_temp, lower_offset, upper_offset, min_sp, max_sp)
 
-    if mode in (MODE_SETPOINT, MODE_MPC):
-        # MPC falls back to the room target when no advice is available.
+    if mode in (MODE_SETPOINT, MODE_SUPPLY_ADVICE):
+        # Supply advice falls back to the room target without an advice.
         return clamp_setpoint(
             target_temperature, current_temp, lower_offset, upper_offset, min_sp, max_sp
         )

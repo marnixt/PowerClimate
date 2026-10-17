@@ -298,14 +298,14 @@
           "sensors": {
             "name": "Experimentele sensoren",
             "data": {
-              "mpc_temperature_sensor_entity_id": "MPC-temperatuursensor"
+              "supply_advice_sensor_entity_id": "Aanvoeradviessensor"
             },
             "data_description": {
-              "mpc_temperature_sensor_entity_id": "Optionele sensor met een geadviseerde aanvoertemperatuur. Maakt de MPC-preset beschikbaar; PowerClimate stuurt het setpoint van de waterwarmtepomp zo bij dat de gemeten aanvoertemperatuur het advies volgt."
+              "supply_advice_sensor_entity_id": "Optionele sensor met een geadviseerde aanvoertemperatuur, uit elke bron: een stooklijn-template, een MPC-integratie of iets anders. Maakt de preset Aanvoeradvies beschikbaar; PowerClimate stuurt het setpoint van de waterwarmtepomp zo bij dat de gemeten aanvoertemperatuur het advies volgt."
             }
           },
           "supply_control": {
-            "name": "Aanvoertemperatuurregeling (MPC-presets)",
+            "name": "Aanvoertemperatuurregeling (preset Aanvoeradvies)",
             "data": {
               "supply_pi_kp": "Proportionele versterking",
               "supply_pi_ti_minutes": "Integratietijd",
@@ -341,7 +341,7 @@
               "boost": "Boost",
               "away": "Afwezig",
               "main_only": "Alleen hoofdwarmtepomp",
-              "mpc": "MPC"
+              "supply_advice": "Aanvoeradvies"
             }
           }
         }

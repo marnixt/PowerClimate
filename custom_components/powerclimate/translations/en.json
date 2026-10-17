@@ -298,14 +298,14 @@
           "sensors": {
             "name": "Experimental sensors",
             "data": {
-              "mpc_temperature_sensor_entity_id": "MPC temperature sensor"
+              "supply_advice_sensor_entity_id": "Supply advice sensor"
             },
             "data_description": {
-              "mpc_temperature_sensor_entity_id": "Optional sensor with an advised supply temperature. Enables the MPC preset; PowerClimate steers the water heat pump's setpoint so the measured supply temperature follows the advice."
+              "supply_advice_sensor_entity_id": "Optional sensor with an advised supply temperature, from any source: a heating curve template, an MPC integration or other. Enables the Supply advice preset; PowerClimate steers the water heat pump's setpoint so the measured supply temperature follows the advice."
             }
           },
           "supply_control": {
-            "name": "Supply temperature control (MPC presets)",
+            "name": "Supply temperature control (Supply advice preset)",
             "data": {
               "supply_pi_kp": "Proportional gain",
               "supply_pi_ti_minutes": "Integral time",
@@ -341,7 +341,7 @@
               "boost": "Boost",
               "away": "Away",
               "main_only": "Main only",
-              "mpc": "MPC"
+              "supply_advice": "Supply advice"
             }
           }
         }

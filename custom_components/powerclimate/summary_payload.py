@@ -20,36 +20,18 @@ from .pi_controller import PIResult
 from .utils import compute_eta_hours, safe_float
 
 
-def build_mpc_summary(
+def build_supply_advice_summary(
     sensor_id: str | None,
     advised_temp: float | None,
     raw_state: Any,
-    attrs: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Build diagnostics for the optional external MPC sensor."""
-    if not sensor_id:
-        return {
-            "mpc_enabled": False,
-            "mpc_sensor_entity_id": None,
-            "mpc_advised_temperature": None,
-            "mpc_raw_state": None,
-            "mpc_state_available": False,
-        }
-
-    forecast_6h = attrs.get("forecast_6h")
+    """Build diagnostics for the optional supply advice sensor."""
     return {
-        "mpc_enabled": True,
-        "mpc_sensor_entity_id": sensor_id,
-        "mpc_advised_temperature": advised_temp,
-        "mpc_raw_state": raw_state,
-        "mpc_state_available": advised_temp is not None,
-        "mpc_model_source": attrs.get("model_source"),
-        "mpc_heat_demand_w": safe_float(attrs.get("heat_demand_w")),
-        "mpc_net_demand_w": safe_float(attrs.get("net_demand_w")),
-        "mpc_outdoor_temp": safe_float(attrs.get("outdoor_temp")),
-        "mpc_flow_lph": safe_float(attrs.get("flow_lph")),
-        "mpc_return_temp": safe_float(attrs.get("return_temp")),
-        "mpc_forecast_6h": forecast_6h if isinstance(forecast_6h, list) else None,
+        "supply_advice_enabled": bool(sensor_id),
+        "supply_advice_sensor_entity_id": sensor_id or None,
+        "supply_advice_temperature": advised_temp if sensor_id else None,
+        "supply_advice_raw_state": raw_state if sensor_id else None,
+        "supply_advice_available": bool(sensor_id) and advised_temp is not None,
     }
 
 
@@ -66,8 +48,8 @@ def build_supply_pi_summary(
     """Build diagnostics for the supply-temperature controller.
 
     Args:
-        source: Where the advice came from ("mpc"); None while
-            the controller is not running.
+        source: The sensor the advice came from; None while the
+            controller is not running.
         advised_temp: Advised supply temperature.
         supply_temp: Measured (raw) supply temperature.
         supply_filtered: Smoothed supply temperature the controller uses.

@@ -23,8 +23,8 @@ from .const import (
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
-    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_ROOM_SENSORS,
+    CONF_SUPPLY_ADVICE_SENSOR,
     CONF_SUPPLY_PI_KP,
     CONF_SUPPLY_PI_MIN_POWER_W,
     CONF_SUPPLY_PI_TI_MINUTES,
@@ -107,15 +107,15 @@ class ConfigAccessor:
         return self._get_config().get(CONF_ROOM_SENSORS) or []
 
     @property
-    def mpc_temperature_sensor(self) -> str | None:
-        """Get the external MPC advised temperature sensor entity ID."""
-        sensor = str(self._get_config().get(CONF_MPC_TEMPERATURE_SENSOR) or "").strip()
+    def supply_advice_sensor(self) -> str | None:
+        """Get the advised supply temperature sensor entity ID."""
+        sensor = str(self._get_config().get(CONF_SUPPLY_ADVICE_SENSOR) or "").strip()
         return sensor if sensor else None
 
     @property
-    def mpc_enabled(self) -> bool:
-        """Check if MPC preset is available."""
-        return bool(self.mpc_temperature_sensor)
+    def supply_advice_enabled(self) -> bool:
+        """Check if the supply advice preset is available."""
+        return bool(self.supply_advice_sensor)
 
     @property
     def supply_pi_kp(self) -> float:
@@ -338,8 +338,8 @@ class ConfigAccessor:
             "assist_water_temp_threshold": self.assist_water_temp_threshold,
             "assist_stall_temp_delta": self.assist_stall_temp_delta,
             "maximum_overshoot": self.maximum_overshoot,
-            "mpc_enabled": self.mpc_enabled,
-            "mpc_temperature_sensor": self.mpc_temperature_sensor,
+            "supply_advice_enabled": self.supply_advice_enabled,
+            "supply_advice_sensor": self.supply_advice_sensor,
             "supply_pi_kp": self.supply_pi_kp,
             "supply_pi_ti_minutes": self.supply_pi_ti_minutes,
             "supply_pi_min_power_w": self.supply_pi_min_power_w,

@@ -4,7 +4,7 @@ from custom_components.powerclimate.const import CONF_CLIMATE_ENTITY, CONF_DEVIC
 from custom_components.powerclimate.pi_controller import PIResult
 from custom_components.powerclimate.summary_payload import (
     build_hp_status,
-    build_mpc_summary,
+    build_supply_advice_summary,
     build_supply_pi_summary,
 )
 
@@ -22,10 +22,14 @@ def test_supply_pi_summary_reports_controller_state():
         integrating=True, saturated=False,
     )
     summary = build_supply_pi_summary(
-        "mpc", advised_temp=30.0, supply_temp=28.0, result=result, correction=0.4567
+        "sensor.supply_advice",
+        advised_temp=30.0,
+        supply_temp=28.0,
+        result=result,
+        correction=0.4567,
     )
     assert summary["supply_pi_active"] is True
-    assert summary["supply_pi_source"] == "mpc"
+    assert summary["supply_pi_source"] == "sensor.supply_advice"
     assert summary["supply_pi_advised_temp"] == 30.0
     assert summary["supply_pi_supply_temp"] == 28.0
     assert summary["supply_pi_error"] == 2.0
@@ -35,29 +39,24 @@ def test_supply_pi_summary_reports_controller_state():
     assert summary["supply_pi_saturated"] is False
 
 
-def test_mpc_summary_disabled_without_sensor():
-    summary = build_mpc_summary(None, None, None, {})
-    assert summary["mpc_enabled"] is False
-    assert summary["mpc_state_available"] is False
+def test_supply_advice_summary_disabled_without_sensor():
+    summary = build_supply_advice_summary(None, None, None)
+    assert summary["supply_advice_enabled"] is False
+    assert summary["supply_advice_available"] is False
+    assert summary["supply_advice_temperature"] is None
 
 
-def test_mpc_summary_reads_attributes():
-    summary = build_mpc_summary(
-        "sensor.mpc",
-        31.5,
-        "31.5",
-        {"heat_demand_w": "1200", "forecast_6h": [1, 2], "model_source": "fit"},
-    )
-    assert summary["mpc_state_available"] is True
-    assert summary["mpc_heat_demand_w"] == 1200.0
-    assert summary["mpc_forecast_6h"] == [1, 2]
-    assert summary["mpc_model_source"] == "fit"
+def test_supply_advice_summary_reports_advice():
+    summary = build_supply_advice_summary("sensor.supply_advice", 31.5, "31.5")
+    assert summary["supply_advice_enabled"] is True
+    assert summary["supply_advice_available"] is True
+    assert summary["supply_advice_temperature"] == 31.5
 
 
-def test_mpc_summary_ignores_invalid_forecast():
-    summary = build_mpc_summary("sensor.mpc", None, "unknown", {"forecast_6h": "x"})
-    assert summary["mpc_forecast_6h"] is None
-    assert summary["mpc_state_available"] is False
+def test_supply_advice_summary_unavailable_without_value():
+    summary = build_supply_advice_summary("sensor.supply_advice", None, "unknown")
+    assert summary["supply_advice_available"] is False
+    assert summary["supply_advice_raw_state"] == "unknown"
 
 
 def _status(devices, payloads, **overrides):

@@ -30,8 +30,8 @@ from custom_components.powerclimate.const import (
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIRROR_CLIMATE_ENTITIES,
-    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_ROOM_SENSORS,
+    CONF_SUPPLY_ADVICE_SENSOR,
     CONF_SUPPLY_PI_KP,
     CONF_SUPPLY_PI_MIN_POWER_W,
     CONF_SUPPLY_PI_TI_MINUTES,
@@ -136,13 +136,13 @@ class TestEntryNameFromInput:
 class TestExperimentalOptions:
     """Tests for experimental option helpers."""
 
-    def test_experimental_form_defaults_include_mpc_sensor(self):
-        """Defaults should include the configured MPC sensor."""
-        base = {CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc"}
+    def test_experimental_form_defaults_include_supply_advice_sensor(self):
+        """Defaults should include the configured supply advice sensor."""
+        base = {CONF_SUPPLY_ADVICE_SENSOR: "sensor.supply_advice"}
 
         defaults = experimental_form_defaults(base, None)
 
-        assert defaults[CONF_MPC_TEMPERATURE_SENSOR] == "sensor.quatt_mpc"
+        assert defaults[CONF_SUPPLY_ADVICE_SENSOR] == "sensor.supply_advice"
 
     def test_experimental_form_defaults_fill_supply_control(self):
         """Supply-control fields show stored values, else the defaults."""
@@ -152,14 +152,14 @@ class TestExperimentalOptions:
         assert defaults[CONF_SUPPLY_PI_TI_MINUTES] == DEFAULT_SUPPLY_PI_TI_MINUTES
         assert defaults[CONF_SUPPLY_PI_MIN_POWER_W] == DEFAULT_SUPPLY_PI_MIN_POWER_W
 
-    def test_process_experimental_input_keeps_mpc_sensor(self):
-        """Experimental input should normalize the optional MPC sensor."""
+    def test_process_experimental_input_keeps_supply_advice_sensor(self):
+        """Experimental input should normalize the optional supply advice sensor."""
         processed = process_experimental_input(
-            {CONF_MPC_TEMPERATURE_SENSOR: " sensor.quatt_mpc "}
+            {CONF_SUPPLY_ADVICE_SENSOR: " sensor.supply_advice "}
         )
 
         assert processed == {
-            CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc",
+            CONF_SUPPLY_ADVICE_SENSOR: "sensor.supply_advice",
         }
 
     def test_process_experimental_input_keeps_supply_control(self):
@@ -181,14 +181,14 @@ class TestExperimentalOptions:
         schema = build_experimental_schema(experimental_form_defaults({}, None))
         submitted = schema(
             {
-                "sensors": {CONF_MPC_TEMPERATURE_SENSOR: "sensor.quatt_mpc"},
+                "sensors": {CONF_SUPPLY_ADVICE_SENSOR: "sensor.supply_advice"},
                 "supply_control": {CONF_SUPPLY_PI_KP: 0.25},
             }
         )
 
         processed = process_experimental_input(flatten_section_data(submitted))
 
-        assert processed[CONF_MPC_TEMPERATURE_SENSOR] == "sensor.quatt_mpc"
+        assert processed[CONF_SUPPLY_ADVICE_SENSOR] == "sensor.supply_advice"
         assert processed[CONF_SUPPLY_PI_KP] == 0.25
         assert processed[CONF_SUPPLY_PI_TI_MINUTES] == DEFAULT_SUPPLY_PI_TI_MINUTES
 
@@ -197,7 +197,7 @@ class TestExperimentalOptions:
         processed = process_experimental_input({})
 
         assert processed == {
-            CONF_MPC_TEMPERATURE_SENSOR: None,
+            CONF_SUPPLY_ADVICE_SENSOR: None,
         }
 
 

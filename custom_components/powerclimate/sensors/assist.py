@@ -465,10 +465,10 @@ class PowerClimateHP1BehaviorSensor(_AssistBehaviorSensor):
             mode_label = self._t("label_mode", "Mode")
             parts.append(f"{mode_label}: {mode}")
 
-        # In the MPC modes show the advised supply temperature and the
+        # In the supply advice mode show the advised supply temperature and the
         # correction the supply-temperature controller applies.
         payload = self._payload or {}
-        if mode == "mpc" and payload.get("supply_pi_active"):
+        if mode == "supply_advice" and payload.get("supply_pi_active"):
             advised = payload.get("supply_pi_advised_temp")
             if isinstance(advised, (int, float)):
                 advice_label = self._t("label_advice", "Advice")

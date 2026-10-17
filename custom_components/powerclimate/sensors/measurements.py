@@ -51,8 +51,8 @@ SUPPLY_PI_ATTRIBUTES = (
 class PowerClimateTargetTemperatureSensor(SummaryPayloadValueSensor):
     """PowerClimate's room target temperature as a sensor.
 
-    Other integrations that only accept a sensor (for example an external MPC
-    source that needs the comfort target) can read the target from here
+    Other integrations that only accept a sensor (for example an external
+    supply advice source that needs the comfort target) can read the target from here
     instead of from a thermostat whose setpoint PowerClimate itself moves.
     """
 
@@ -73,7 +73,7 @@ class PowerClimateTargetTemperatureSensor(SummaryPayloadValueSensor):
 
 
 class PowerClimateSupplyCorrectionSensor(SummaryPayloadValueSensor):
-    """Correction the supply-temperature controller applies (MPC preset)."""
+    """Correction the supply-temperature controller applies (supply advice preset)."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS

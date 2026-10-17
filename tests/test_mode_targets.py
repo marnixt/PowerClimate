@@ -7,9 +7,9 @@ import pytest
 from custom_components.powerclimate.const import (
     MODE_BOOST,
     MODE_MINIMAL,
-    MODE_MPC,
     MODE_OFF,
     MODE_SETPOINT,
+    MODE_SUPPLY_ADVICE,
 )
 from custom_components.powerclimate.mode_targets import (
     SetpointLimits,
@@ -65,33 +65,33 @@ def test_without_any_temperature_falls_back_to_room_target_then_minimum():
     assert _target(MODE_SETPOINT, None, target=None) == 16.0
 
 
-def test_mpc_heating_applies_supply_correction():
+def test_supply_advice_heating_applies_correction():
     # Device measures 20.0; the correction moves the room setpoint around it.
-    assert _target(MODE_MPC, supply_correction=lambda: 1.24) == 21.2
-    assert _target(MODE_MPC, supply_correction=lambda: -0.3) == 19.7
+    assert _target(MODE_SUPPLY_ADVICE, supply_correction=lambda: 1.24) == 21.2
+    assert _target(MODE_SUPPLY_ADVICE, supply_correction=lambda: -0.3) == 19.7
 
 
 def test_supply_correction_is_clamped_to_global_limits():
-    assert _target(MODE_MPC, 29.5, supply_correction=lambda: 1.5) == 30.0
+    assert _target(MODE_SUPPLY_ADVICE, 29.5, supply_correction=lambda: 1.5) == 30.0
 
 
-def test_mpc_falls_back_to_room_target_without_correction():
-    assert _target(MODE_MPC, supply_correction=lambda: None, target=21.0) == 21.0
+def test_supply_advice_falls_back_to_room_target_without_correction():
+    assert _target(MODE_SUPPLY_ADVICE, supply_correction=lambda: None, target=21.0) == 21.0
 
 
 def test_supply_correction_not_used_when_cooling():
     correction = MagicMock(return_value=1.0)
 
-    _target(MODE_MPC, cooling=True, supply_correction=correction)
+    _target(MODE_SUPPLY_ADVICE, cooling=True, supply_correction=correction)
 
     correction.assert_not_called()
 
 
-def test_supply_correction_only_evaluated_in_mpc_with_temperature():
+def test_supply_correction_only_evaluated_in_supply_advice_with_temperature():
     correction = MagicMock(return_value=1.0)
 
     _target(MODE_SETPOINT, supply_correction=correction)
-    _target(MODE_MPC, None, supply_correction=correction)
+    _target(MODE_SUPPLY_ADVICE, None, supply_correction=correction)
 
     correction.assert_not_called()
 

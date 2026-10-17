@@ -5,13 +5,14 @@ This file consolidates release notes and highlights useful for HACS and users.
 ## Unreleased
 
 **Changed**
-- **MPC preset steers the supply temperature**: the advised supply temperature is no longer sent as the water heat pump's setpoint. A PI controller moves the room setpoint within the device's heating offsets until the measured supply temperature follows the advice. Tuning (gain, integral time, minimum compressor power) lives under Options → Experimental.
+- **MPC preset is now the Supply advice preset**: the preset (`supply_advice`), its sensor option (`supply_advice_sensor_entity_id`) and the climate attributes (`supply_advice_*`) are renamed, because any source of an advised supply temperature works — an MPC integration or a heating-curve template sensor. The source-specific `mpc_*` attributes are gone. Select the sensor again under Options → Experimental and update automations that select the `mpc` preset.
+- **Supply advice preset steers the supply temperature**: the advised supply temperature is no longer sent as the water heat pump's setpoint. A PI controller moves the room setpoint within the device's heating offsets until the measured supply temperature follows the advice. Tuning (gain, integral time, minimum compressor power) lives under Options → Experimental.
 - **Supply-temperature control is calm and spike-proof**: the controller uses a moving average of the supply temperature, holds its correction during a sudden supply spike (such as a boiler making hot water through the same pipe) and only moves the setpoint by at least 0.2 °C.
-- **Assist pumps in the MPC preset** follow room demand instead of receiving the advised supply temperature as their setpoint.
+- **Assist pumps in the Supply advice preset** follow room demand instead of receiving the advised supply temperature as their setpoint.
 
 **Added**
 - **Main only preset**: PowerClimate runs as in `none`, but with only the main heat pump — the water heat pump, or the first air heat pump without one. Other heat pumps with on/off control are turned off and stay off; the rest are left untouched.
-- **Target Temperature sensor**: PowerClimate's room target as a sensor, for integrations that only accept a sensor — for example as the comfort target of an external MPC source, which avoids a feedback loop through the thermostat setpoint.
+- **Target Temperature sensor**: PowerClimate's room target as a sensor, for integrations that only accept a sensor — for example as the comfort target of an external advice source, which avoids a feedback loop through the thermostat setpoint.
 - **Supply Correction sensor**: the controller's correction with advice, measured supply temperature, error and P/I parts as attributes.
 
 **Removed**

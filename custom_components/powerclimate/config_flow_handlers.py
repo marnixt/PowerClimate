@@ -34,8 +34,8 @@ from .const import (
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
-    CONF_MPC_TEMPERATURE_SENSOR,
     CONF_ROOM_SENSORS,
+    CONF_SUPPLY_ADVICE_SENSOR,
     CONF_SUPPLY_PI_KP,
     CONF_SUPPLY_PI_MIN_POWER_W,
     CONF_SUPPLY_PI_TI_MINUTES,
@@ -790,7 +790,7 @@ def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
     sensor_fields = build_fields(
         defaults,
         (
-            (CONF_MPC_TEMPERATURE_SENSOR, entity_selector("sensor")),
+            (CONF_SUPPLY_ADVICE_SENSOR, entity_selector("sensor")),
         ),
     )
 
@@ -830,7 +830,7 @@ def experimental_form_defaults(
         return dict(user_input)
 
     return {
-        CONF_MPC_TEMPERATURE_SENSOR: base.get(CONF_MPC_TEMPERATURE_SENSOR),
+        CONF_SUPPLY_ADVICE_SENSOR: base.get(CONF_SUPPLY_ADVICE_SENSOR),
         CONF_SUPPLY_PI_KP: base.get(CONF_SUPPLY_PI_KP, DEFAULT_SUPPLY_PI_KP),
         CONF_SUPPLY_PI_TI_MINUTES: base.get(
             CONF_SUPPLY_PI_TI_MINUTES, DEFAULT_SUPPLY_PI_TI_MINUTES
@@ -846,7 +846,7 @@ def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     # An emptied optional selector is omitted from the submitted data, so a
     # missing key means "cleared".
     data: dict[str, Any] = {}
-    for key in (CONF_MPC_TEMPERATURE_SENSOR,):
+    for key in (CONF_SUPPLY_ADVICE_SENSOR,):
         sensor_entity_id = str(user_input.get(key) or "").strip()
         data[key] = sensor_entity_id or None
     # The number fields always carry a default; keep the stored value when one

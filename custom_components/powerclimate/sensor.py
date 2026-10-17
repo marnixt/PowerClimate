@@ -11,7 +11,7 @@ and calculations from the PowerClimate integration:
 - **Target Temperature**: PowerClimate's room target, for integrations that
   only accept a sensor
 - **Supply Correction**: Setpoint correction of the supply-temperature
-  controller in the MPC preset
+  controller in the supply advice preset
 
 All sensors except Target Temperature are diagnostic entities. They are
 grouped under the integration's virtual device in the Home Assistant device

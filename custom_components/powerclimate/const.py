@@ -62,12 +62,14 @@ DEVICE_ROLE_AIR = "air"
 MODE_BOOST = "boost"
 MODE_SETPOINT = "setpoint"
 MODE_MINIMAL = "minimal"
-MODE_MPC = "mpc"
+MODE_SUPPLY_ADVICE = "supply_advice"
 MODE_OFF = "off"
 
-CONF_MPC_TEMPERATURE_SENSOR = "mpc_temperature_sensor_entity_id"
+# Sensor with an advised supply temperature from any source (heating curve,
+# MPC, ...); enables the supply advice preset.
+CONF_SUPPLY_ADVICE_SENSOR = "supply_advice_sensor_entity_id"
 
-# Supply-temperature control (MPC presets, water heat pump, heating).
+# Supply-temperature control (supply advice preset, water heat pump, heating).
 # The water heat pump's setpoint is a room setpoint; a PI controller moves it
 # within the device's heating offsets until the measured supply temperature
 # matches the advised one.

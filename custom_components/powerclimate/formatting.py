@@ -309,8 +309,10 @@ class SensorFormatter(TemperatureFormatter):
             return self._t("preset_away", "Away")
         elif preset_mode == "main_only":
             return self._t("preset_main_only", "Main only")
-        elif preset_mode == "mpc":
-            return self._t("preset_mpc", "MPC")
+        elif preset_mode == "main_only":
+            return self._t("preset_main_only", "Main only")
+        elif preset_mode == "supply_advice":
+            return self._t("preset_supply_advice", "Supply advice")
         else:
             return self._t("preset_none", "None")
 

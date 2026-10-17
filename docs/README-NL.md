@@ -95,15 +95,15 @@ PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenari
 | **boost** | Boost mode (huidig + upper offset) | Boost mode (huidig + upper offset) |
 | **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
 | **Main only** | Zoals `none` | Alleen de hoofdwarmtepomp draait, zoals bij `none`; de rest gaat UIT (als allow_on_off aan staat) en wordt nooit aangezet, anders niet aanpassen |
-| **MPC** | Stuurt de aanvoertemperatuur naar het advies van de geconfigureerde MPC-sensor door het kamersetpoint binnen de heating-offsets van het apparaat te verschuiven (zie hieronder); valt zonder advies terug op normale setpoint-logica | Normale assist-logica op basis van warmtevraag in de ruimte |
+| **Aanvoeradvies** | Stuurt de aanvoertemperatuur naar het advies van de geconfigureerde aanvoeradviessensor door het kamersetpoint binnen de heating-offsets van het apparaat te verschuiven (zie hieronder); valt zonder advies terug op normale setpoint-logica | Normale assist-logica op basis van warmtevraag in de ruimte |
 
-MPC preset vereist een geconfigureerde experimentele sensor met een geadviseerde aanvoertemperatuur, bijvoorbeeld de MPC aanbevolen aanvoertemperatuur van de integratie Quatt Warmteanalyse (stooklijn).
+De preset Aanvoeradvies vereist een geconfigureerde experimentele sensor met een geadviseerde aanvoertemperatuur; zie [Adviesbronnen](#adviesbronnen).
 Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
 Main only laat PowerClimate met één warmtepomp werken: de waterwarmtepomp, of de eerste luchtwarmtepomp als er geen waterwarmtepomp is. Met een waterwarmtepomp als hoofd koelt Main only niet, want een waterwarmtepomp kan niet koelen.
 HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
 Wanneer `Allow PowerClimate to turn device on and off` op het water-apparaat is ingeschakeld, mag PowerClimate deze bij aanhoudende overshoot boven `Maximum overshoot` ook UIT schakelen. Terug inschakelen gebeurt zodra de ruimtetemperatuur weer onder het setpoint zakt (elk beetje vraag), ruim vóór de assistpompen zouden starten.
 
-### MPC-regellogica
+### Regellogica aanvoeradvies
 
 Veel waterwarmtepompen worden via een kamerthermostaat aangestuurd: het setpoint
 van hun climate-entity is een **kamer**setpoint en de warmtepomp kiest de
@@ -128,7 +128,7 @@ het kamersetpoint zo dat de **gemeten** aanvoertemperatuur het advies volgt.
   correctie naar de onderste offset. De water-overshoot-afschakeling blijft los
   daarvan werken.
 - **Geen advies**: is de adviessensor `unknown`/`unavailable` (sommige
-  MPC-bronnen melden dat als er geen warmte nodig is) of ontbreekt de
+  adviesbronnen melden dat als er geen warmte nodig is) of ontbreekt de
   aanvoermeting, dan geldt de normale setpoint-logica en houdt de regelaar zijn
   toestand vast.
 - **Gemiddelde aanvoer**: de regelaar gebruikt een voortschrijdend gemiddelde
@@ -148,10 +148,10 @@ De sensor **Aanvoercorrectie** toont de correctie, met het advies, de gemeten
 aanvoertemperatuur, de fout en het P- en I-deel als attributen, zodat je de
 regelaar tijdens het afstellen in een grafiek kunt volgen.
 
-**Voorkom een terugkoppellus.** Rekent de MPC-bron zijn advies uit met het
+**Voorkom een terugkoppellus.** Rekent de adviesbron zijn advies uit met het
 kamersetpoint van de thermostaat, dan ziet hij het setpoint dat PowerClimate
 zelf verschuift: een hoger setpoint verhoogt het advies, en dat verhoogt het
-setpoint weer. Laat de MPC-bron in dat geval de sensor **Doeltemperatuur** van
+setpoint weer. Laat de adviesbron in dat geval de sensor **Doeltemperatuur** van
 PowerClimate als kamersetpoint gebruiken; die bevat altijd het kamerdoel dat jij
 instelt.
 
@@ -163,6 +163,28 @@ twee (een langere integratietijd) en let op het aantal compressorstarts.
 **Configuratie-ranges:**
 - Lower setpoint offset: -5.0–0.0 °C
 - Upper setpoint offset: 0.0–5.0 °C
+
+### Adviesbronnen
+
+PowerClimate berekent het advies niet zelf; elke sensor met een geadviseerde
+aanvoertemperatuur in °C werkt:
+
+- een integratie die een geadviseerde aanvoertemperatuur berekent, zoals een
+  MPC- of stooklijnintegratie voor je warmtepomp;
+- een eenvoudige **stooklijn** als template-sensor. Maak die aan via
+  **Instellingen → Apparaten & diensten → Helpers → Helper aanmaken → Template →
+  Template-sensor**, met eenheid `°C` en apparaatklasse *Temperatuur*. Dit
+  voorbeeld geeft 50 °C bij −10 °C buiten en 30 °C bij 15 °C buiten, lineair
+  daartussen en begrensd tot dat bereik:
+
+  ```jinja
+  {{ [[50 - 0.8 * (states('sensor.outdoor_temperature') | float + 10), 50] | min, 30] | max | round(1) }}
+  ```
+
+  Zet de beschikbaarheid op `{{ has_value('sensor.outdoor_temperature') }}`,
+  zodat de preset terugvalt op normale setpoint-logica als de buitensensor
+  ontbreekt. Gebruik een buitensensor die niet opwarmt door een draaiende
+  buitenunit.
 
 ## Geavanceerde configuratie-opties
 
@@ -189,8 +211,8 @@ Sommige features zijn bewust experimenteel en staan onder **Opties -> Experiment
 
 Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerClimate -> Opties -> Experimental**
 
-- **MPC geadviseerde aanvoertemperatuur sensor**: kies een sensor met een geadviseerde aanvoertemperatuur. Als deze is ingesteld, wordt de preset `MPC` beschikbaar.
-- **Aanvoertemperatuurregeling** (MPC-preset, verwarmen):
+- **Aanvoeradviessensor**: kies een sensor met een geadviseerde aanvoertemperatuur. Als deze is ingesteld, wordt de preset `Aanvoeradvies` beschikbaar.
+- **Aanvoertemperatuurregeling** (preset Aanvoeradvies, verwarmen):
 
 | Optie | Default | Range | Beschrijving |
 |--------|---------|-------|-------------|
@@ -234,7 +256,7 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 | **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
 | Total Power | `sensor.powerclimate_total_power_*` | Opgeteld vermogen van geconfigureerde pompen |
 | Doeltemperatuur | `sensor.powerclimate_target_temperature_*` | Kamerdoel van PowerClimate, voor integraties die alleen een sensor accepteren (geen diagnostische entity) |
-| Aanvoercorrectie | `sensor.powerclimate_supply_correction_*` | Setpointcorrectie van de aanvoertemperatuurregeling (MPC-preset), met de toestand als attributen |
+| Aanvoercorrectie | `sensor.powerclimate_supply_correction_*` | Setpointcorrectie van de aanvoertemperatuurregeling (preset Aanvoeradvies), met de toestand als attributen |
 
 **Text sensor details:**
 - Alle text sensors (prefix `powerclimate_text_*`) kun je excluden uit recorder:
