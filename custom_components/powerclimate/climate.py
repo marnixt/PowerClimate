@@ -34,7 +34,6 @@ from .const import (
     COORDINATOR,
     DEFAULT_TARGET_TEMPERATURE,
     DOMAIN,
-    ETA_THRESHOLD_MET_DURATION_MINUTES,
     FLOAT_COMPARISON_EPSILON,
     MODE_BOOST,
     MODE_MINIMAL,
@@ -142,7 +141,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._commands = DeviceCommander(
             hass, lambda: self.hvac_mode == HVACMode.OFF
         )
-        self._eta_exceeded_since: datetime | None = None
         self._water_overshoot_since: datetime | None = None
         self._coordinator_update_pending = False
         self._coordinator_update_task: asyncio.Task[None] | None = None
@@ -189,19 +187,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        eta_exceeded_duration = None
-        if self._eta_exceeded_since:
-            eta_exceeded_duration = (
-                datetime.now(timezone.utc) - self._eta_exceeded_since
-            ).total_seconds() / 60.0
-
-        base = dict(self._summary_payload or {})
-        base["eta_exceeded_duration_minutes"] = eta_exceeded_duration
-        base["eta_threshold_met"] = (
-            eta_exceeded_duration is not None
-            and eta_exceeded_duration >= ETA_THRESHOLD_MET_DURATION_MINUTES
-        )
-        return base
+        return dict(self._summary_payload or {})
 
     async def async_added_to_hass(self) -> None:
         """Handle entity being added to Home Assistant."""
@@ -312,12 +298,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._enter_boost_mode()
         elif preset_mode == PRESET_AWAY:
             await self._enter_away_mode()
-        elif preset_mode == PRESET_MAIN_ONLY:
-            await self._enter_main_only_mode()
-        elif preset_mode == PRESET_SUPPLY_ADVICE:
-            await self._enter_supply_advice_mode()
-        elif preset_mode == PRESET_NONE:
-            await self._exit_preset_mode()
+        else:
+            await self._enter_staged_preset(preset_mode)
 
     @staticmethod
     def _normalize_preset_mode(preset_mode: str | None) -> str:
@@ -353,45 +335,21 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         await self._apply_away_mode()
 
-    async def _enter_main_only_mode(self) -> None:
-        """Enter main only preset: only the first heat pump runs, as in none."""
-        if self._attr_preset_mode == PRESET_MAIN_ONLY:
+    async def _enter_staged_preset(self, preset_mode: str) -> None:
+        """Enter none, main only or supply advice; the staging logic runs these."""
+        if self._attr_preset_mode == preset_mode:
             return
 
+        # Restore the target when coming from Away.
         if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
             self._target_temperature = self._previous_target
         self._previous_target = None
 
-        self._attr_preset_mode = PRESET_MAIN_ONLY
-        await self._apply_staging()
-
-    async def _enter_supply_advice_mode(self) -> None:
-        """Enter the supply advice preset."""
-        if self._attr_preset_mode == PRESET_SUPPLY_ADVICE:
-            return
-
-        if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
-            self._target_temperature = self._previous_target
-        self._previous_target = None
-
-        self._attr_preset_mode = PRESET_SUPPLY_ADVICE
-        # Preserve current HVAC mode. The advice is a supply temperature for
-        # heating; in Cool mode the preset behaves like none.
-        if self._attr_hvac_mode == HVACMode.OFF:
+        self._attr_preset_mode = preset_mode
+        # The advice is a supply temperature for heating; in Cool mode the
+        # supply advice preset behaves like none.
+        if preset_mode == PRESET_SUPPLY_ADVICE and self._attr_hvac_mode == HVACMode.OFF:
             self._attr_hvac_mode = HVACMode.HEAT
-        await self._apply_staging()
-
-    async def _exit_preset_mode(self) -> None:
-        """Exit current preset mode to normal operation."""
-        if self._attr_preset_mode == PRESET_NONE:
-            return
-
-        # Restore target if coming from Away
-        if self._attr_preset_mode == PRESET_AWAY and self._previous_target is not None:
-            self._target_temperature = self._previous_target
-        self._previous_target = None
-
-        self._attr_preset_mode = PRESET_NONE
         await self._apply_staging()
 
     async def _apply_staging(self) -> None:

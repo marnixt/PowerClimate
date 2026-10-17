@@ -19,9 +19,6 @@ SERVICE_CALL_TIMEOUT_SECONDS = 5
 # Default target temperature for new integrations
 DEFAULT_TARGET_TEMPERATURE = 21.0
 
-# ETA threshold met duration in minutes
-ETA_THRESHOLD_MET_DURATION_MINUTES = 5.0
-
 # Minimum delta for float comparison (prevents floating point issues)
 FLOAT_COMPARISON_EPSILON = 0.01
 

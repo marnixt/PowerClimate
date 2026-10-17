@@ -96,9 +96,6 @@ class TestParseOffset:
         assert value == 1.5
 
 
-
-
-
 class TestEntryNameFromInput:
     """Tests for entry_name_from_input function."""
 

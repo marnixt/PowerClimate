@@ -110,8 +110,7 @@ def test_async_set_preset_mode_accepts_legacy_case() -> None:
     entity._supply_filter = SupplyFilter(120.0, 5.0, 600.0)
     entity._enter_boost_mode = AsyncMock()
     entity._enter_away_mode = AsyncMock()
-    entity._enter_supply_advice_mode = AsyncMock()
-    entity._exit_preset_mode = AsyncMock()
+    entity._enter_staged_preset = AsyncMock()
 
     asyncio.run(entity.async_set_preset_mode("Boost"))
     asyncio.run(entity.async_set_preset_mode("Away"))
@@ -119,7 +118,7 @@ def test_async_set_preset_mode_accepts_legacy_case() -> None:
 
     entity._enter_boost_mode.assert_awaited_once()
     entity._enter_away_mode.assert_awaited_once()
-    entity._enter_supply_advice_mode.assert_awaited_once()
+    entity._enter_staged_preset.assert_awaited_once_with("supply_advice")
 
 
 def test_preset_modes_include_supply_advice_when_sensor_configured() -> None:
@@ -228,11 +227,11 @@ def test_set_preset_mode_ignores_removed_solar_preset() -> None:
     """The removed Solar preset is no longer accepted."""
     entity = make_entity()
     entity._config = SimpleNamespace(supply_advice_enabled=True, get_water_device=lambda: None)
-    entity._exit_preset_mode = AsyncMock()
+    entity._enter_staged_preset = AsyncMock()
 
     asyncio.run(entity.async_set_preset_mode("solar"))
 
-    entity._exit_preset_mode.assert_not_awaited()
+    entity._enter_staged_preset.assert_not_awaited()
 
 
 def test_determine_hp1_mode_follows_supply_advice_preset() -> None:
@@ -446,7 +445,7 @@ def test_preset_change_resets_supply_controller() -> None:
     entity._attr_preset_mode = "none"
     entity._supply_pi = MagicMock()
     entity._supply_filter = MagicMock()
-    entity._enter_supply_advice_mode = AsyncMock()
+    entity._enter_staged_preset = AsyncMock()
 
     asyncio.run(entity.async_set_preset_mode("supply_advice"))
 
@@ -824,7 +823,7 @@ def test_enter_away_mode_in_cool_raises_target_to_max() -> None:
     assert entity._attr_hvac_mode == HVACMode.COOL  # mode must not change
 
 
-def test_enter_supply_advice_mode_preserves_cool_mode() -> None:
+def test_enter_supply_advice_preset_preserves_cool_mode() -> None:
     """Selecting the supply advice preset in cool mode keeps cool mode."""
     entity = make_entity()
     entity._attr_hvac_mode = HVACMode.COOL
@@ -832,7 +831,7 @@ def test_enter_supply_advice_mode_preserves_cool_mode() -> None:
     entity._previous_target = None
     entity._apply_staging = AsyncMock()
 
-    asyncio.run(entity._enter_supply_advice_mode())
+    asyncio.run(entity._enter_staged_preset("supply_advice"))
 
     assert entity._attr_hvac_mode == HVACMode.COOL
     assert entity._attr_preset_mode == "supply_advice"
