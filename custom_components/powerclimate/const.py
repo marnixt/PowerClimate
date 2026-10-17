@@ -66,9 +66,6 @@ CONF_SUPPLY_PI_TI_MINUTES = "supply_pi_ti_minutes"
 # Below this water heat pump power the compressor is considered idle and the
 # integral is frozen: the supply temperature then says nothing about output.
 CONF_SUPPLY_PI_MIN_POWER_W = "supply_pi_min_power_w"
-DEFAULT_SUPPLY_PI_KP = 0.15
-DEFAULT_SUPPLY_PI_TI_MINUTES = 45.0
-DEFAULT_SUPPLY_PI_MIN_POWER_W = 200.0
 # Moving average of the measured supply temperature (time constant).
 SUPPLY_FILTER_TAU_SECONDS = 120.0
 # A reading this far above the average is a spike (e.g. a boiler making hot
@@ -106,11 +103,9 @@ DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST = 4.0
 DEFAULT_LOWER_SETPOINT_OFFSET_COOLING = -4.0
 DEFAULT_UPPER_SETPOINT_OFFSET_COOLING = 0.0
 
+# Advanced options (stored in config_entry.options); defaults and ranges are
+# in number_options.py.
 # Absolute floor/ceiling for any heat pump setpoint
-DEFAULT_MIN_SETPOINT = 16.0
-DEFAULT_MAX_SETPOINT = 30.0
-
-# Expert/Advanced configuration keys (stored in config_entry.options)
 CONF_MIN_SETPOINT_OVERRIDE = "min_setpoint_override"
 CONF_MAX_SETPOINT_OVERRIDE = "max_setpoint_override"
 CONF_ASSIST_TIMER_SECONDS = "assist_timer_seconds"
@@ -126,17 +121,5 @@ CONF_ASSIST_MIN_OFF_MINUTES = "assist_min_off_minutes"
 CONF_ASSIST_WATER_TEMP_THRESHOLD = "assist_water_temp_threshold"
 CONF_ASSIST_STALL_TEMP_DELTA = "assist_stall_temp_delta"
 CONF_MAXIMUM_OVERSHOOT = "maximum_overshoot"
-
-# Expert defaults (used when options not set)
-DEFAULT_ASSIST_TIMER_SECONDS = 300.0
-
-DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES = 60.0
-DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES = 15.0
-
-DEFAULT_ASSIST_MIN_ON_MINUTES = 20.0
-DEFAULT_ASSIST_MIN_OFF_MINUTES = 10.0
-DEFAULT_ASSIST_WATER_TEMP_THRESHOLD = 40.0
-DEFAULT_ASSIST_STALL_TEMP_DELTA = 0.5
-DEFAULT_MAXIMUM_OVERSHOOT = 0.5
 
 SUMMARY_SIGNAL_TEMPLATE = "powerclimate_summary_update_{entry_id}"

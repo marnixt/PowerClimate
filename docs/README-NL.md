@@ -228,12 +228,12 @@ Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerCli
 
 ## Configuratie-constanten
 
-Alle controle-parameters staan in `const.py` en kunnen aangepast worden:
+Absolute setpointgrenzen en de assist-afstelling stel je in onder **Opties → Geavanceerde opties**.
+
+De standaard-offsets van de apparaten staan in `const.py`:
 
 | Constant | Default | Beschrijving |
 |----------|---------|-------------|
-| `DEFAULT_MIN_SETPOINT` | 16.0 | Absoluut minimum temperatuur die ooit naar een pomp wordt gestuurd. |
-| `DEFAULT_MAX_SETPOINT` | 30.0 | Absoluut maximum temperatuur die naar een pomp wordt gestuurd. |
 | `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | -0.3 | HP1 minimal-modus offset t.o.v. eigen gemeten temperatuur. |
 | `DEFAULT_UPPER_SETPOINT_OFFSET_HP1` | 1.5 | HP1 maximum offset t.o.v. eigen gemeten temperatuur. |
 | `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Assist minimal-modus offset (ruimte op temperatuur). |

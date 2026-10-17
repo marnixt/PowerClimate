@@ -8,37 +8,34 @@ from types import SimpleNamespace
 
 from custom_components.powerclimate.config_accessor import ConfigAccessor
 from custom_components.powerclimate.const import (
+    CONF_ASSIST_MIN_OFF_MINUTES,
+    CONF_ASSIST_MIN_ON_MINUTES,
+    CONF_ASSIST_STALL_TEMP_DELTA,
     CONF_ASSIST_TIMER_SECONDS,
+    CONF_ASSIST_WATER_TEMP_THRESHOLD,
     CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
+    CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_SUPPLY_ADVICE_SENSOR,
     CONF_SUPPLY_PI_KP,
+    CONF_SUPPLY_PI_MIN_POWER_W,
     CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
-    DEFAULT_ASSIST_MIN_OFF_MINUTES,
-    DEFAULT_ASSIST_MIN_ON_MINUTES,
-    DEFAULT_ASSIST_STALL_TEMP_DELTA,
-    DEFAULT_ASSIST_TIMER_SECONDS,
-    DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-    DEFAULT_MAX_SETPOINT,
-    DEFAULT_MIN_SETPOINT,
-    DEFAULT_SUPPLY_PI_KP,
-    DEFAULT_SUPPLY_PI_MIN_POWER_W,
-    DEFAULT_SUPPLY_PI_TI_MINUTES,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DEVICE_ROLE_AIR,
     DEVICE_ROLE_WATER,
 )
+from custom_components.powerclimate.number_options import NUMBER_OPTIONS, number_default
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,25 +60,28 @@ class TestGlobalDefaults:
     """Verify that all properties return correct defaults when not configured."""
 
     def test_min_setpoint_default(self) -> None:
-        assert _make_accessor().min_setpoint == DEFAULT_MIN_SETPOINT
+        assert _make_accessor().min_setpoint == number_default(CONF_MIN_SETPOINT_OVERRIDE)
 
     def test_max_setpoint_default(self) -> None:
-        assert _make_accessor().max_setpoint == DEFAULT_MAX_SETPOINT
+        assert _make_accessor().max_setpoint == number_default(CONF_MAX_SETPOINT_OVERRIDE)
 
     def test_assist_timer_seconds_default(self) -> None:
-        assert _make_accessor().assist_timer_seconds == DEFAULT_ASSIST_TIMER_SECONDS
+        assert _make_accessor().assist_timer_seconds == number_default(CONF_ASSIST_TIMER_SECONDS)
 
     def test_assist_min_on_minutes_default(self) -> None:
-        assert _make_accessor().assist_min_on_minutes == DEFAULT_ASSIST_MIN_ON_MINUTES
+        assert _make_accessor().assist_min_on_minutes == number_default(CONF_ASSIST_MIN_ON_MINUTES)
 
     def test_assist_min_off_minutes_default(self) -> None:
-        assert _make_accessor().assist_min_off_minutes == DEFAULT_ASSIST_MIN_OFF_MINUTES
+        accessor = _make_accessor()
+        assert accessor.assist_min_off_minutes == number_default(CONF_ASSIST_MIN_OFF_MINUTES)
 
     def test_assist_water_temp_threshold_default(self) -> None:
-        assert _make_accessor().assist_water_temp_threshold == DEFAULT_ASSIST_WATER_TEMP_THRESHOLD
+        default = number_default(CONF_ASSIST_WATER_TEMP_THRESHOLD)
+        assert _make_accessor().assist_water_temp_threshold == default
 
     def test_assist_stall_temp_delta_default(self) -> None:
-        assert _make_accessor().assist_stall_temp_delta == DEFAULT_ASSIST_STALL_TEMP_DELTA
+        accessor = _make_accessor()
+        assert accessor.assist_stall_temp_delta == number_default(CONF_ASSIST_STALL_TEMP_DELTA)
 
     def test_supply_advice_sensor_none_by_default(self) -> None:
         assert _make_accessor().supply_advice_sensor is None
@@ -91,9 +91,9 @@ class TestGlobalDefaults:
 
     def test_supply_pi_defaults(self) -> None:
         accessor = _make_accessor()
-        assert accessor.supply_pi_kp == DEFAULT_SUPPLY_PI_KP
-        assert accessor.supply_pi_ti_minutes == DEFAULT_SUPPLY_PI_TI_MINUTES
-        assert accessor.supply_pi_min_power_w == DEFAULT_SUPPLY_PI_MIN_POWER_W
+        assert accessor.supply_pi_kp == number_default(CONF_SUPPLY_PI_KP)
+        assert accessor.supply_pi_ti_minutes == number_default(CONF_SUPPLY_PI_TI_MINUTES)
+        assert accessor.supply_pi_min_power_w == number_default(CONF_SUPPLY_PI_MIN_POWER_W)
 
     def test_supply_pi_from_options(self) -> None:
         accessor = _make_accessor(
@@ -330,21 +330,9 @@ class TestToDict:
     def test_to_dict_contains_expected_keys(self) -> None:
         result = _make_accessor().to_dict()
         expected_keys = {
-            "min_setpoint",
-            "max_setpoint",
-            "assist_timer_seconds",
-            "assist_on_eta_threshold_minutes",
-            "assist_off_eta_threshold_minutes",
-            "assist_min_on_minutes",
-            "assist_min_off_minutes",
-            "assist_water_temp_threshold",
-            "assist_stall_temp_delta",
-            "maximum_overshoot",
+            *NUMBER_OPTIONS,
             "supply_advice_enabled",
             "supply_advice_sensor",
-            "supply_pi_kp",
-            "supply_pi_ti_minutes",
-            "supply_pi_min_power_w",
             "mirror_thermostats",
             "device_count",
         }

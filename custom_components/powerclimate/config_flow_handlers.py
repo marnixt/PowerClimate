@@ -14,13 +14,8 @@ from homeassistant.helpers.selector import selector
 
 from .const import (
     CONF_ALLOW_ON_OFF_CONTROL,
-    CONF_ASSIST_MIN_OFF_MINUTES,
-    CONF_ASSIST_MIN_ON_MINUTES,
     CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
     CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-    CONF_ASSIST_STALL_TEMP_DELTA,
-    CONF_ASSIST_TIMER_SECONDS,
-    CONF_ASSIST_WATER_TEMP_THRESHOLD,
     CONF_CLIMATE_ENTITY,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
@@ -31,39 +26,30 @@ from .const import (
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAX_SETPOINT_OVERRIDE,
-    CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
     CONF_ROOM_SENSORS,
     CONF_SUPPLY_ADVICE_SENSOR,
-    CONF_SUPPLY_PI_KP,
-    CONF_SUPPLY_PI_MIN_POWER_W,
-    CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
-    DEFAULT_ASSIST_MIN_OFF_MINUTES,
-    DEFAULT_ASSIST_MIN_ON_MINUTES,
-    DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-    DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-    DEFAULT_ASSIST_STALL_TEMP_DELTA,
-    DEFAULT_ASSIST_TIMER_SECONDS,
-    DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
     DEFAULT_ENTRY_NAME,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-    DEFAULT_MAX_SETPOINT,
-    DEFAULT_MAXIMUM_OVERSHOOT,
-    DEFAULT_MIN_SETPOINT,
-    DEFAULT_SUPPLY_PI_KP,
-    DEFAULT_SUPPLY_PI_MIN_POWER_W,
-    DEFAULT_SUPPLY_PI_TI_MINUTES,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
     DEVICE_ROLE_AIR,
     DEVICE_ROLE_WATER,
+)
+from .number_options import (
+    ADVANCED_OPTIONS,
+    ASSIST_OPTIONS,
+    SETPOINT_OPTIONS,
+    SUPPLY_PI_OPTIONS,
+    NumberOption,
+    number_default,
 )
 from .utils import generate_device_id, generate_device_name, safe_float
 from .utils import parse_offset_with_default as parse_offset
@@ -94,6 +80,48 @@ def lower_offset_selector() -> Any:
 def upper_offset_selector() -> Any:
     """Create a selector for upper offset values (0 to 5)."""
     return selector({"number": {"min": 0, "max": 10, "step": 0.1}})
+
+
+def number_fields(
+    defaults: dict[str, Any],
+    options: tuple[NumberOption, ...],
+) -> dict[Any, Any]:
+    """Build number selector fields for the given options."""
+    return build_fields(
+        defaults,
+        tuple(
+            (
+                option.key,
+                selector(
+                    {
+                        "number": {
+                            "min": option.min,
+                            "max": option.max,
+                            "step": option.step,
+                            **({"unit_of_measurement": option.unit} if option.unit else {}),
+                        }
+                    }
+                ),
+            )
+            for option in options
+        ),
+    )
+
+
+def number_defaults(
+    base: dict[str, Any],
+    options: tuple[NumberOption, ...],
+) -> dict[str, Any]:
+    """Return the stored value of each option, or its default."""
+    return {option.key: base.get(option.key, option.default) for option in options}
+
+
+def submitted_numbers(
+    user_input: dict[str, Any],
+    options: tuple[NumberOption, ...],
+) -> dict[str, Any]:
+    """Return the submitted options; a missing one keeps its stored value."""
+    return {option.key: user_input[option.key] for option in options if option.key in user_input}
 
 
 def sectioned_schema(
@@ -381,37 +409,46 @@ def process_select_devices_input(
 # --- Water Device Configuration Step ---
 
 
+WATER_DEVICE_DEFAULTS: dict[str, Any] = {
+    CONF_ENERGY_SENSOR: None,
+    CONF_WATER_SENSOR: None,
+    CONF_LOWER_SETPOINT_OFFSET_HEATING: DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
+    CONF_UPPER_SETPOINT_OFFSET_HEATING: DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
+    CONF_ALLOW_ON_OFF_CONTROL: False,
+}
+
+AIR_DEVICE_DEFAULTS: dict[str, Any] = {
+    CONF_ENERGY_SENSOR: None,
+    CONF_LOWER_SETPOINT_OFFSET_HEATING: DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
+    CONF_UPPER_SETPOINT_OFFSET_HEATING: DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
+    CONF_LOWER_SETPOINT_OFFSET_COOLING: DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
+    CONF_UPPER_SETPOINT_OFFSET_COOLING: DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
+    CONF_ALLOW_ON_OFF_CONTROL: False,
+}
+
+
+def device_form_defaults(
+    fallback: dict[str, Any],
+    existing_device: dict[str, Any] | None,
+    user_input: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build device form defaults: submitted, else stored, else fallback values."""
+    existing_device = existing_device or {}
+    defaults = {
+        key: existing_device[key] if existing_device.get(key) is not None else default
+        for key, default in fallback.items()
+    }
+    if user_input:
+        defaults.update(user_input)
+    return defaults
+
+
 def water_device_defaults(
     existing_device: dict[str, Any] | None,
     user_input: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Build defaults for water device configuration."""
-    defaults: dict[str, Any] = {}
-
-    if existing_device:
-        defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
-        defaults[CONF_WATER_SENSOR] = existing_device.get(CONF_WATER_SENSOR)
-        defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
-            CONF_ALLOW_ON_OFF_CONTROL, False
-        )
-        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = existing_device.get(
-            CONF_LOWER_SETPOINT_OFFSET_HEATING
-        )
-        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = existing_device.get(
-            CONF_UPPER_SETPOINT_OFFSET_HEATING
-        )
-
-    if defaults.get(CONF_LOWER_SETPOINT_OFFSET_HEATING) is None:
-        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = DEFAULT_LOWER_SETPOINT_OFFSET_HP1
-    if defaults.get(CONF_UPPER_SETPOINT_OFFSET_HEATING) is None:
-        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = DEFAULT_UPPER_SETPOINT_OFFSET_HP1
-    if defaults.get(CONF_ALLOW_ON_OFF_CONTROL) is None:
-        defaults[CONF_ALLOW_ON_OFF_CONTROL] = False
-
-    if user_input:
-        defaults.update(user_input)
-
-    return defaults
+    return device_form_defaults(WATER_DEVICE_DEFAULTS, existing_device, user_input)
 
 
 def build_water_device_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -424,11 +461,8 @@ def build_water_device_schema(defaults: dict[str, Any]) -> vol.Schema:
         ),
         required=True,
     )
-    control_defaults = {**defaults, CONF_ALLOW_ON_OFF_CONTROL: defaults.get(
-        CONF_ALLOW_ON_OFF_CONTROL, False
-    )}
     control_fields = build_fields(
-        control_defaults,
+        defaults,
         (
             (CONF_LOWER_SETPOINT_OFFSET_HEATING, lower_offset_selector()),
             (CONF_UPPER_SETPOINT_OFFSET_HEATING, upper_offset_selector()),
@@ -500,43 +534,7 @@ def air_device_defaults(
     user_input: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Build defaults for air device configuration."""
-    defaults: dict[str, Any] = {}
-
-    if existing_device:
-        defaults[CONF_ENERGY_SENSOR] = existing_device.get(CONF_ENERGY_SENSOR)
-        defaults[CONF_ALLOW_ON_OFF_CONTROL] = existing_device.get(
-            CONF_ALLOW_ON_OFF_CONTROL, False
-        )
-        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = existing_device.get(
-            CONF_LOWER_SETPOINT_OFFSET_HEATING
-        )
-        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = existing_device.get(
-            CONF_UPPER_SETPOINT_OFFSET_HEATING
-        )
-
-        # Cooling offsets
-        defaults[CONF_LOWER_SETPOINT_OFFSET_COOLING] = existing_device.get(
-            CONF_LOWER_SETPOINT_OFFSET_COOLING, DEFAULT_LOWER_SETPOINT_OFFSET_COOLING
-        )
-        defaults[CONF_UPPER_SETPOINT_OFFSET_COOLING] = existing_device.get(
-            CONF_UPPER_SETPOINT_OFFSET_COOLING, DEFAULT_UPPER_SETPOINT_OFFSET_COOLING
-        )
-
-    if defaults.get(CONF_LOWER_SETPOINT_OFFSET_HEATING) is None:
-        defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] = DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
-    if defaults.get(CONF_UPPER_SETPOINT_OFFSET_HEATING) is None:
-        defaults[CONF_UPPER_SETPOINT_OFFSET_HEATING] = DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST
-    if defaults.get(CONF_LOWER_SETPOINT_OFFSET_COOLING) is None:
-        defaults[CONF_LOWER_SETPOINT_OFFSET_COOLING] = DEFAULT_LOWER_SETPOINT_OFFSET_COOLING
-    if defaults.get(CONF_UPPER_SETPOINT_OFFSET_COOLING) is None:
-        defaults[CONF_UPPER_SETPOINT_OFFSET_COOLING] = DEFAULT_UPPER_SETPOINT_OFFSET_COOLING
-    if defaults.get(CONF_ALLOW_ON_OFF_CONTROL) is None:
-        defaults[CONF_ALLOW_ON_OFF_CONTROL] = False
-
-    if user_input:
-        defaults.update(user_input)
-
-    return defaults
+    return device_form_defaults(AIR_DEVICE_DEFAULTS, existing_device, user_input)
 
 
 def build_air_device_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -560,11 +558,8 @@ def build_air_device_schema(defaults: dict[str, Any]) -> vol.Schema:
             (CONF_UPPER_SETPOINT_OFFSET_COOLING, upper_offset_selector()),
         ),
     )
-    control_defaults = {**defaults, CONF_ALLOW_ON_OFF_CONTROL: defaults.get(
-        CONF_ALLOW_ON_OFF_CONTROL, False
-    )}
     control_fields = build_fields(
-        control_defaults,
+        defaults,
         ((CONF_ALLOW_ON_OFF_CONTROL, bool),),
     )
 
@@ -638,71 +633,11 @@ def process_air_device_input(
 
 def build_advanced_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for advanced/expert options."""
-    setpoint_fields: dict[Any, Any] = {}
-
-    setpoint_options = [
-        (
-            CONF_MIN_SETPOINT_OVERRIDE,
-            {"min": 10, "max": 25, "step": 0.5, "unit_of_measurement": "°C"},
-        ),
-        (
-            CONF_MAX_SETPOINT_OVERRIDE,
-            {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C"},
-        ),
-        (
-            CONF_MAXIMUM_OVERSHOOT,
-            {"min": 0, "max": 5, "step": 0.1, "unit_of_measurement": "°C"},
-        ),
-    ]
-
-    assist_options = [
-        (
-            CONF_ASSIST_TIMER_SECONDS,
-            {"min": 60, "max": 900, "step": 30, "unit_of_measurement": "s"},
-        ),
-        (
-            CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-            {"min": 5, "max": 600, "step": 1, "unit_of_measurement": "min"},
-        ),
-        (
-            CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-            {"min": 1, "max": 120, "step": 1, "unit_of_measurement": "min"},
-        ),
-        (
-            CONF_ASSIST_MIN_ON_MINUTES,
-            {"min": 0, "max": 180, "step": 1, "unit_of_measurement": "min"},
-        ),
-        (
-            CONF_ASSIST_MIN_OFF_MINUTES,
-            {"min": 0, "max": 180, "step": 1, "unit_of_measurement": "min"},
-        ),
-        (
-            CONF_ASSIST_WATER_TEMP_THRESHOLD,
-            {"min": 30, "max": 55, "step": 1, "unit_of_measurement": "°C"},
-        ),
-        (
-            CONF_ASSIST_STALL_TEMP_DELTA,
-            {"min": 0.1, "max": 2, "step": 0.1, "unit_of_measurement": "°C"},
-        ),
-    ]
-
-    setpoint_fields = build_fields(
-        defaults,
-        tuple(
-            (field_name, selector({"number": selector_config}))
-            for field_name, selector_config in setpoint_options
-        ),
-    )
-    assist_fields = build_fields(
-        defaults,
-        tuple(
-            (field_name, selector({"number": selector_config}))
-            for field_name, selector_config in assist_options
-        ),
-    )
-
     return sectioned_schema(
-        (("setpoints", setpoint_fields, False), ("assist", assist_fields, True))
+        (
+            ("setpoints", number_fields(defaults, SETPOINT_OPTIONS), False),
+            ("assist", number_fields(defaults, ASSIST_OPTIONS), True),
+        )
     )
 
 
@@ -713,39 +648,12 @@ def advanced_form_defaults(
     """Build defaults for advanced form."""
     if user_input:
         return dict(user_input)
-
-    default_map = {
-        CONF_MIN_SETPOINT_OVERRIDE: DEFAULT_MIN_SETPOINT,
-        CONF_MAX_SETPOINT_OVERRIDE: DEFAULT_MAX_SETPOINT,
-        CONF_ASSIST_TIMER_SECONDS: DEFAULT_ASSIST_TIMER_SECONDS,
-        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES: DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES: DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-        CONF_ASSIST_MIN_ON_MINUTES: DEFAULT_ASSIST_MIN_ON_MINUTES,
-        CONF_ASSIST_MIN_OFF_MINUTES: DEFAULT_ASSIST_MIN_OFF_MINUTES,
-        CONF_ASSIST_WATER_TEMP_THRESHOLD: DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
-        CONF_ASSIST_STALL_TEMP_DELTA: DEFAULT_ASSIST_STALL_TEMP_DELTA,
-        CONF_MAXIMUM_OVERSHOOT: DEFAULT_MAXIMUM_OVERSHOOT,
-    }
-
-    return {key: base.get(key, default_val) for key, default_val in default_map.items()}
+    return number_defaults(base, ADVANCED_OPTIONS)
 
 
 def process_advanced_input(user_input: dict[str, Any]) -> dict[str, Any]:
-    """Process and validate advanced options input."""
-    advanced_keys = {
-        CONF_MIN_SETPOINT_OVERRIDE,
-        CONF_MAX_SETPOINT_OVERRIDE,
-        CONF_ASSIST_TIMER_SECONDS,
-        CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-        CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-        CONF_ASSIST_MIN_ON_MINUTES,
-        CONF_ASSIST_MIN_OFF_MINUTES,
-        CONF_ASSIST_WATER_TEMP_THRESHOLD,
-        CONF_ASSIST_STALL_TEMP_DELTA,
-        CONF_MAXIMUM_OVERSHOOT,
-    }
-
-    return {key: user_input[key] for key in advanced_keys if key in user_input}
+    """Process advanced options input."""
+    return submitted_numbers(user_input, ADVANCED_OPTIONS)
 
 
 def validate_advanced_input(data: dict[str, Any]) -> dict[str, str]:
@@ -759,21 +667,18 @@ def validate_advanced_input(data: dict[str, Any]) -> dict[str, str]:
     """
     errors: dict[str, str] = {}
 
-    min_sp = safe_float(data.get(CONF_MIN_SETPOINT_OVERRIDE), DEFAULT_MIN_SETPOINT)
-    max_sp = safe_float(data.get(CONF_MAX_SETPOINT_OVERRIDE), DEFAULT_MAX_SETPOINT)
+    def number(key: str) -> float:
+        return safe_float(data.get(key), number_default(key))
+
+    min_sp = number(CONF_MIN_SETPOINT_OVERRIDE)
+    max_sp = number(CONF_MAX_SETPOINT_OVERRIDE)
     if min_sp >= max_sp:
         errors["base"] = "invalid_setpoint_range"
         errors[CONF_MIN_SETPOINT_OVERRIDE] = "invalid"
         errors[CONF_MAX_SETPOINT_OVERRIDE] = "invalid"
 
-    on_eta = safe_float(
-        data.get(CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES),
-        DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-    )
-    off_eta = safe_float(
-        data.get(CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES),
-        DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-    )
+    on_eta = number(CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES)
+    off_eta = number(CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES)
     if off_eta >= on_eta:
         errors.setdefault("base", "invalid_eta_thresholds")
         errors[CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES] = "invalid"
@@ -787,28 +692,10 @@ def validate_advanced_input(data: dict[str, Any]) -> dict[str, str]:
 
 def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for experimental options."""
-    supply_control_options = [
-        (CONF_SUPPLY_PI_KP, {"min": 0.01, "max": 1.0, "step": 0.01}),
-        (
-            CONF_SUPPLY_PI_TI_MINUTES,
-            {"min": 5, "max": 240, "step": 1, "unit_of_measurement": "min"},
-        ),
-        (
-            CONF_SUPPLY_PI_MIN_POWER_W,
-            {"min": 0, "max": 2000, "step": 10, "unit_of_measurement": "W"},
-        ),
-    ]
-    supply_control_fields = build_fields(
-        defaults,
-        (
-            (CONF_SUPPLY_ADVICE_SENSOR, entity_selector("sensor")),
-            *(
-                (field_name, selector({"number": selector_config}))
-                for field_name, selector_config in supply_control_options
-            ),
-        ),
-    )
-
+    supply_control_fields = {
+        **build_fields(defaults, ((CONF_SUPPLY_ADVICE_SENSOR, entity_selector("sensor")),)),
+        **number_fields(defaults, SUPPLY_PI_OPTIONS),
+    }
     return sectioned_schema((("supply_control", supply_control_fields, False),))
 
 
@@ -819,32 +706,18 @@ def experimental_form_defaults(
     """Build defaults for experimental form."""
     if user_input:
         return dict(user_input)
-
     return {
         CONF_SUPPLY_ADVICE_SENSOR: base.get(CONF_SUPPLY_ADVICE_SENSOR),
-        CONF_SUPPLY_PI_KP: base.get(CONF_SUPPLY_PI_KP, DEFAULT_SUPPLY_PI_KP),
-        CONF_SUPPLY_PI_TI_MINUTES: base.get(
-            CONF_SUPPLY_PI_TI_MINUTES, DEFAULT_SUPPLY_PI_TI_MINUTES
-        ),
-        CONF_SUPPLY_PI_MIN_POWER_W: base.get(
-            CONF_SUPPLY_PI_MIN_POWER_W, DEFAULT_SUPPLY_PI_MIN_POWER_W
-        ),
+        **number_defaults(base, SUPPLY_PI_OPTIONS),
     }
 
 
 def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
-    """Process and validate experimental options input."""
+    """Process experimental options input."""
     # An emptied optional selector is omitted from the submitted data, so a
     # missing key means "cleared".
     sensor_entity_id = str(user_input.get(CONF_SUPPLY_ADVICE_SENSOR) or "").strip()
-    data: dict[str, Any] = {CONF_SUPPLY_ADVICE_SENSOR: sensor_entity_id or None}
-    # The number fields always carry a default; keep the stored value when one
-    # is missing.
-    for key in (
-        CONF_SUPPLY_PI_KP,
-        CONF_SUPPLY_PI_TI_MINUTES,
-        CONF_SUPPLY_PI_MIN_POWER_W,
-    ):
-        if key in user_input:
-            data[key] = user_input[key]
-    return data
+    return {
+        CONF_SUPPLY_ADVICE_SENSOR: sensor_entity_id or None,
+        **submitted_numbers(user_input, SUPPLY_PI_OPTIONS),
+    }

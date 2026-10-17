@@ -16,6 +16,7 @@ from .const import (
     CONF_ASSIST_STALL_TEMP_DELTA,
     CONF_ASSIST_TIMER_SECONDS,
     CONF_ASSIST_WATER_TEMP_THRESHOLD,
+    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
@@ -30,22 +31,9 @@ from .const import (
     CONF_SUPPLY_PI_TI_MINUTES,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
-    DEFAULT_ASSIST_MIN_OFF_MINUTES,
-    DEFAULT_ASSIST_MIN_ON_MINUTES,
-    DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-    DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-    DEFAULT_ASSIST_STALL_TEMP_DELTA,
-    DEFAULT_ASSIST_TIMER_SECONDS,
-    DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
     DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
     DEFAULT_LOWER_SETPOINT_OFFSET_HP1,
-    DEFAULT_MAX_SETPOINT,
-    DEFAULT_MAXIMUM_OVERSHOOT,
-    DEFAULT_MIN_SETPOINT,
-    DEFAULT_SUPPLY_PI_KP,
-    DEFAULT_SUPPLY_PI_MIN_POWER_W,
-    DEFAULT_SUPPLY_PI_TI_MINUTES,
     DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST,
     DEFAULT_UPPER_SETPOINT_OFFSET_COOLING,
     DEFAULT_UPPER_SETPOINT_OFFSET_HP1,
@@ -53,6 +41,7 @@ from .const import (
     DEVICE_ROLE_WATER,
 )
 from .helpers import merged_entry_data
+from .number_options import NUMBER_OPTIONS
 from .utils import parse_device_offset
 
 if TYPE_CHECKING:
@@ -81,21 +70,21 @@ class ConfigAccessor:
             self._cache = merged_entry_data(self._entry)
         return self._cache
 
+    def _number(self, key: str) -> float:
+        """Return a numeric option, or its default when not set."""
+        return float(self._get_config().get(key, NUMBER_OPTIONS[key].default))
+
     # --- Global Settings ---
 
     @property
     def min_setpoint(self) -> float:
         """Get the minimum setpoint override."""
-        return float(
-            self._get_config().get(CONF_MIN_SETPOINT_OVERRIDE, DEFAULT_MIN_SETPOINT)
-        )
+        return self._number(CONF_MIN_SETPOINT_OVERRIDE)
 
     @property
     def max_setpoint(self) -> float:
         """Get the maximum setpoint override."""
-        return float(
-            self._get_config().get(CONF_MAX_SETPOINT_OVERRIDE, DEFAULT_MAX_SETPOINT)
-        )
+        return self._number(CONF_MAX_SETPOINT_OVERRIDE)
 
     @property
     def room_sensors(self) -> list[str]:
@@ -116,21 +105,17 @@ class ConfigAccessor:
     @property
     def supply_pi_kp(self) -> float:
         """Get the supply-temperature controller's proportional gain."""
-        return float(self._get_config().get(CONF_SUPPLY_PI_KP, DEFAULT_SUPPLY_PI_KP))
+        return self._number(CONF_SUPPLY_PI_KP)
 
     @property
     def supply_pi_ti_minutes(self) -> float:
         """Get the supply-temperature controller's integral time in minutes."""
-        return float(
-            self._get_config().get(CONF_SUPPLY_PI_TI_MINUTES, DEFAULT_SUPPLY_PI_TI_MINUTES)
-        )
+        return self._number(CONF_SUPPLY_PI_TI_MINUTES)
 
     @property
     def supply_pi_min_power_w(self) -> float:
         """Get the water heat pump power below which the integral is frozen."""
-        return float(
-            self._get_config().get(CONF_SUPPLY_PI_MIN_POWER_W, DEFAULT_SUPPLY_PI_MIN_POWER_W)
-        )
+        return self._number(CONF_SUPPLY_PI_MIN_POWER_W)
 
     @property
     def mirror_thermostats(self) -> list[str]:
@@ -153,67 +138,42 @@ class ConfigAccessor:
     @property
     def assist_timer_seconds(self) -> float:
         """Get the assist timer duration in seconds."""
-        return float(
-            self._get_config().get(CONF_ASSIST_TIMER_SECONDS, DEFAULT_ASSIST_TIMER_SECONDS)
-        )
+        return self._number(CONF_ASSIST_TIMER_SECONDS)
 
     @property
     def assist_on_eta_threshold_minutes(self) -> float:
         """Get the ETA threshold for turning assist pumps ON."""
-        return float(
-            self._get_config().get(
-                CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-                DEFAULT_ASSIST_ON_ETA_THRESHOLD_MINUTES,
-            )
-        )
+        return self._number(CONF_ASSIST_ON_ETA_THRESHOLD_MINUTES)
 
     @property
     def assist_off_eta_threshold_minutes(self) -> float:
         """Get the ETA threshold for turning assist pumps OFF."""
-        return float(
-            self._get_config().get(
-                CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-                DEFAULT_ASSIST_OFF_ETA_THRESHOLD_MINUTES,
-            )
-        )
+        return self._number(CONF_ASSIST_OFF_ETA_THRESHOLD_MINUTES)
 
     @property
     def assist_min_on_minutes(self) -> float:
         """Get minimum ON time for assist pumps (anti-short-cycle)."""
-        return float(
-            self._get_config().get(CONF_ASSIST_MIN_ON_MINUTES, DEFAULT_ASSIST_MIN_ON_MINUTES)
-        )
+        return self._number(CONF_ASSIST_MIN_ON_MINUTES)
 
     @property
     def assist_min_off_minutes(self) -> float:
         """Get minimum OFF time for assist pumps (anti-short-cycle)."""
-        return float(
-            self._get_config().get(CONF_ASSIST_MIN_OFF_MINUTES, DEFAULT_ASSIST_MIN_OFF_MINUTES)
-        )
+        return self._number(CONF_ASSIST_MIN_OFF_MINUTES)
 
     @property
     def assist_water_temp_threshold(self) -> float:
         """Get water temperature threshold for assist pump activation."""
-        return float(
-            self._get_config().get(
-                CONF_ASSIST_WATER_TEMP_THRESHOLD,
-                DEFAULT_ASSIST_WATER_TEMP_THRESHOLD,
-            )
-        )
+        return self._number(CONF_ASSIST_WATER_TEMP_THRESHOLD)
 
     @property
     def assist_stall_temp_delta(self) -> float:
         """Get the stall detection temperature delta."""
-        return float(
-            self._get_config().get(CONF_ASSIST_STALL_TEMP_DELTA, DEFAULT_ASSIST_STALL_TEMP_DELTA)
-        )
+        return self._number(CONF_ASSIST_STALL_TEMP_DELTA)
 
     @property
     def maximum_overshoot(self) -> float:
         """Get the maximum room overshoot before optional water shutoff."""
-        return float(
-            self._get_config().get(CONF_MAXIMUM_OVERSHOOT, DEFAULT_MAXIMUM_OVERSHOOT)
-        )
+        return self._number(CONF_MAXIMUM_OVERSHOOT)
 
     # --- Device Configuration ---
 
@@ -236,8 +196,6 @@ class ConfigAccessor:
         Returns:
             Device role: "water", "air", or None.
         """
-        from .const import CONF_DEVICE_ROLE
-
         role = device.get(CONF_DEVICE_ROLE)
         if role in (DEVICE_ROLE_WATER, DEVICE_ROLE_AIR):
             return role
@@ -324,21 +282,9 @@ class ConfigAccessor:
     def to_dict(self) -> dict[str, Any]:
         """Export all configuration as a dictionary."""
         return {
-            "min_setpoint": self.min_setpoint,
-            "max_setpoint": self.max_setpoint,
-            "assist_timer_seconds": self.assist_timer_seconds,
-            "assist_on_eta_threshold_minutes": self.assist_on_eta_threshold_minutes,
-            "assist_off_eta_threshold_minutes": self.assist_off_eta_threshold_minutes,
-            "assist_min_on_minutes": self.assist_min_on_minutes,
-            "assist_min_off_minutes": self.assist_min_off_minutes,
-            "assist_water_temp_threshold": self.assist_water_temp_threshold,
-            "assist_stall_temp_delta": self.assist_stall_temp_delta,
-            "maximum_overshoot": self.maximum_overshoot,
+            **{key: self._number(key) for key in NUMBER_OPTIONS},
             "supply_advice_enabled": self.supply_advice_enabled,
             "supply_advice_sensor": self.supply_advice_sensor,
-            "supply_pi_kp": self.supply_pi_kp,
-            "supply_pi_ti_minutes": self.supply_pi_ti_minutes,
-            "supply_pi_min_power_w": self.supply_pi_min_power_w,
             "mirror_thermostats": self.mirror_thermostats,
             "device_count": len(self.devices),
         }

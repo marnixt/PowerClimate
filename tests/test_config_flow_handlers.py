@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 
 from custom_components.powerclimate.config_flow_handlers import (
+    advanced_form_defaults,
+    air_device_defaults,
+    build_advanced_schema,
     build_experimental_schema,
     build_global_schema,
     entry_name_from_input,
@@ -27,6 +30,7 @@ from custom_components.powerclimate.const import (
     CONF_CLIMATE_ENTITY,
     CONF_ENERGY_SENSOR,
     CONF_ENTRY_NAME,
+    CONF_LOWER_SETPOINT_OFFSET_COOLING,
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIRROR_CLIMATE_ENTITIES,
@@ -38,9 +42,10 @@ from custom_components.powerclimate.const import (
     CONF_UPPER_SETPOINT_OFFSET_HEATING,
     CONF_WATER_SENSOR,
     DEFAULT_ENTRY_NAME,
-    DEFAULT_SUPPLY_PI_MIN_POWER_W,
-    DEFAULT_SUPPLY_PI_TI_MINUTES,
+    DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST,
+    DEFAULT_LOWER_SETPOINT_OFFSET_COOLING,
 )
+from custom_components.powerclimate.number_options import ADVANCED_OPTIONS, number_default
 
 
 class TestParseOffset:
@@ -146,8 +151,8 @@ class TestExperimentalOptions:
         defaults = experimental_form_defaults({CONF_SUPPLY_PI_KP: 0.3}, None)
 
         assert defaults[CONF_SUPPLY_PI_KP] == 0.3
-        assert defaults[CONF_SUPPLY_PI_TI_MINUTES] == DEFAULT_SUPPLY_PI_TI_MINUTES
-        assert defaults[CONF_SUPPLY_PI_MIN_POWER_W] == DEFAULT_SUPPLY_PI_MIN_POWER_W
+        assert defaults[CONF_SUPPLY_PI_TI_MINUTES] == number_default(CONF_SUPPLY_PI_TI_MINUTES)
+        assert defaults[CONF_SUPPLY_PI_MIN_POWER_W] == number_default(CONF_SUPPLY_PI_MIN_POWER_W)
 
     def test_process_experimental_input_keeps_supply_advice_sensor(self):
         """Experimental input should normalize the optional supply advice sensor."""
@@ -189,7 +194,7 @@ class TestExperimentalOptions:
 
         assert processed[CONF_SUPPLY_ADVICE_SENSOR] == "sensor.supply_advice"
         assert processed[CONF_SUPPLY_PI_KP] == 0.25
-        assert processed[CONF_SUPPLY_PI_TI_MINUTES] == DEFAULT_SUPPLY_PI_TI_MINUTES
+        assert processed[CONF_SUPPLY_PI_TI_MINUTES] == number_default(CONF_SUPPLY_PI_TI_MINUTES)
 
     def test_process_experimental_input_clears_omitted_sensors(self):
         """HA omits emptied optional selectors; that must clear the option."""
@@ -295,6 +300,28 @@ class TestWaterDeviceOptions:
         assert device[CONF_CLIMATE_ENTITY] == "climate.hp1"
         assert device[CONF_ALLOW_ON_OFF_CONTROL] is True
 
+    def test_device_defaults_fall_back_for_unset_values(self):
+        """A stored None falls back to the role default; stored values are kept."""
+        defaults = air_device_defaults(
+            {
+                CONF_ENERGY_SENSOR: "sensor.hp2_power",
+                CONF_LOWER_SETPOINT_OFFSET_HEATING: None,
+                CONF_LOWER_SETPOINT_OFFSET_COOLING: -2.0,
+            },
+            None,
+        )
+
+        assert defaults[CONF_ENERGY_SENSOR] == "sensor.hp2_power"
+        assert defaults[CONF_LOWER_SETPOINT_OFFSET_HEATING] == DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST
+        assert defaults[CONF_LOWER_SETPOINT_OFFSET_COOLING] == -2.0
+        assert defaults[CONF_ALLOW_ON_OFF_CONTROL] is False
+
+    def test_air_device_defaults_without_existing_device(self):
+        defaults = air_device_defaults(None, None)
+
+        assert defaults[CONF_ENERGY_SENSOR] is None
+        assert defaults[CONF_LOWER_SETPOINT_OFFSET_COOLING] == DEFAULT_LOWER_SETPOINT_OFFSET_COOLING
+
     @pytest.mark.parametrize(
         "processor, input_data, climate_entity",
         [
@@ -337,6 +364,16 @@ class TestAdvancedOptions:
         processed = process_advanced_input({CONF_MAXIMUM_OVERSHOOT: 1.2})
 
         assert processed[CONF_MAXIMUM_OVERSHOOT] == 1.2
+
+    def test_advanced_schema_round_trips_defaults(self):
+        """Every advanced option is in the form; submitting it unchanged stores the defaults."""
+        schema = build_advanced_schema(advanced_form_defaults({}, None))
+
+        processed = process_advanced_input(
+            flatten_section_data(schema({"setpoints": {}, "assist": {}}))
+        )
+
+        assert processed == {option.key: option.default for option in ADVANCED_OPTIONS}
 
     def test_validate_advanced_input_accepts_defaults(self):
         assert validate_advanced_input({}) == {}

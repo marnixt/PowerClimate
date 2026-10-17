@@ -235,12 +235,12 @@ To access: **Settings → Devices & Services → Integrations → PowerClimate �
 
 ## Configuration Constants
 
-All control parameters are defined in `const.py` and can be adjusted:
+Absolute setpoint limits and the assist tuning are set under **Options → Advanced options**.
+
+The device offset defaults are defined in `const.py`:
 
 | Constant | Default | Description |
 |----------|---------|-------------|
-| `DEFAULT_MIN_SETPOINT` | 16.0 | Absolute minimum temperature that will ever be sent to a pump. |
-| `DEFAULT_MAX_SETPOINT` | 30.0 | Absolute maximum temperature sent to any pump. |
 | `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | -0.3 | HP1 minimal-mode offset relative to its own sensed temperature. |
 | `DEFAULT_UPPER_SETPOINT_OFFSET_HP1` | 1.5 | HP1 ceiling offset relative to its sensed temperature. |
 | `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Assist minimal-mode offset (room satisfied). |

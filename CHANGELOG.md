@@ -10,6 +10,7 @@ This file consolidates release notes and highlights useful for HACS and users.
 - **Supply-temperature control is calm and spike-proof**: the controller uses a moving average of the supply temperature, holds its correction during a sudden supply spike (such as a boiler making hot water through the same pipe) and only moves the setpoint by at least 0.2 °C.
 - **Assist pumps in the Supply advice preset** follow room demand instead of receiving the advised supply temperature as their setpoint.
 - **HPx Behavior sensors are now HPx Mode sensors**: the state is the mode PowerClimate runs the pump in (`off`, `minimal`, `setpoint`, `boost`, `supply_advice`) instead of a long text; the pump's status is in the attributes, without the `hpX_` prefix. The entity IDs stay the same.
+- **Diagnostics use the option names**: the `config` section of the diagnostics download lists every numeric option under its stored name (for example `min_setpoint_override` instead of `min_setpoint`).
 
 **Added**
 - **Main only preset**: PowerClimate runs as in `none`, but with only the main heat pump — the water heat pump, or the first air heat pump without one. Other heat pumps with on/off control are turned off and stay off; the rest are left untouched.
