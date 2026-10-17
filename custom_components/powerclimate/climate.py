@@ -5,7 +5,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.climate import ClimateEntity
@@ -538,7 +538,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             self._water_overshoot_since = None
             return False
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if self._water_overshoot_since is None:
             self._water_overshoot_since = now
             return False
@@ -809,7 +809,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 water_temp=water_temp,
                 power=current_power,
                 overshoot=self._water_overshoot(),
-                now=datetime.now(timezone.utc),
+                now=datetime.now(UTC),
             ),
         )
 

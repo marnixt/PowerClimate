@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -221,7 +221,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         except (TypeError, ValueError):
             return None
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window = timedelta(seconds=window_seconds)
 
         # Prune old entries and add new reading

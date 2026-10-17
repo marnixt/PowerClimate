@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
@@ -201,10 +201,10 @@ class DeviceCommander:
         if not last_call:
             return False
         return (
-            datetime.now(timezone.utc) - last_call
+            datetime.now(UTC) - last_call
         ).total_seconds() < MIN_SET_CALL_INTERVAL_SECONDS
 
     @staticmethod
     def _mark_call(store: dict[str, datetime], entity_id: str) -> None:
         """Mark a call timestamp for an entity."""
-        store[entity_id] = datetime.now(timezone.utc)
+        store[entity_id] = datetime.now(UTC)

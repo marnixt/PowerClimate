@@ -1,12 +1,12 @@
 """Tests for the supply-temperature control (supply advice preset)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from custom_components.powerclimate.mode_targets import SetpointLimits
 from custom_components.powerclimate.supply_control import SupplyController
 
-T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+T0 = datetime(2026, 1, 1, tzinfo=UTC)
 # The water heat pump's heating offsets around its measured temperature.
 LIMITS = SetpointLimits(16.0, 30.0, -0.3, 1.5)
 

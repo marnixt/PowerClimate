@@ -9,7 +9,7 @@ Timer states are persisted to disk to survive Home Assistant restarts.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from .assist_conditions import AssistConditionChecker
@@ -93,7 +93,7 @@ class AssistPumpController:
         if self._storage is None or self._hass is None:
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if self._last_persist_time is not None:
             elapsed = (now - self._last_persist_time).total_seconds()
             if elapsed < PERSIST_INTERVAL_SECONDS:
@@ -152,7 +152,7 @@ class AssistPumpController:
         Returns:
             Updated AssistTimerState.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         state = self.get_timer_state(entity_id)
 
         # Calculate time delta per entity: each pump is updated in turn within
@@ -227,7 +227,7 @@ class AssistPumpController:
         """
         state = self.get_timer_state(entity_id)
         timer_threshold = self._config.assist_timer_seconds
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Clear previous target
         state.target_hvac_mode = None
@@ -313,7 +313,7 @@ class AssistPumpController:
             entity_id: Climate entity ID.
         """
         state = self.get_timer_state(entity_id)
-        state.last_on = datetime.now(timezone.utc)
+        state.last_on = datetime.now(UTC)
         state.running_state = True
         _LOGGER.info(
             "Assist ON for %s: condition=%s, timer=%.1fs",
@@ -330,7 +330,7 @@ class AssistPumpController:
             entity_id: Climate entity ID.
         """
         state = self.get_timer_state(entity_id)
-        state.last_off = datetime.now(timezone.utc)
+        state.last_off = datetime.now(UTC)
         state.running_state = False
         _LOGGER.info(
             "Assist OFF for %s: condition=%s, timer=%.1fs",
@@ -350,7 +350,7 @@ class AssistPumpController:
         state.on_timer_seconds = 0.0
         state.off_timer_seconds = 0.0
         state.active_condition = "none"
-        state.last_off = datetime.now(timezone.utc)
+        state.last_off = datetime.now(UTC)
         state.running_state = False
         self._schedule_persist()
 

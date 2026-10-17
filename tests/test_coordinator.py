@@ -4,7 +4,7 @@ Focuses on the pure-Python helpers _compute_derivative and _read_float so
 no Home Assistant event loop is required.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -35,7 +35,7 @@ def _make_coordinator() -> OSDataUpdateCoordinator:
 
 def _ts(seconds_ago: float = 0.0) -> datetime:
     """Return a UTC timestamp offset by the given number of seconds from now."""
-    return datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)
+    return datetime.now(UTC) - timedelta(seconds=seconds_ago)
 
 
 # ---------------------------------------------------------------------------

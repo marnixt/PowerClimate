@@ -1,5 +1,5 @@
 """Tests for PowerClimate timer storage."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +17,7 @@ class TestDatetimeHelpers:
     """Tests for datetime conversion helpers."""
 
     def test_datetime_to_iso_with_value(self):
-        dt = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 12, 30, 45, tzinfo=UTC)
         result = _datetime_to_iso(dt)
         assert result == "2024-01-15T12:30:45+00:00"
 
@@ -53,7 +53,7 @@ class TestTimerStorageSerialization:
 
     def test_serialize_states(self):
         """Should serialize AssistTimerState to JSON-compatible dict."""
-        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         states = {
             "climate.hp1": AssistTimerState(
                 on_timer_seconds=120.0,
@@ -155,7 +155,7 @@ class TestTimerStorageRoundTrip:
 
     def test_round_trip_preserves_data(self):
         """Serialization and deserialization should preserve data."""
-        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         original = {
             "climate.hp1": AssistTimerState(
                 on_timer_seconds=123.5,

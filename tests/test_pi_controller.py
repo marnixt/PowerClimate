@@ -1,12 +1,12 @@
 """Tests for the pure PI controller."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from custom_components.powerclimate.pi_controller import PIConfig, PIController
 
-T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+T0 = datetime(2026, 1, 1, tzinfo=UTC)
 # kp 0.1, integral time 10 min, output within the water heat pump offsets.
 CONFIG = PIConfig(kp=0.1, ti_seconds=600.0, output_min=-0.3, output_max=1.5)
 

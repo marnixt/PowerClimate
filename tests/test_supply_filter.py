@@ -1,13 +1,13 @@
 """Tests for the supply temperature filter."""
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from custom_components.powerclimate.supply_filter import SupplyFilter
 
-T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _at(seconds: float) -> datetime:

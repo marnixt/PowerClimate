@@ -1,6 +1,6 @@
 """Tests for PowerClimate data models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from custom_components.powerclimate.models import AssistTimerState
 
@@ -22,7 +22,7 @@ def test_assist_timer_state_default_field_values() -> None:
 def test_assist_timer_state_is_mutable() -> None:
     """Fields should be assignable after construction."""
     state = AssistTimerState()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     state.on_timer_seconds = 120.0
     state.running_state = True

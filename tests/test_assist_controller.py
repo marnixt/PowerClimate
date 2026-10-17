@@ -1,6 +1,6 @@
 """Tests for PowerClimate assist controller."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 from custom_components.powerclimate.assist_controller import AssistPumpController
@@ -242,7 +242,7 @@ def test_evaluate_action_blocks_on_within_min_off_period() -> None:
     state.on_timer_seconds = 65.0
     state.active_condition = "eta_high"
     # Device just turned off 10 seconds ago; min_off = 5 min = 300s
-    state.last_off = datetime.now(timezone.utc) - timedelta(seconds=10)
+    state.last_off = datetime.now(UTC) - timedelta(seconds=10)
 
     action, _ = controller.evaluate_action("climate.hp1", is_running=False)
     assert action is None
@@ -256,7 +256,7 @@ def test_evaluate_action_blocks_off_within_min_on_period() -> None:
     state.off_timer_seconds = 65.0
     state.active_condition = "overshoot"
     # Device just turned on 10 seconds ago; min_on = 5 min = 300s
-    state.last_on = datetime.now(timezone.utc) - timedelta(seconds=10)
+    state.last_on = datetime.now(UTC) - timedelta(seconds=10)
 
     action, _ = controller.evaluate_action("climate.hp1", is_running=True)
     assert action is None
@@ -312,7 +312,7 @@ def test_update_timers_accumulates_independently_per_pump() -> None:
     config.assist_water_temp_threshold = 40.0
     config.assist_stall_temp_delta = 0.5
     controller = AssistPumpController(config)
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
 
     for cycle in range(6):
         with patch.object(module, "datetime") as fake_datetime:
