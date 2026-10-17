@@ -295,23 +295,16 @@
         "title": "Experimental",
         "description": "Experimental features. These settings may change without notice.",
         "sections": {
-          "sensors": {
-            "name": "Experimental sensors",
-            "data": {
-              "supply_advice_sensor_entity_id": "Supply advice sensor"
-            },
-            "data_description": {
-              "supply_advice_sensor_entity_id": "Optional sensor with an advised supply temperature, from any source: a heating curve template, an MPC integration or other. Enables the Supply advice preset; PowerClimate steers the water heat pump's setpoint so the measured supply temperature follows the advice."
-            }
-          },
           "supply_control": {
-            "name": "Supply temperature control (Supply advice preset)",
+            "name": "Supply temperature control",
             "data": {
+              "supply_advice_sensor_entity_id": "Supply advice sensor",
               "supply_pi_kp": "Proportional gain",
               "supply_pi_ti_minutes": "Integral time",
               "supply_pi_min_power_w": "Minimum compressor power"
             },
             "data_description": {
+              "supply_advice_sensor_entity_id": "Optional sensor with an advised supply temperature, from any source: a heating curve template, an MPC integration or other. Enables the Supply advice preset; PowerClimate steers the water heat pump's setpoint so the measured supply temperature follows the advice.",
               "supply_pi_kp": "Setpoint change in °C per °C difference between advised and measured supply temperature (default: 0.15).",
               "supply_pi_ti_minutes": "Time in which the integral adds one proportional step; longer is slower and calmer (default: 45 minutes).",
               "supply_pi_min_power_w": "Below this water heat pump power the compressor counts as idle and the integral stops (default: 200 W)."

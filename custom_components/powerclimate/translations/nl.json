@@ -295,23 +295,16 @@
         "title": "Experimenteel",
         "description": "Experimentele functies. Deze instellingen kunnen zonder aankondiging veranderen.",
         "sections": {
-          "sensors": {
-            "name": "Experimentele sensoren",
-            "data": {
-              "supply_advice_sensor_entity_id": "Aanvoeradviessensor"
-            },
-            "data_description": {
-              "supply_advice_sensor_entity_id": "Optionele sensor met een geadviseerde aanvoertemperatuur, uit elke bron: een stooklijn-template, een MPC-integratie of iets anders. Maakt de preset Aanvoeradvies beschikbaar; PowerClimate stuurt het setpoint van de waterwarmtepomp zo bij dat de gemeten aanvoertemperatuur het advies volgt."
-            }
-          },
           "supply_control": {
-            "name": "Aanvoertemperatuurregeling (preset Aanvoeradvies)",
+            "name": "Aanvoertemperatuurregeling",
             "data": {
+              "supply_advice_sensor_entity_id": "Aanvoeradviessensor",
               "supply_pi_kp": "Proportionele versterking",
               "supply_pi_ti_minutes": "Integratietijd",
               "supply_pi_min_power_w": "Minimaal compressorvermogen"
             },
             "data_description": {
+              "supply_advice_sensor_entity_id": "Optionele sensor met een geadviseerde aanvoertemperatuur, uit elke bron: een stooklijn-template, een MPC-integratie of iets anders. Maakt de preset Aanvoeradvies beschikbaar; PowerClimate stuurt het setpoint van de waterwarmtepomp zo bij dat de gemeten aanvoertemperatuur het advies volgt.",
               "supply_pi_kp": "Setpointwijziging in °C per °C verschil tussen geadviseerde en gemeten aanvoertemperatuur (standaard: 0,15).",
               "supply_pi_ti_minutes": "Tijd waarin het integrerende deel één proportionele stap toevoegt; langer is trager en rustiger (standaard: 45 minuten).",
               "supply_pi_min_power_w": "Onder dit vermogen van de waterwarmtepomp telt de compressor als stilstaand en stopt het integrerende deel (standaard: 200 W)."

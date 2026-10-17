@@ -181,8 +181,10 @@ class TestExperimentalOptions:
         schema = build_experimental_schema(experimental_form_defaults({}, None))
         submitted = schema(
             {
-                "sensors": {CONF_SUPPLY_ADVICE_SENSOR: "sensor.supply_advice"},
-                "supply_control": {CONF_SUPPLY_PI_KP: 0.25},
+                "supply_control": {
+                    CONF_SUPPLY_ADVICE_SENSOR: "sensor.supply_advice",
+                    CONF_SUPPLY_PI_KP: 0.25,
+                },
             }
         )
 

@@ -787,13 +787,6 @@ def validate_advanced_input(data: dict[str, Any]) -> dict[str, str]:
 
 def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the schema for experimental options."""
-    sensor_fields = build_fields(
-        defaults,
-        (
-            (CONF_SUPPLY_ADVICE_SENSOR, entity_selector("sensor")),
-        ),
-    )
-
     supply_control_options = [
         (CONF_SUPPLY_PI_KP, {"min": 0.01, "max": 1.0, "step": 0.01}),
         (
@@ -807,18 +800,16 @@ def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
     ]
     supply_control_fields = build_fields(
         defaults,
-        tuple(
-            (field_name, selector({"number": selector_config}))
-            for field_name, selector_config in supply_control_options
+        (
+            (CONF_SUPPLY_ADVICE_SENSOR, entity_selector("sensor")),
+            *(
+                (field_name, selector({"number": selector_config}))
+                for field_name, selector_config in supply_control_options
+            ),
         ),
     )
 
-    return sectioned_schema(
-        (
-            ("sensors", sensor_fields, False),
-            ("supply_control", supply_control_fields, True),
-        ),
-    )
+    return sectioned_schema((("supply_control", supply_control_fields, False),))
 
 
 def experimental_form_defaults(
@@ -845,10 +836,8 @@ def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     """Process and validate experimental options input."""
     # An emptied optional selector is omitted from the submitted data, so a
     # missing key means "cleared".
-    data: dict[str, Any] = {}
-    for key in (CONF_SUPPLY_ADVICE_SENSOR,):
-        sensor_entity_id = str(user_input.get(key) or "").strip()
-        data[key] = sensor_entity_id or None
+    sensor_entity_id = str(user_input.get(CONF_SUPPLY_ADVICE_SENSOR) or "").strip()
+    data: dict[str, Any] = {CONF_SUPPLY_ADVICE_SENSOR: sensor_entity_id or None}
     # The number fields always carry a default; keep the stored value when one
     # is missing.
     for key in (
