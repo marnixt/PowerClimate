@@ -2,7 +2,10 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
-## Unreleased
+## 0.9.0-alpha.1 — 2026-10-18
+
+**Summary**
+Alpha of 0.9.0: the Supply advice preset steers the water heat pump's supply temperature with a PI controller, a new Main only preset, and simpler sensors. The Thermal and Solar presets are removed. Several changes break existing setups; read **Changed** and **Removed** before upgrading.
 
 **Changed**
 - **MPC preset is now the Supply advice preset**: the preset (`supply_advice`), its sensor option (`supply_advice_sensor_entity_id`) and the climate attributes (`supply_advice_*`) are renamed, because any source of an advised supply temperature works — an MPC integration or a heating-curve template sensor. The source-specific `mpc_*` attributes are gone. Select the sensor again under Options → Experimental and update automations that select the `mpc` preset.
@@ -21,6 +24,12 @@ This file consolidates release notes and highlights useful for HACS and users.
 - **Thermal preset and internal thermal model**: the `Thermal` preset, the outdoor temperature sensor option and the `Internal MPC`, `Thermal Model Status` and `Thermal Advised Temperature` sensors are gone. Without an outdoor sensor the model's advice stayed at its 55 °C maximum. Use an external source for the advised supply temperature instead. A saved `Thermal` preset falls back to `none`; remove the orphaned entities by hand. The model's storage file is no longer used.
 - **Solar preset and power budgets**: the `Solar` preset, the house net power sensor option, the `Power Budget` sensor and the `powerclimate.set_power_budget` / `powerclimate.clear_power_budget` services are gone. A saved `Solar` preset falls back to `none`; remove the orphaned `Power Budget` entity by hand.
 - **Thermal Summary and Assist Summary sensors**: the same information is in the climate entity's attributes and in the HPx Mode sensors. Remove the orphaned entities by hand. The assist threshold settings are no longer repeated in the climate attributes.
+
+**Internal**
+- The numeric options are defined in one table; supply-temperature control and the staging rules moved out of the climate entity into separately tested modules.
+
+**Compatibility**
+- Target Home Assistant: 2024.11.0+
 
 ## 0.8.0 — 2026-10-04
 
