@@ -28,7 +28,7 @@ Not affiliated with Home Assistant.
 - **Heating and cooling modes**: Air-based heat pumps that support both heat and cool can be used in either mode. The water-based heat pump (if configured) is automatically excluded from cooling.
 - **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
 - **Thermostat mirroring**: Optionally mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off state is ignored.
-- **Diagnostics**: Thermal summary, per-HP behavior, derivatives and total power.
+- **Diagnostics**: Per-HP mode, derivatives and total power.
 - **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
 ![Config air warmtepomp](docs/images/Dashboard%20example%201.png)

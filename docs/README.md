@@ -19,7 +19,7 @@ and coordinate their setpoints using temperature offsets.
 - **Multi-heatpump orchestration**: One virtual thermostat coordinates an optional water-based device and any number of air-based assist heat pumps.
 - **Offsets + guardrails**: Lower/upper offsets per device and global min/max setpoints.
 - **Assists: manual or automatic ON/OFF**: Optional timers + anti-short-cycle protections.
-- **Diagnostics**: Thermal summary, per-HP behavior, derivatives and total power.
+- **Diagnostics**: Per-HP mode, derivatives and total power.
 - **Thermostat mirroring**: Mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off is ignored.
 - **Standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
 
@@ -248,8 +248,9 @@ All control parameters are defined in `const.py` and can be adjusted:
 
 ## Sensors
 
-PowerClimate provides several diagnostic sensors to monitor system state. Text sensors 
-use the `powerclimate_text_*` naming pattern for easy exclusion from recorder.
+PowerClimate provides several diagnostic sensors to monitor system state. The
+climate entity carries the full system state (room, ETA, per-pump status,
+assist timers, supply control) as attributes.
 
 Sensors are added only for pumps that have a configured `climate_entity_id`.
 
@@ -257,30 +258,14 @@ Sensors are added only for pumps that have a configured `climate_entity_id`.
 |--------|-------------------|-------------|
 | Temperature Derivative | `sensor.powerclimate_derivative_*` | Room temperature change rate (°C/hour) |
 | Water Derivative | `sensor.powerclimate_water_derivative_*` | Water temperature change rate (°C/hour) |
-| **Thermal Summary** | `sensor.powerclimate_text_thermal_summary_*` | Human-readable system state with all pump temps and ETAs |
-| **Assist Summary** | `sensor.powerclimate_text_assist_summary_*` | Room state, trend, and per-pump timer/condition status |
-| **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, water temperature when available |
-| **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps, and PowerClimate mode for each configured assist pump |
+| **HPx Mode** | `sensor.powerclimate_text_hp*_behavior_*` | Mode PowerClimate runs the pump in (`off`, `minimal`, `setpoint`, `boost`, `supply_advice`), with the pump's status as attributes |
 | Total Power | `sensor.powerclimate_total_power_*` | Aggregated power consumption from all configured pumps |
 | Target Temperature | `sensor.powerclimate_target_temperature_*` | PowerClimate's room target, for integrations that only accept a sensor (not a diagnostic entity) |
 | Supply Correction | `sensor.powerclimate_supply_correction_*` | Setpoint correction of the supply-temperature controller (Supply advice preset), with its state as attributes |
 
-**Text Sensor Details:**
-- All text sensors (prefixed `powerclimate_text_*`) can be excluded from recorder:
-  ```yaml
-  recorder:
-    exclude:
-      entity_globs:
-        - sensor.powerclimate_text_*
-  ```
-- Behavior sensors label each pump as `<first word> (hpX)` to match the Thermal Summary format
-- Behavior sensors are created for every configured pump, not only the first five
-- Assist Summary shows:
-  - Room state (temp, target, delta, trend, ETA)
-  - Per-pump status with timer countdown (e.g., "Water≥40°C ON:3:45/5:00")
-  - Condition labels reflect configured thresholds (e.g., ETA>60m / ETA<15m)
-  - Anti-short-cycle blocking when applicable (e.g., "Blocked(min_off 420s)")
-  - "Manual control" for pumps without automatic ON/OFF enabled
+The HPx Mode attributes include temperatures, derivatives, ETA, power and, for
+assist pumps, the assist condition, timers and what blocks a switch.
+A mode sensor is created for every configured pump, not only the first five.
 
 ## Heat Pump Tips
 

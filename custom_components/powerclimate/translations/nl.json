@@ -350,14 +350,15 @@
       "total_power": {
         "name": "Totaal vermogen"
       },
-      "thermal_summary": {
-        "name": "Thermisch overzicht"
-      },
-      "assist_summary": {
-        "name": "Assist-overzicht"
-      },
-      "hp_behavior": {
-        "name": "{label} gedrag"
+      "hp_mode": {
+        "name": "{label} modus",
+        "state": {
+          "off": "Uit",
+          "minimal": "Minimaal",
+          "setpoint": "Setpoint",
+          "boost": "Boost",
+          "supply_advice": "Aanvoeradvies"
+        }
       },
       "target_temperature": {
         "name": "Doeltemperatuur"

@@ -4,7 +4,6 @@ from custom_components.powerclimate.utils import (
     clamp_setpoint,
     clamp_value,
     compute_eta_hours,
-    format_timer,
     generate_device_id,
     generate_device_name,
     parse_device_offset,
@@ -172,25 +171,6 @@ class TestClampSetpoint:
         # Ceiling = min(35, 30) = 30
         result = clamp_setpoint(35.0, 25.0, 0.0, 10.0, 16.0, 30.0)
         assert result == 30.0
-
-
-class TestFormatTimer:
-    """Tests for format_timer function."""
-
-    def test_basic_format(self):
-        assert format_timer(90, 300) == "1:30/5:00"
-
-    def test_zero_elapsed(self):
-        assert format_timer(0, 300) == "0:00/5:00"
-
-    def test_complete_timer(self):
-        assert format_timer(300, 300) == "5:00/5:00"
-
-    def test_negative_values_clamped(self):
-        assert format_timer(-10, 300) == "0:00/5:00"
-
-    def test_over_one_hour(self):
-        assert format_timer(3661, 7200) == "61:01/120:00"
 
 
 class TestSlugify:

@@ -14,7 +14,7 @@ Home Assistant custom integratie om meerdere warmtepomp climate devices samen te
 - **Combineren meerdere warmtepompen**: een virtuele thermostaat die een water-warmtepomp en lucht warmtepompen (Airco's) bestuurt.
 - **Offsets + guardrails**: lower/upper offset per apparaat en globale min/max setpoints.
 - **Assists: handmatig of automatisch AAN/UIT**: optionele timers + anti-short-cycle beveiliging.
-- **Diagnostiek**: thermische samenvatting, per-HP behavior, afgeleides en totaal vermogen.
+- **Diagnostiek**: modus per HP, afgeleides en totaal vermogen.
 - **Thermostaat-mirroring**: kopieer alleen setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate; HVAC aan/uit van die thermostaten wordt genegeerd.
 - **Standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 
@@ -241,8 +241,9 @@ Alle controle-parameters staan in `const.py` en kunnen aangepast worden:
 
 ## Sensoren
 
-PowerClimate levert meerdere diagnostische sensors om systeemstatus te monitoren. Text sensors
-gebruiken het `powerclimate_text_*` naming pattern zodat je ze makkelijk kunt excluden uit recorder.
+PowerClimate levert meerdere diagnostische sensoren om de systeemstatus te volgen. De
+climate-entity heeft de volledige systeemstatus (ruimte, ETA, status per pomp,
+assist-timers, aanvoerregeling) als attributen.
 
 Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_entity_id`.
 
@@ -250,30 +251,14 @@ Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_e
 |--------|-------------------|-------------|
 | Temperature Derivative | `sensor.powerclimate_derivative_*` | Verandering van ruimtetemperatuur (°C/uur) |
 | Water Derivative | `sensor.powerclimate_water_derivative_*` | Verandering van watertemperatuur (°C/uur) |
-| **Thermal Summary** | `sensor.powerclimate_text_thermal_summary_*` | Leesbare systeemstatus met alle pomptemps en ETAs |
-| **Assist Summary** | `sensor.powerclimate_text_assist_summary_*` | Room state, trend, en per-pomp timer/conditie status |
-| **HP1 Behavior** | `sensor.powerclimate_text_hp1_behavior_*` | HVAC status, temps, watertemperatuur wanneer beschikbaar |
-| **HP2+ Behavior** | `sensor.powerclimate_text_hp*_behavior_*` | HVAC status, temps en PowerClimate-mode voor elke geconfigureerde assistpomp |
+| **HPx modus** | `sensor.powerclimate_text_hp*_behavior_*` | Modus waarin PowerClimate de pomp laat draaien (`off`, `minimal`, `setpoint`, `boost`, `supply_advice`), met de status van de pomp als attributen |
 | Total Power | `sensor.powerclimate_total_power_*` | Opgeteld vermogen van geconfigureerde pompen |
 | Doeltemperatuur | `sensor.powerclimate_target_temperature_*` | Kamerdoel van PowerClimate, voor integraties die alleen een sensor accepteren (geen diagnostische entity) |
 | Aanvoercorrectie | `sensor.powerclimate_supply_correction_*` | Setpointcorrectie van de aanvoertemperatuurregeling (preset Aanvoeradvies), met de toestand als attributen |
 
-**Text sensor details:**
-- Alle text sensors (prefix `powerclimate_text_*`) kun je excluden uit recorder:
-  ```yaml
-  recorder:
-    exclude:
-      entity_globs:
-        - sensor.powerclimate_text_*
-  ```
-- Behavior sensors labelen elke pomp als `<first word> (hpX)` om te matchen met de Thermal Summary
-- Behavior-sensoren worden aangemaakt voor elke geconfigureerde pomp, niet alleen voor de eerste vijf
-- Assist Summary toont:
-  - Room state (temp, target, delta, trend, ETA)
-  - Per-pomp status met timer countdown (bijv. "Water≥40 °C ON:3:45/5:00")
-  - Conditie labels reflecteren je thresholds (bijv. ETA>60m / ETA<15m)
-  - Anti-short-cycle blokkering indien van toepassing (bijv. "Blocked(min_off 420s)")
-  - "Manual control" voor pompen zonder automatische AAN/UIT
+De attributen van HPx modus bevatten temperaturen, afgeleides, ETA, vermogen en,
+voor assistpompen, de assist-conditie, timers en wat een schakeling blokkeert.
+Er wordt een modussensor aangemaakt voor elke geconfigureerde pomp, niet alleen voor de eerste vijf.
 
 ## Warmtepomp tips
 

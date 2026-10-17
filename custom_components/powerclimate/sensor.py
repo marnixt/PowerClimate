@@ -5,8 +5,8 @@ and calculations from the PowerClimate integration:
 
 - **Temperature Derivative**: Rate of room temperature change (°C/hour)
 - **Water Derivative**: Rate of water temperature change (°C/hour)
-- **Summary**: Human-readable summary of system state
-- **Assist Behavior**: Simple per-stage view showing HVAC state and assist mode
+- **Heat pump mode**: Mode PowerClimate runs each heat pump in, with its
+  status as attributes
 - **Total Power**: Aggregated power consumption from all configured heat pumps
 - **Target Temperature**: PowerClimate's room target, for integrations that
   only accept a sensor
@@ -29,20 +29,14 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_CLIMATE_ENTITY,
-    CONF_DEVICE_ROLE,
     CONF_DEVICES,
     COORDINATOR,
-    DEVICE_ROLE_WATER,
     DOMAIN,
 )
 from .helpers import (
     merged_entry_data,
 )
-from .sensors.assist import (
-    PowerClimateAssistSummarySensor,
-    PowerClimateHP1BehaviorSensor,
-    PowerClimateHPBehaviorSensor,
-)
+from .sensors.heat_pump import PowerClimateHeatPumpModeSensor
 from .sensors.measurements import (
     PowerClimateDerivativeSensor,
     PowerClimateSupplyCorrectionSensor,
@@ -50,15 +44,11 @@ from .sensors.measurements import (
     PowerClimateTotalPowerSensor,
     PowerClimateWaterDerivativeSensor,
 )
-from .sensors.summary import PowerClimateSummarySensor
 
 __all__ = [
-    "PowerClimateAssistSummarySensor",
     "PowerClimateDerivativeSensor",
-    "PowerClimateHP1BehaviorSensor",
-    "PowerClimateHPBehaviorSensor",
+    "PowerClimateHeatPumpModeSensor",
     "PowerClimateSupplyCorrectionSensor",
-    "PowerClimateSummarySensor",
     "PowerClimateTargetTemperatureSensor",
     "PowerClimateTotalPowerSensor",
     "PowerClimateWaterDerivativeSensor",
@@ -80,8 +70,6 @@ async def async_setup_entry(
         coordinator,
         entry,
     )
-    summary_sensor = PowerClimateSummarySensor(hass, entry)
-    assist_summary_sensor = PowerClimateAssistSummarySensor(hass, entry)
     total_power_sensor = PowerClimateTotalPowerSensor(
         hass,
         coordinator,
@@ -91,47 +79,25 @@ async def async_setup_entry(
     sensors: list[SensorEntity] = [
         derivative_sensor,
         water_derivative_sensor,
-        summary_sensor,
-        assist_summary_sensor,
         total_power_sensor,
         PowerClimateTargetTemperatureSensor(hass, entry),
         PowerClimateSupplyCorrectionSensor(hass, entry),
     ]
 
-    sensors.extend(_build_behavior_sensors(hass, entry))
+    sensors.extend(_build_heat_pump_sensors(hass, entry))
 
     async_add_entities(sensors)
 
 
-def _build_behavior_sensors(
+def _build_heat_pump_sensors(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> list[SensorEntity]:
-    sensors: list[SensorEntity] = []
-    config = merged_entry_data(entry)
-    devices = config.get(CONF_DEVICES, []) or []
-    for index, device in enumerate(devices):
-        if not device or not device.get(CONF_CLIMATE_ENTITY):
-            continue
-
-        role = f"hp{index + 1}"
-        prefix = role
-        label = f"HP{index + 1}"
-        if device.get(CONF_DEVICE_ROLE) == DEVICE_ROLE_WATER:
-            sensors.append(
-                PowerClimateHP1BehaviorSensor(
-                    hass, entry, role=role, prefix=prefix, label=label
-                )
-            )
-        else:
-            sensors.append(
-                PowerClimateHPBehaviorSensor(
-                    hass,
-                    entry,
-                    role=role,
-                    prefix=prefix,
-                    label=label,
-                )
-            )
-
-    return sensors
+    devices = merged_entry_data(entry).get(CONF_DEVICES, []) or []
+    return [
+        PowerClimateHeatPumpModeSensor(
+            hass, entry, role=f"hp{index + 1}", label=f"HP{index + 1}"
+        )
+        for index, device in enumerate(devices)
+        if device and device.get(CONF_CLIMATE_ENTITY)
+    ]

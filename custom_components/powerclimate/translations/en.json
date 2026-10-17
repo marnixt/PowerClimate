@@ -350,14 +350,15 @@
       "total_power": {
         "name": "Total Power"
       },
-      "thermal_summary": {
-        "name": "Thermal Summary"
-      },
-      "assist_summary": {
-        "name": "Assist Summary"
-      },
-      "hp_behavior": {
-        "name": "{label} Behavior"
+      "hp_mode": {
+        "name": "{label} Mode",
+        "state": {
+          "off": "Off",
+          "minimal": "Minimal",
+          "setpoint": "Setpoint",
+          "boost": "Boost",
+          "supply_advice": "Supply advice"
+        }
       },
       "target_temperature": {
         "name": "Target Temperature"

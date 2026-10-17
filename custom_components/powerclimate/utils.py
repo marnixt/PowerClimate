@@ -86,15 +86,6 @@ def clamp_setpoint(
     return max(floor, min(target, ceiling))
 
 
-def format_timer(elapsed_seconds: int, total_seconds: int) -> str:
-    """Format timer as MM:SS/MM:SS."""
-    elapsed_seconds = max(0, int(elapsed_seconds))
-    total_seconds = max(0, int(total_seconds))
-    em, es = divmod(elapsed_seconds, 60)
-    tm, ts = divmod(total_seconds, 60)
-    return f"{em}:{es:02d}/{tm}:{ts:02d}"
-
-
 def slugify(value: str) -> str:
     """Convert string to lowercase slug with underscores."""
     value = value.strip().lower()

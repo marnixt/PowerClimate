@@ -23,7 +23,7 @@ Niet gelieerd aan Home Assistant.
 - **Multi-warmtepomp orchestration**: een virtuele thermostaat coordineert een optionele waterwarmtepomp (0 of 1) en nul of meer lucht- (assist) warmtepompen.
 - **Per-apparaat offsets + guardrails**: lower/upper offsets per apparaat, plus globale min/max setpoint limieten.
 - **Assists handmatig (default) + optioneel automatisch aan/uit**: jij bepaalt of assists draaien, of laat PowerClimate assist HVAC mode beheren met timers en anti-short-cycle.
-- **Diagnostiek**: thermische samenvatting, per-HP gedrag, afgeleides en totaal vermogen.
+- **Diagnostiek**: modus per HP, afgeleides en totaal vermogen.
 - **Thermostaat-mirroring**: kopieer alleen setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate; HVAC aan/uit van die thermostaten wordt genegeerd.
 - **Werkt met standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
 

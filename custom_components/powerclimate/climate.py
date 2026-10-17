@@ -1334,12 +1334,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "hp_status": hp_status,
             "target_temperature": target_temp,
             "preset_mode": self._attr_preset_mode,
-            "assist_timer_seconds": self._config.assist_timer_seconds,
-            "assist_on_eta_threshold_minutes": self._config.assist_on_eta_threshold_minutes,
-            "assist_off_eta_threshold_minutes": self._config.assist_off_eta_threshold_minutes,
-            "assist_min_on_minutes": self._config.assist_min_on_minutes,
-            "assist_min_off_minutes": self._config.assist_min_off_minutes,
-            "maximum_overshoot": self._config.maximum_overshoot,
             **self._build_supply_advice_summary(),
             **self._supply_pi_summary,
         }
