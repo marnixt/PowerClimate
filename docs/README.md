@@ -79,7 +79,7 @@ room sensors, mirrored thermostats and devices), **Advanced options** and
   - off after a sustained overshoot: when the room stays above target + `Maximum overshoot` for the assist timer duration;
   - off when PowerClimate is turned off or set to cool.
 - Without that option PowerClimate never changes its HVAC mode; you keep control.
-- The water temperature is tracked when a water sensor is configured. PowerClimate also keeps a moving average of it (about two minutes) and ignores readings more than 5 K above that average for up to 10 minutes; the assist conditions and the supply advice control use this smoothed value. The climate attributes show it as `water_temperature_filtered`, with `water_spike` while a spike is ignored.
+- The water temperature is tracked when a water sensor is configured. PowerClimate also keeps a moving average of it (about two minutes) and ignores readings more than 5 K above that average for up to 10 minutes; the assist conditions and the supply advice control use this smoothed value. The climate attributes show the measured value as `water_temperature` and the smoothed value as `water_temperature_filtered`, with `water_spike` while a spike is ignored; both are filled whenever the sensor reports, also while PowerClimate is off.
 
 ### Air-based assist heat pumps (0..n)
 

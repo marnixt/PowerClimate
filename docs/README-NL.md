@@ -79,7 +79,7 @@ wijzigen** (naam, ruimtesensoren, gemirrorde thermostaten en apparaten),
   - uit na aanhoudende doorschot: als de ruimte de duur van de assist-timer boven doel + `Maximale doorschot` blijft;
   - uit als PowerClimate uit gaat of op koelen gezet wordt.
 - Zonder die optie verandert PowerClimate de HVAC-modus nooit; jij houdt de controle.
-- De watertemperatuur wordt gevolgd als er een watersensor is ingesteld. PowerClimate houdt er ook een voortschrijdend gemiddelde van bij (ongeveer twee minuten) en negeert metingen die meer dan 5 K daarboven liggen tot 10 minuten lang; de assist-condities en de aanvoerregeling gebruiken die gemiddelde waarde. De climate-attributen tonen haar als `water_temperature_filtered`, met `water_spike` zolang een piek genegeerd wordt.
+- De watertemperatuur wordt gevolgd als er een watersensor is ingesteld. PowerClimate houdt er ook een voortschrijdend gemiddelde van bij (ongeveer twee minuten) en negeert metingen die meer dan 5 K daarboven liggen tot 10 minuten lang; de assist-condities en de aanvoerregeling gebruiken die gemiddelde waarde. De climate-attributen tonen de gemeten waarde als `water_temperature` en de gemiddelde als `water_temperature_filtered`, met `water_spike` zolang een piek genegeerd wordt; beide zijn gevuld zodra de sensor een waarde heeft, ook als PowerClimate uit staat.
 
 ### Luchtwarmtepompen (assists, 0..n)
 

@@ -130,7 +130,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._assist_modes: dict[str, str] = {}
         self._mode_state = "off"
         self._delta: float | None = None
-        self._water_temperature: float | None = None
         self._room_eta_hours: float | None = None
         self._summary_payload: dict[str, Any] | None = None
         self._summary_signal = summary_signal(entry.entry_id)
@@ -367,7 +366,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         # Initialize tracking
         desired_devices: set[str] = set()
         desired_targets: dict[str, float] = {}
-        water_temp = None
         mode = "off"
 
         if not hvac_disabled:
@@ -376,18 +374,18 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             )
 
             # Process water device
-            water_result = await self._process_water_device(
+            water_mode = await self._process_water_device(
                 device_payloads, desired_devices, desired_targets
             )
-            if water_result:
-                water_temp, mode = water_result
+            if water_mode:
+                mode = water_mode
 
             # Assists use the smoothed water temperature, so a short spike
             # (e.g. a boiler making hot water) does not turn them on.
             air_mode = await self._process_air_devices(
                 room_temp,
                 room_at_target,
-                self._water_filtered() if water_result else None,
+                self._water_filtered() if water_mode else None,
                 device_payloads,
                 desired_devices,
                 desired_targets,
@@ -410,7 +408,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             if str(payload.get("hvac_mode") or "").lower() != HVACMode.OFF.value
         }
         self._active_devices = desired_devices | actual_running
-        self._water_temperature = water_temp
         self._mode_state = mode
         self._attr_hvac_action = staging.hvac_action(
             self._attr_hvac_mode, bool(self._active_devices)
@@ -442,7 +439,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         self._active_devices = set()
         self._mode_state = "off"
         self._delta = None
-        self._water_temperature = None
         self._assist_modes = {}
         self.async_write_ha_state()
         self._emit_summary([], device_payloads)
@@ -452,13 +448,13 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         device_payloads: dict[str, dict[str, Any]],
         desired_devices: set[str],
         desired_targets: dict[str, float],
-    ) -> tuple[float | None, str] | None:
+    ) -> str | None:
         """Process water-based heat pump.
 
         In cool mode the water HP is turned off (water HPs cannot cool).
 
         Returns:
-            Tuple of (water_temp, mode) or None if no water device.
+            The mode ("off" or "water_hp_only"), or None without a water device.
         """
         water_device_tuple = self._config.get_water_device()
         if not water_device_tuple:
@@ -478,7 +474,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             if device.get(CONF_ALLOW_ON_OFF_CONTROL) and hvac_mode != HVACMode.OFF.value:
                 await self._commands.ensure_mode(entity_id, HVACMode.OFF)
             self._hp_modes[entity_id] = MODE_OFF
-            return water_temp, "off"
+            return "off"
 
         current_temp = safe_float(payload.get("current_temperature"))
         current_target = safe_float(payload.get("target_temperature"))
@@ -488,7 +484,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         if await self._handle_water_overshoot_control(device, entity_id, is_running):
             self._hp_modes[entity_id] = MODE_OFF
-            return water_temp, "off"
+            return "off"
 
         if (
             device.get(CONF_ALLOW_ON_OFF_CONTROL)
@@ -496,7 +492,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             and not self._water_demand()
         ):
             self._hp_modes[entity_id] = MODE_OFF
-            return water_temp, "off"
+            return "off"
 
         desired_devices.add(entity_id)
         if device.get(CONF_ALLOW_ON_OFF_CONTROL) and hvac_mode == HVACMode.OFF.value:
@@ -530,7 +526,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             target,
         )
 
-        return water_temp, "water_hp_only"
+        return "water_hp_only"
 
     async def _handle_water_overshoot_control(
         self,
@@ -1080,7 +1076,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             "room_eta_minutes": (
                 self._room_eta_hours * 60.0 if self._room_eta_hours is not None else None
             ),
-            "water_temperature": self._water_temperature,
+            "water_temperature": data.get("water_temperature"),
             "water_temperature_filtered": data.get("water_temperature_filtered"),
             "water_spike": data.get("water_spike"),
             "water_derivative": data.get("water_derivative"),

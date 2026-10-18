@@ -83,6 +83,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
             - room_temperature: Averaged room temperature from configured sensors
             - room_derivative: Room temperature change rate (°C/hour)
             - water_derivative: Water temperature change rate (°C/hour)
+            - water_temperature: Measured water temperature (°C)
             - water_temperature_filtered: Smoothed water temperature (°C)
             - water_spike: True while the water reading is a spike
             - devices: List of device payloads with state and temps
@@ -120,6 +121,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         devices = entry_data.get(CONF_DEVICES, [])
         hass = self.hass
         water_derivative: float | None = None
+        water_temp: float | None = None
         water_reading = None
 
         for device in devices:
@@ -158,9 +160,8 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
                     water_id
                 )
                 if water_reading is None and device_payload["water_temperature"] is not None:
-                    water_reading = self._water_filter.update(
-                        device_payload["water_temperature"], datetime.now(UTC)
-                    )
+                    water_temp = device_payload["water_temperature"]
+                    water_reading = self._water_filter.update(water_temp, datetime.now(UTC))
                 if water_derivative is None:
                     water_history = self._water_temp_history.setdefault(
                         water_id, []
@@ -178,6 +179,7 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
         if water_derivative is not None:
             water_derivative = round(water_derivative, 1)
         data["water_derivative"] = water_derivative
+        data["water_temperature"] = water_temp
         data["water_temperature_filtered"] = (
             round(water_reading.filtered, 2) if water_reading else None
         )

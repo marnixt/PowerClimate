@@ -378,7 +378,7 @@ def test_process_water_device_keeps_off_when_room_at_or_above_target() -> None:
         )
     )
 
-    assert result == (35.0, "off")
+    assert result == "off"
     assert desired_devices == set()
     assert desired_targets == {}
     entity._commands.ensure_mode.assert_not_awaited()
@@ -434,7 +434,7 @@ def test_process_water_device_turns_on_on_any_demand() -> None:
         )
     )
 
-    assert result == (35.0, "water_hp_only")
+    assert result == "water_hp_only"
     assert desired_devices == {"climate.hp1"}
     assert desired_targets == {"climate.hp1": 21.0}
     entity._commands.ensure_mode.assert_awaited_once_with("climate.hp1", HVACMode.HEAT)
@@ -550,8 +550,7 @@ def test_process_water_device_turns_off_in_cool_mode() -> None:
         entity._process_water_device(payloads, desired_devices, desired_targets)
     )
 
-    # Water temp is still returned for diagnostic purposes
-    assert result == (38.0, "off")
+    assert result == "off"
     assert entity._hp_modes["climate.hp1"] == MODE_OFF
     assert desired_devices == set()
     # Should have been switched off because allow_on_off=True and it was running
@@ -866,7 +865,7 @@ def test_assists_get_the_filtered_water_temperature() -> None:
     )
     entity._supply = MagicMock()
     entity._get_device_payloads = MagicMock(return_value={})
-    entity._process_water_device = AsyncMock(return_value=(61.0, "water_hp_only"))
+    entity._process_water_device = AsyncMock(return_value="water_hp_only")
     entity._process_air_devices = AsyncMock(return_value=None)
     entity._sync_devices = AsyncMock()
     entity._sync_state_listeners = MagicMock()
@@ -875,6 +874,35 @@ def test_assists_get_the_filtered_water_temperature() -> None:
 
     asyncio.run(entity._apply_staging())
 
-    water_temp = entity._process_air_devices.await_args.args[2]
-    assert water_temp == 35.0
-    assert entity._water_temperature == 61.0
+    assert entity._process_air_devices.await_args.args[2] == 35.0
+
+
+def test_summary_shows_measured_water_temperature_when_off() -> None:
+    """The water temperature attribute comes from the coordinator, also when off."""
+    entity = make_entity()
+    entity.hass = SimpleNamespace(data={}, states=SimpleNamespace(get=lambda _id: None))
+    entity._entry = SimpleNamespace(entry_id="entry-1")
+    entity._summary_signal = "signal"
+    entity._attr_hvac_mode = HVACMode.OFF
+    entity._attr_preset_mode = "none"
+    entity._target_temperature = 21.0
+    entity._mode_state = "off"
+    entity._active_devices = set()
+    entity._assist_modes = {}
+    entity._hp_modes = {}
+    entity._delta = None
+    entity._room_eta_hours = None
+    entity._config = SimpleNamespace(
+        is_water_device=lambda _device, _index: True, supply_advice_sensor=None
+    )
+    entity._assist_controller = MagicMock()
+    entity._supply = SimpleNamespace(summary={})
+    entity.coordinator = SimpleNamespace(
+        data={"water_temperature": 34.6, "water_temperature_filtered": 34.4, "water_spike": False}
+    )
+
+    with patch("custom_components.powerclimate.climate.async_dispatcher_send"):
+        entity._emit_summary([], {})
+
+    assert entity.extra_state_attributes["water_temperature"] == 34.6
+    assert entity.extra_state_attributes["water_temperature_filtered"] == 34.4

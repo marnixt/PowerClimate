@@ -212,9 +212,11 @@ def test_water_spike_keeps_filtered_temperature() -> None:
     readings["sensor.w"] = "60.0"
     spike = asyncio.run(coord._async_update_data())
 
+    assert first["water_temperature"] == 30.0
     assert first["water_temperature_filtered"] == 30.0
     assert first["water_spike"] is False
     assert spike["devices"][0]["water_temperature"] == 60.0
+    assert spike["water_temperature"] == 60.0
     assert spike["water_temperature_filtered"] == 30.0
     assert spike["water_spike"] is True
 
@@ -231,6 +233,7 @@ def test_water_filter_without_water_sensor() -> None:
 
     data = asyncio.run(coord._async_update_data())
 
+    assert data["water_temperature"] is None
     assert data["water_temperature_filtered"] is None
     assert data["water_spike"] is False
     coord._water_filter.update.assert_not_called()
