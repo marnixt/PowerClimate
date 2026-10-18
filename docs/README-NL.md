@@ -1,107 +1,129 @@
 # PowerClimate (NL)
 
-Home Assistant custom integratie om meerdere warmtepomp climate devices samen te laten werken.
+[![HACS Integration](https://img.shields.io/badge/HACS-Integration-blue?logo=hacs)](https://github.com/hacs/integration)
 
-## Audit-log
+Home Assistant custom integratie waarmee één virtuele thermostaat meerdere
+warmtepompen samen laat werken en hun setpoints afstemt met temperatuur-offsets
+per apparaat. De release notes staan in de [CHANGELOG](../CHANGELOG.md).
 
-- 0.2 — Eerste publieke versie
-- 0.3-beta — Verbeterde configuratie en water-warmtepomp nu optioneel
-- 0.4.0-beta — Kernlogica opgesplitst, assist-regeling, zonne-energiebudgetten en opmaaktools
-- 0.5-beta — Separated mirror thermostats
+![PowerClimate op de integratiepagina van Home Assistant.](images/integration-page.png)
 
 ## Functies
 
-- **Combineren meerdere warmtepompen**: een virtuele thermostaat die een water-warmtepomp en lucht warmtepompen (Airco's) bestuurt.
-- **Offsets + guardrails**: lower/upper offset per apparaat en globale min/max setpoints.
-- **Assists: handmatig of automatisch AAN/UIT**: optionele timers + anti-short-cycle beveiliging.
-- **Diagnostiek**: modus per HP, afgeleides en totaal vermogen.
-- **Thermostaat-mirroring**: kopieer alleen setpoint-wijzigingen van geselecteerde thermostaten naar PowerClimate; HVAC aan/uit van die thermostaten wordt genegeerd.
-- **Standaard HA services**: stuurt bestaande `climate.*` entities via Home Assistant.
+- **Meerdere warmtepompen samen**: één virtuele thermostaat stuurt een optionele waterwarmtepomp en een willekeurig aantal luchtwarmtepompen (assists).
+- **Offsets en grenzen**: onder- en bovenoffsets per apparaat voor verwarmen en koelen, en een globaal minimum en maximum setpoint.
+- **Assists handmatig of automatisch aan/uit**: optionele timers en bescherming tegen pendelen.
+- **Presets**: `none`, `boost`, `away`, `main only` en `supply advice`.
+- **Thermostaat-mirroring**: setpointwijzigingen op gekozen thermostaten worden naar PowerClimate gekopieerd; hun HVAC aan/uit wordt genegeerd.
+- **Diagnostiek**: een modussensor per warmtepomp, temperatuurverloop, totaal vermogen en een diagnostiekdownload.
+- **Standaard HA services**: PowerClimate stuurt bestaande `climate.*` entities via Home Assistant.
 
-![PowerClimate-dashboard: Home Assistant UI met de virtuele PowerClimate-thermostaat (huidige temperatuur, setpoint en modusbediening).](images/Dashboard%20Climate%20device.png)
+![De PowerClimate-thermostaat.](images/climate-more-info.png)
 
-## Snelstart
+## Installatie
 
-1. Installeer de `powerclimate` folder onder `custom_components/`.
-2. In Home Assistant: **Instellingen -> Apparaten & Diensten -> Integratie toevoegen -> PowerClimate**.
-3. Kies de ruimtetemperatuursensor en selecteer optioneel thermostaten om te mirroren. Alleen setpoint-wijzigingen worden overgenomen; het uitschakelen van een gemirrorde thermostaat schakelt PowerClimate niet uit.
-4. Configureer je warmtepompen (de eerste gemirrorde thermostaat wordt vooraf geselecteerd voor de waterwarmtepomp):
-  - **Waterwarmtepomp** (optioneel): climate entity, optionele vermogenssensor, optionele water
-    temperatuursensor, en offsets
-  - **Lucht- (assist) warmtepompen** (optioneel, 0..n): climate entity, optionele vermogenssensor, offsets per apparaat,
-    en optioneel automatische AAN/UIT controle
+### HACS (aanbevolen)
 
-![Configuratievoorbeeld: selectie van warmtepompen in de PowerClimate-configuratiepagina.](images/Config_select_heat_pumps.png)
+1. Open in Home Assistant **HACS → Integraties → Custom repositories**.
+2. Voeg de URL van de repository toe en kies **Categorie** **Integration**.
+3. Zoek **PowerClimate** en installeer het.
+4. Herstart Home Assistant.
+
+Pre-releases (alfa- en bètaversies) biedt HACS alleen aan als je die voor PowerClimate inschakelt.
+
+### Handmatig
+
+Kopieer de map `custom_components/powerclimate/` naar `config/custom_components/` van je Home Assistant en herstart Home Assistant.
 
 ## Configuratie
 
-De configuratie is rol-gebaseerd: je kunt een optionele waterwarmtepomp
-(0 of 1) configureren en nul of meer lucht- (assist) warmtepompen. Voor de
-apparaatselectie kun je optioneel thermostaten kiezen waarvan setpoints worden
-gemirrord naar PowerClimate. Alleen numerieke temperatuurwijzigingen worden gemirrord; HVAC-moduswijzigingen niet. De UI toont daarna aparte configuratiepagina's per
-apparaat waar je de opties kiest.
+1. Ga naar **Instellingen → Apparaten & diensten → Integratie toevoegen → PowerClimate**.
+2. Geef de hub een naam en kies een of meer ruimtetemperatuursensoren; PowerClimate gebruikt het gemiddelde van de beschikbare waarden.
+3. Kies optioneel thermostaten om te mirroren. Alleen numerieke setpointwijzigingen worden gemirrord; HVAC-moduswijzigingen van die thermostaten worden genegeerd.
+4. Kies de warmtepompen: één optionele waterwarmtepomp (0 of 1) en nul of meer luchtwarmtepompen. De eerste gemirrorde thermostaat staat vooraf ingevuld als waterwarmtepomp.
+
+   ![Water- en luchtwarmtepompen kiezen.](images/config-select-devices.png)
+
+5. Stel elke warmtepomp op een eigen pagina in:
+   - **Waterwarmtepomp**: vermogenssensor, water- (aanvoer)temperatuursensor, verwarmingsoffsets, en of PowerClimate hem aan en uit mag zetten.
+   - **Luchtwarmtepompen**: vermogenssensor, offsets voor verwarmen en koelen, en of PowerClimate hem aan en uit mag zetten.
+
+   ![Een luchtwarmtepomp instellen.](images/config-air-device.png)
+
+Offsets zijn relatief ten opzichte van de temperatuur die de warmtepomp zelf
+meet. De onderste verwarmingsoffset loopt van −10 tot 0 °C en de bovenste van
+0 tot 10 °C (bij koelen hetzelfde). Stel de onderste verwarmingsoffset zo in
+dat de warmtepomp bijna, maar niet helemaal stopt.
+
+Later wijzigen gaat via de knop **Configureren** van de hub: **Instellingen
+wijzigen** (naam, ruimtesensoren, gemirrorde thermostaten en apparaten),
+**Geavanceerde opties** en **Experimenteel**.
+
+![Het optiemenu.](images/options-menu.png)
 
 ## Regel-logica
 
+### HVAC-modi
+
+| Modus | Gedrag |
+|-------|--------|
+| **off** | PowerClimate stuurt geen setpoints. De waterwarmtepomp gaat uit als aan/uit-controle aan staat; assists blijven zoals ze zijn. |
+| **heat** | De waterwarmtepomp (indien ingesteld) en de luchtassists verwarmen de ruimte naar het doel. |
+| **cool** | De luchtassists koelen de ruimte naar het doel. De waterwarmtepomp gaat uit (als dat mag), want die kan niet koelen. |
+
 ### Waterwarmtepomp (optioneel)
 
-- Indien geconfigureerd beheert PowerClimate de HVAC mode van het water-apparaat: het wordt geforceerd naar HEAT zolang de virtuele
-  climate entity aan staat, en expliciet naar OFF gezet wanneer PowerClimate wordt uitgezet.
-- Het PowerClimate doelsetpoint wordt begrensd tussen de lower/upper offsets (en de globale 16–30 °C limieten)
-  voordat deze naar de warmtepompen gestuurd wordt.
-- Watertemperatuur wordt gemeten en ter info wanneer een watersensor is geconfigureerd.
+- PowerClimate zet het setpoint van de waterwarmtepomp zolang die verwarmt: het ruimtedoel, begrensd tussen *apparaattemperatuur + onderoffset* en *apparaattemperatuur + bovenoffset* en het globale minimum en maximum.
+- Met **PowerClimate mag het apparaat aan- en uitzetten** schakelt PowerClimate hem ook:
+  - aan zodra er warmtevraag is (ruimte onder het doel), ruim voor de assists;
+  - uit na aanhoudende doorschot: als de ruimte de duur van de assist-timer boven doel + `Maximale doorschot` blijft;
+  - uit als PowerClimate uit gaat of op koelen gezet wordt.
+- Zonder die optie verandert PowerClimate de HVAC-modus nooit; jij houdt de controle.
+- De watertemperatuur wordt gevolgd als er een watersensor is ingesteld.
 
-### Lucht warmtepompen (0..n)
+### Luchtwarmtepompen (assists, 0..n)
 
-#### Handmatige controle (default)
+#### Handmatige controle (standaard)
 
-- Standaard beheert de gebruiker de HVAC mode van elke assist. Als een assist uit staat,
-  laat PowerClimate hem ongemoeid.
-- Als een assist aan staat, vergelijkt PowerClimate de ruimtetemperatuur met de gevraagde target:
-  - **Minimal-modus** (kamer >= target): setpoint = huidige temp + lower offset.
-  - **Setpoint-modus** (kamer < target): setpoint = gevraagde target begrensd
-    tussen `current + lower offset` en `current + upper offset`.
+- Jij bepaalt de HVAC-modus van elke assist. Staat een assist uit, dan laat PowerClimate hem met rust.
+- Staat een assist aan, dan vergelijkt PowerClimate de ruimtetemperatuur met het doel:
+  - **Minimaal** (ruimte op of boven het doel): setpoint = apparaattemperatuur + onderoffset.
+  - **Setpoint** (ruimte onder het doel): setpoint = doel, begrensd tussen *apparaattemperatuur + onderoffset* en *apparaattemperatuur + bovenoffset*.
 
-#### Automatische AAN/UIT controle (optioneel)
+#### Automatische aan/uit-controle (optioneel)
 
-- Zet **"Allow PowerClimate to turn device on and off"** aan voor een assist om
-  PowerClimate automatisch de HVAC mode te laten beheren op basis van systeembehoefte.
-- PowerClimate monitort condities en gebruikt **5-minuten timers** om snel pendelen te voorkomen:
-  - **AAN-condities** (onderling exclusief met UIT-condities):
-    1. **ETA > 60 minuten (default)**: ruimte doet er langer over dan de ingestelde drempel om target te bereiken
-    2. **Water ≥ 40 °C**: watertemperatuur van de primaire pomp is 40 °C of hoger
-    3. **Stalled onder target**: room derivative ≤ 0 EN ruimte is > 0.5 °C onder target
-  - **UIT-condities** (onderling exclusief met AAN-condities):
-    1. **ETA < 15 minuten (default)**: ruimte bereikt target binnen de ingestelde drempel
-    2. **Stalled op target**: room derivative ≤ 0 EN ruimte zit binnen 0.5 °C van target
-  - Als een conditie waar is, loopt diens timer op; de tegenovergestelde timer wordt gereset
-  - Als geen AAN of UIT conditie waar is, resetten beide timers naar nul
-  - Er wordt pas geschakeld als een conditie 5 minuten waar blijft (300 seconden, configureerbaar)
-- **Anti-short-cycle (alleen bij assist AAN/UIT controle)**
-  - Indien ingeschakeld blokkeert PowerClimate het schakelen van een assist:
-    - **UIT** totdat hij minimaal *Min ON time* aan stond (default 20 minuten)
-    - **AAN** totdat hij minimaal *Min OFF time* uit stond (default 10 minuten)
-  - Dit geldt ook als je handmatig togglet (de integratie respecteert het protectievenster)
-- Timerstatus is **persistent** en overleeft Home Assistant restarts (opgeslagen in `.storage/powerclimate_timers_*.json`)
-- Alle temperaturen worden begrensd tussen globale min/max voordat er commando's worden gestuurd.
+- Zet **PowerClimate mag het apparaat aan- en uitzetten** aan voor een assist om PowerClimate zijn HVAC-modus te laten beheren.
+- PowerClimate controleert condities en gebruikt timers (standaard 5 minuten) tegen pendelen:
+  - **Aan-condities**:
+    1. **ETA boven de aan-drempel** (standaard 60 minuten): de ruimte doet er langer over om het doel te halen.
+    2. **Water op of boven de waterdrempel** (standaard 40 °C): de waterwarmtepomp draait warm.
+    3. **Stilstand onder het doel**: temperatuurverloop ≤ 0 en de ruimte zit meer dan het stilstandverschil (0,5 °C) onder het doel.
+  - **Uit-condities**:
+    1. **ETA onder de uit-drempel** (standaard 15 minuten).
+    2. **Stilstand op het doel**: temperatuurverloop ≤ 0 en de ruimte zit binnen het stilstandverschil van het doel.
+  - Zolang een conditie geldt loopt haar timer en wordt de tegenovergestelde timer gereset; geldt geen van beide, dan resetten ze allebei.
+  - PowerClimate schakelt pas als een conditie de volle timerduur heeft gegolden.
+- **Bescherming tegen pendelen**: PowerClimate zet een assist niet
+  - uit voordat hij de *minimale AAN-tijd* aan stond (standaard 20 minuten);
+  - aan voordat hij de *minimale UIT-tijd* uit stond (standaard 10 minuten).
 
-## Preset Gedrag
+  Dit geldt ook nadat je een assist met de hand hebt geschakeld.
+- De timerstatus wordt opgeslagen en overleeft een herstart van Home Assistant.
+- Alle setpoints worden begrensd tussen het globale minimum en maximum voordat ze worden verstuurd.
 
-PowerClimate presets sturen het gedrag van warmtepompen in verschillende scenario's:
+## Preset-gedrag
 
-| Preset | Water warmtepomp | Lucht warmtepomp(en) |
-|--------|------------------|----------------------|
-| **none** | Normale werking (HEAT mode, volgt setpoint). Als `Allow PowerClimate to turn device on and off` voor het water-apparaat aan staat, kan aanhoudende overshoot boven `Maximum overshoot` het apparaat na de ingestelde timerduur UIT zetten; het gaat meteen weer AAN zodra er enige warmtevraag is (kamer onder setpoint) | Volgt setpoint als AAN, niet aanpassen als UIT |
-| **boost** | Boost mode (huidig + upper offset) | Boost mode (huidig + upper offset) |
-| **Away** | Minimal-modus (laat temp zakken naar 16 °C) | UIT (als allow_on_off aan staat), anders minimal |
-| **Main only** | Zoals `none` | Alleen de hoofdwarmtepomp draait, zoals bij `none`; de rest gaat UIT (als allow_on_off aan staat) en wordt nooit aangezet, anders niet aanpassen |
-| **Aanvoeradvies** | Stuurt de aanvoertemperatuur naar het advies van de geconfigureerde aanvoeradviessensor door het kamersetpoint binnen de heating-offsets van het apparaat te verschuiven (zie hieronder); valt zonder advies terug op normale setpoint-logica | Normale assist-logica op basis van warmtevraag in de ruimte |
+| Preset | 💧 Waterwarmtepomp | 🌬️ Luchtwarmtepomp(en) |
+|--------|-------------------|------------------------|
+| **none** | Normale werking (volgt het ruimtedoel binnen zijn offsets) | Volgen het setpoint als ze aan staan; blijven ongemoeid als ze uit staan, tenzij aan/uit-controle aan staat |
+| **boost** | Apparaattemperatuur + bovenoffset | Aangezet (met aan/uit-controle) en op apparaattemperatuur + bovenoffset gezet; bij koelen + onderoffset |
+| **away** | Minimaal; het ruimtedoel zakt naar het minimum setpoint | Uitgezet (met aan/uit-controle), anders minimaal; bij koelen stijgt het ruimtedoel naar het maximum setpoint |
+| **main only** | Zoals bij `none` | Alleen de hoofdwarmtepomp draait, zoals bij `none`; de andere worden uitgezet (met aan/uit-controle) en nooit aangezet, anders ongemoeid gelaten |
+| **supply advice** | Stuurt de aanvoertemperatuur naar het advies van de aanvoeradviessensor door het kamersetpoint binnen de verwarmingsoffsets te verschuiven (zie hieronder); valt zonder advies terug op normale setpoint-logica | Normale assist-logica op basis van de warmtevraag |
 
-De preset Aanvoeradvies vereist een geconfigureerde experimentele sensor met een geadviseerde aanvoertemperatuur; zie [Adviesbronnen](#adviesbronnen).
-Away preset schakelt luchtpompen alleen uit wanneer `allow_on_off_control` voor dat apparaat is ingeschakeld.
-Main only laat PowerClimate met één warmtepomp werken: de waterwarmtepomp, of de eerste luchtwarmtepomp als er geen waterwarmtepomp is. Met een waterwarmtepomp als hoofd koelt Main only niet, want een waterwarmtepomp kan niet koelen.
-HVAC aan/uit van gemirrorde thermostaten wordt niet doorgegeven; alleen temperatuur-setpoints worden gemirrord.
-Wanneer `Allow PowerClimate to turn device on and off` op het water-apparaat is ingeschakeld, mag PowerClimate deze bij aanhoudende overshoot boven `Maximum overshoot` ook UIT schakelen. Terug inschakelen gebeurt zodra de ruimtetemperatuur weer onder het setpoint zakt (elk beetje vraag), ruim vóór de assistpompen zouden starten.
+- **Main only** laat PowerClimate met één warmtepomp werken: de waterwarmtepomp, of de eerste luchtwarmtepomp als er geen waterwarmtepomp is. Met een waterwarmtepomp als hoofd koelt main only niet.
+- **Supply advice** verschijnt zodra er onder **Configureren → Experimenteel** een aanvoeradviessensor is ingesteld; zie [Adviesbronnen](#adviesbronnen).
+- Van **away** naar `none`, `main only` of `supply advice` gaan zet het vorige doel terug.
 
 ### Regellogica aanvoeradvies
 
@@ -115,8 +137,9 @@ het kamersetpoint zo dat de **gemeten** aanvoertemperatuur het advies volgt.
   watertemperatuursensor van het water-apparaat).
 - **PI-regelaar**: correctie = Kp · fout + integraal. Het setpoint van het
   water-apparaat wordt *apparaattemperatuur + correctie*.
-- **Grenzen**: de correctie blijft binnen de lower/upper heating-offsets van het
-  water-apparaat (standaard −0,3 / +1,5 °C) en de globale min/max.
+- **Grenzen**: de correctie blijft binnen de onder- en bovenoffset voor
+  verwarmen van het water-apparaat (standaard −0,3 / +1,5 °C) en het globale
+  minimum en maximum.
 - **Zonder sprong starten**: bij het kiezen van de preset (of na een herstart)
   begint de regeling bij het huidige setpoint van het apparaat.
 - **Anti-windup**: de integraal groeit niet zolang de correctie in de richting
@@ -124,9 +147,9 @@ het kamersetpoint zo dat de **gemeten** aanvoertemperatuur het advies volgt.
 - **Compressor stil**: onder het minimale compressorvermogen staat de integraal
   stil (de aanvoertemperatuur zegt dan niets over de geleverde warmte); het
   proportionele deel blijft reageren.
-- **Overshoot**: staat de kamer boven doel + `Maximum overshoot`, dan gaat de
-  correctie naar de onderste offset. De water-overshoot-afschakeling blijft los
-  daarvan werken.
+- **Doorschot**: staat de kamer boven doel + `Maximale doorschot`, dan gaat de
+  correctie naar de onderste offset. De afschakeling van de waterwarmtepomp bij
+  doorschot blijft los daarvan werken.
 - **Geen advies**: is de adviessensor `unknown`/`unavailable` (sommige
   adviesbronnen melden dat als er geen warmte nodig is) of ontbreekt de
   aanvoermeting, dan geldt de normale setpoint-logica en houdt de regelaar zijn
@@ -143,10 +166,11 @@ het kamersetpoint zo dat de **gemeten** aanvoertemperatuur het advies volgt.
   advies nooit.
 - De regelaar begint opnieuw bij elke wissel van preset of HVAC-modus.
 
-De afstelling staat onder **Opties → Experimental → Aanvoertemperatuurregeling**.
-De sensor **Aanvoercorrectie** toont de correctie, met het advies, de gemeten
-aanvoertemperatuur, de fout en het P- en I-deel als attributen, zodat je de
-regelaar tijdens het afstellen in een grafiek kunt volgen.
+De afstelling staat onder **Configureren → Experimenteel →
+Aanvoertemperatuurregeling**. De sensor **Aanvoercorrectie** toont de
+correctie, met het advies, de gemeten aanvoertemperatuur, de fout en het P- en
+I-deel als attributen, zodat je de regelaar tijdens het afstellen in een
+grafiek kunt volgen.
 
 **Voorkom een terugkoppellus.** Rekent de adviesbron zijn advies uit met het
 kamersetpoint van de thermostaat, dan ziet hij het setpoint dat PowerClimate
@@ -159,10 +183,6 @@ instelt.
 begrenzing van geluidsniveau of vermogen van de compressor op dezelfde
 aanvoerfout), dan tellen de correcties op. Houd PowerClimate de tragere van de
 twee (een langere integratietijd) en let op het aantal compressorstarts.
-
-**Configuratie-ranges:**
-- Lower setpoint offset: -5.0–0.0 °C
-- Upper setpoint offset: 0.0–5.0 °C
 
 ### Adviesbronnen
 
@@ -186,90 +206,83 @@ aanvoertemperatuur in °C werkt:
   ontbreekt. Gebruik een buitensensor die niet opwarmt door een draaiende
   buitenunit.
 
-## Geavanceerde configuratie-opties
+## Geavanceerde opties
 
-Expert users kunnen PowerClimate tunen via **Opties -> Advanced options** in de Home Assistant UI. Deze instellingen zijn optioneel; als je ze niet invult, worden defaults gebruikt.
+Stem PowerClimate af via **Instellingen → Apparaten & diensten → PowerClimate → Configureren → Geavanceerde opties**. Alle velden zijn optioneel; lege velden gebruiken de standaardwaarde. Wijzigingen werken direct.
 
-Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerClimate -> Opties -> Advanced options**
+![De geavanceerde opties.](images/options-advanced.png)
 
-| Optie | Default | Range | Beschrijving |
-|--------|---------|-------|-------------|
-| Min Setpoint Override | 16.0 °C | 10–25 °C | Absoluut minimum dat naar een pomp wordt gestuurd |
-| Max Setpoint Override | 30.0 °C | 20–35 °C | Absoluut maximum dat naar een pomp wordt gestuurd |
-| Assist Timer Duration | 300 s | 60–900 s | Seconden dat een conditie waar moet blijven voor actie |
-| ON: ETA Threshold | 60 min | 5–600 min | Zet assist AAN als ETA deze duur overschrijdt |
-| OFF: ETA Threshold | 15 min | 1–120 min | Zet assist UIT als ETA onder deze duur komt |
-| Anti-short-cycle: Min ON time | 20 min | 0–180 min | Blokkeert UIT totdat assist minimaal zo lang AAN was |
-| Anti-short-cycle: Min OFF time | 10 min | 0–180 min | Blokkeert AAN totdat assist minimaal zo lang UIT was |
-| Water Temperature Threshold | 40.0 °C | 30–55 °C | Zet assist AAN wanneer water deze temperatuur bereikt |
-| Stall Temperature Delta | 0.5 °C | 0.1–2 °C | Temperatuurdelta voor stall-detectie |
-| Maximum Overshoot | 0.5 °C | 0–5 °C | Als de ruimtetemperatuur meer dan dit boven target komt, mag een automatisch schakelbaar water-apparaat na de timerduur UIT gaan |
+| Optie | Standaard | Bereik | Beschrijving |
+|-------|-----------|--------|--------------|
+| Minimumtemperatuur | 16,0 °C | 10–25 °C | Absoluut minimum setpoint dat naar een warmtepomp gaat |
+| Maximumtemperatuur | 30,0 °C | 20–35 °C | Absoluut maximum setpoint dat naar een warmtepomp gaat |
+| Maximale doorschot | 0,5 °C | 0–5 °C | Doorschot boven het doel waarna een waterwarmtepomp met aan/uit-controle uit mag |
+| Duur assist-timer | 300 s | 60–900 s | Hoe lang een conditie moet gelden voordat PowerClimate schakelt |
+| ETA-drempel inschakelen | 60 min | 5–600 min | Zet een assist aan als de ETA hierboven komt |
+| ETA-drempel uitschakelen | 15 min | 1–120 min | Zet een assist uit als de ETA hieronder komt |
+| Minimale AAN-tijd | 20 min | 0–180 min | Tegen pendelen: houd een assist minstens zo lang aan |
+| Minimale UIT-tijd | 10 min | 0–180 min | Tegen pendelen: houd een assist minstens zo lang uit |
+| Watertemperatuurdrempel | 40 °C | 30–55 °C | Zet een assist aan als het water deze temperatuur haalt |
+| Temperatuurverschil voor stilstand | 0,5 °C | 0,1–2 °C | Temperatuurverschil voor stilstanddetectie |
+
+Het minimum moet onder het maximum liggen, en de uit-drempel onder de aan-drempel.
 
 ## Experimentele opties
 
-Sommige features zijn bewust experimenteel en staan onder **Opties -> Experimental**.
+Onder **Configureren → Experimenteel**:
 
-Te vinden via: **Instellingen -> Apparaten & Diensten -> Integraties -> PowerClimate -> Opties -> Experimental**
+- **Aanvoeradviessensor**: een sensor met een geadviseerde aanvoertemperatuur. Als die is ingesteld, is de preset `supply advice` beschikbaar.
+- **Aanvoertemperatuurregeling** (preset supply advice, verwarmen):
 
-- **Aanvoeradviessensor**: kies een sensor met een geadviseerde aanvoertemperatuur. Als deze is ingesteld, wordt de preset `Aanvoeradvies` beschikbaar.
-- **Aanvoertemperatuurregeling** (preset Aanvoeradvies, verwarmen):
-
-| Optie | Default | Range | Beschrijving |
-|--------|---------|-------|-------------|
+| Optie | Standaard | Bereik | Beschrijving |
+|-------|-----------|--------|--------------|
 | Proportionele versterking | 0,15 | 0,01–1,0 | Setpointwijziging in °C per °C aanvoerfout |
 | Integratietijd | 45 min | 5–240 min | Tijd waarin de integraal één proportionele stap toevoegt; langer is rustiger |
 | Minimaal compressorvermogen | 200 W | 0–2000 W | Onder dit vermogen van de waterwarmtepomp staat de integraal stil |
 
-**Notes:**
-- Wijzigingen werken direct (geen restart nodig)
-- Bestaande entries zonder advanced options gebruiken defaults voor backwards compatibility
-- Timerstatus wordt naar disk weggeschreven en overleeft Home Assistant restarts
-- Advanced options worden opgeslagen in `config_entry.options` en gemerged via `merged_entry_data()`
+## Standaard-offsets van apparaten
 
-## Configuratie-constanten
+Nieuwe apparaten beginnen met deze offsets (gedefinieerd in `const.py`):
 
-Absolute setpointgrenzen en de assist-afstelling stel je in onder **Opties → Geavanceerde opties**.
-
-De standaard-offsets van de apparaten staan in `const.py`:
-
-| Constant | Default | Beschrijving |
-|----------|---------|-------------|
-| `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | -0.3 | HP1 minimal-modus offset t.o.v. eigen gemeten temperatuur. |
-| `DEFAULT_UPPER_SETPOINT_OFFSET_HP1` | 1.5 | HP1 maximum offset t.o.v. eigen gemeten temperatuur. |
-| `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Assist minimal-modus offset (ruimte op temperatuur). |
-| `DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST` | 4.0 | Assist maximum offset bij het volgen van de ruimte-target. |
+| Constante | Standaard | Beschrijving |
+|-----------|-----------|--------------|
+| `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | -0.3 | Waterwarmtepomp: offset in minimale modus. |
+| `DEFAULT_UPPER_SETPOINT_OFFSET_HP1` | 1.5 | Waterwarmtepomp: bovengrens-offset. |
+| `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Luchtwarmtepomp, verwarmen: offset in minimale modus (ruimte op temperatuur). |
+| `DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST` | 4.0 | Luchtwarmtepomp, verwarmen: bovengrens bij het volgen van het ruimtedoel. |
+| `DEFAULT_LOWER_SETPOINT_OFFSET_COOLING` | -4.0 | Luchtwarmtepomp, koelen: het sterkst koelen. |
+| `DEFAULT_UPPER_SETPOINT_OFFSET_COOLING` | 0.0 | Luchtwarmtepomp, koelen: het minst koelen (minimaal). |
 
 ## Sensoren
 
-PowerClimate levert meerdere diagnostische sensoren om de systeemstatus te volgen. De
-climate-entity heeft de volledige systeemstatus (ruimte, ETA, status per pomp,
-assist-timers, aanvoerregeling) als attributen.
+Elke hub is een apparaat. Entity-ID's volgen de apparaatnaam, bijvoorbeeld
+`sensor.powerclimate_temperatuurverloop`. De climate-entity heeft de volledige
+systeemstatus (ruimte, ETA, status per warmtepomp, assist-timers,
+aanvoerregeling) als attributen.
 
-Sensoren worden alleen aangemaakt voor pompen met een geconfigureerde `climate_entity_id`.
+| Entity | Beschrijving |
+|--------|--------------|
+| **HPx modus** | Per warmtepomp: de modus waarin PowerClimate hem laat draaien (`off`, `minimal`, `setpoint`, `boost`, `supply_advice`), met zijn status als attributen: temperaturen, verloop, ETA, vermogen en, voor assists, de actieve conditie, timers en wat een schakeling blokkeert |
+| Temperatuurverloop | Verandering van de ruimtetemperatuur (°C/u) |
+| Waterverloop | Verandering van de aanvoerwatertemperatuur (°C/u) |
+| Totaal vermogen | Som van de ingestelde vermogenssensoren |
+| Doeltemperatuur | Het ruimtedoel van PowerClimate, voor integraties die alleen een sensor accepteren (geen diagnostische entity) |
+| Aanvoercorrectie | Setpointcorrectie van de aanvoertemperatuurregeling, met de toestand als attributen |
 
-| Sensor | Entity ID Pattern | Beschrijving |
-|--------|-------------------|-------------|
-| Temperature Derivative | `sensor.powerclimate_derivative_*` | Verandering van ruimtetemperatuur (°C/uur) |
-| Water Derivative | `sensor.powerclimate_water_derivative_*` | Verandering van watertemperatuur (°C/uur) |
-| **HPx modus** | `sensor.powerclimate_text_hp*_behavior_*` | Modus waarin PowerClimate de pomp laat draaien (`off`, `minimal`, `setpoint`, `boost`, `supply_advice`), met de status van de pomp als attributen |
-| Total Power | `sensor.powerclimate_total_power_*` | Opgeteld vermogen van geconfigureerde pompen |
-| Doeltemperatuur | `sensor.powerclimate_target_temperature_*` | Kamerdoel van PowerClimate, voor integraties die alleen een sensor accepteren (geen diagnostische entity) |
-| Aanvoercorrectie | `sensor.powerclimate_supply_correction_*` | Setpointcorrectie van de aanvoertemperatuurregeling (preset Aanvoeradvies), met de toestand als attributen |
+![De entities van een PowerClimate-hub.](images/device-entities.png)
 
-De attributen van HPx modus bevatten temperaturen, afgeleides, ETA, vermogen en,
-voor assistpompen, de assist-conditie, timers en wat een schakeling blokkeert.
-Er wordt een modussensor aangemaakt voor elke geconfigureerde pomp, niet alleen voor de eerste vijf.
+Er wordt een modussensor aangemaakt voor elke ingestelde warmtepomp. Het
+temperatuurverloop gebruikt de helling tussen het oudste en nieuwste meetpunt
+binnen een venster van 15 minuten, zoals de Derivative-helper van Home
+Assistant.
 
-## Warmtepomp tips
+**Diagnostiek downloaden** op de apparaatpagina van de hub geeft de
+configuratie, de werkelijke instellingen, de coordinator-data, de
+climate-status en de assist-timers.
 
-Algemene setup guidance (check altijd je handleiding):
+## Warmtepomp-tips
 
-- Assist pompen (HP2-HP5): gebruik waar mogelijk "heat shift" / °C offset om minimal-modus te stabiliseren; tune daarna `lower_setpoint_offset` zodat assists rustig kunnen "idle-en" wanneer de ruimte op temperatuur is.
-- Water-/hybride pomp (HP1): als hybride, voorkom bijschakelen van gas voor ruimteverwarming en cap CH/flow temperatuur rond 45 °C initieel voor betere COP.
+Algemene tips (check altijd de handleiding van je apparaat):
 
-## Next Steps
-
-- Min/max clamp values en assist timer/thresholds zijn nu configureerbaar via Advanced Options
-- Gebruik energiesensoren of COP data voor economische keuzes
-- Voeg unit tests toe voor assist logica en advanced configuration
-- Persistent timer state is aanwezig; gebruik de assist- en behavior-sensoren om de herstelde timerstatus te controleren
+- Luchtwarmtepompen: gebruik waar mogelijk de "heat shift" / °C-offset van de fabrikant om de minimale modus te stabiliseren, en stem daarna de onderoffset af zodat assists rustig stationair draaien als de ruimte op temperatuur is.
+- Water-/hybride warmtepomp: zet bij een hybride de gasketel uit voor ruimteverwarming en begrens de aanvoertemperatuur eerst rond 45 °C voor een betere COP; stem af op je isolatie en afgiftesysteem.

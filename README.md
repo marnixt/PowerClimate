@@ -2,51 +2,38 @@
 
 [![HACS Integration](https://img.shields.io/badge/HACS-Integration-blue?logo=hacs)](https://github.com/hacs/integration)
 
-**Install via HACS (recommended):** Add this repository to HACS → Integrations → Custom repositories, set **Category** to **Integration**, then install and restart Home Assistant.
-
-## Audit Log
-
-- 0.2 — First public version
-- 0.3-beta — Improved config flow and optional water heat pump
-- 0.4.0-beta — Modularized core logic, assist control, solar power budgets, and formatting utilities
-- 0.5-beta — Separated mirror thermostats
-- 0.6.0 — Persistent timer state, refactored config flow, cleaned up codebase
-- 0.7.0 — Cooling (air conditioning) support, per-mode setpoint offsets
-
-Home Assistant custom integration to manage multiple heat-pump climate devices
-and coordinate their setpoints using per-device temperature offsets.
-and coordinate their setpoints using per-device temperature offsets.
+Home Assistant custom integration that lets one virtual thermostat run several
+heat pumps together: an optional water-based heat pump plus any number of
+air-based (assist) heat pumps. PowerClimate coordinates their setpoints with
+per-device temperature offsets and can switch assists on and off by itself.
 
 Not affiliated with Home Assistant.
 
+![PowerClimate on the Home Assistant integrations page, with one hub per configured room or system.](docs/images/integration-page.png)
+
 ## Features
 
-- **Multi-heatpump orchestration**: One virtual thermostat coordinates one optional water-based heat pump and any number of air-based assist heat pumps.
+- **Multi-heat-pump orchestration**: one virtual thermostat drives an optional water-based heat pump and any number of air-based assist heat pumps.
+- **Per-device offsets and limits**: separate lower/upper offsets for heating and cooling per device, plus global minimum/maximum setpoints.
+- **Heating and cooling**: air heat pumps that can cool are used in cool mode; the water heat pump is left out of cooling.
+- **Manual or automatic assists**: you decide when assists run, or let PowerClimate switch them on and off with timers and anti-short-cycle protection.
+- **Presets**: `none`, `boost`, `away`, `main only` (only the main heat pump) and `supply advice` (steer the water heat pump's supply temperature towards an advised value).
+- **Thermostat mirroring**: setpoint changes on selected thermostats are copied to PowerClimate.
+- **Diagnostics**: a mode sensor per heat pump, room and water derivatives, total power and a diagnostics download.
+- **Standard services only**: PowerClimate controls your existing `climate.*` entities through Home Assistant.
 
-![PowerClimate dashboard climate device: Home Assistant UI showing the PowerClimate virtual thermostat with current temperature, setpoint, and mode controls.](docs/images/Dashboard%20Climate%20device.png)
-- **Per-device offsets + guardrails**: Separate lower/upper offsets for heating and cooling per device, plus global min/max setpoint limits.
-- **Heating and cooling modes**: Air-based heat pumps that support both heat and cool can be used in either mode. The water-based heat pump (if configured) is automatically excluded from cooling.
-- **Manual assists (default) + optional auto on/off**: You decide when assists run, or let PowerClimate manage assist HVAC mode with timers and anti-short-cycle.
-- **Thermostat mirroring**: Optionally mirror setpoint changes only from selected thermostats into PowerClimate; thermostat HVAC on/off state is ignored.
-- **Diagnostics**: Per-HP mode, derivatives and total power.
-- **Works with standard HA services**: Orchestrates existing `climate.*` entities via Home Assistant.
-
-![Config air warmtepomp](docs/images/Dashboard%20example%201.png)
-
-
-## Documentation
-
-- Detailed documentation (EN): [docs/README.md](docs/README.md)
-- Gedetailleerde documentatie (NL): [docs/README-NL.md](docs/README-NL.md)
+![The PowerClimate thermostat with HVAC mode and preset.](docs/images/climate-more-info.png)
 
 ## Installation
 
 ### HACS (recommended)
 
 1. In Home Assistant, open **HACS → Integrations → Custom repositories**.
-2. Add the repository URL and set **Category** to **Integration**.
+2. Add this repository's URL and set **Category** to **Integration**.
 3. Search for **PowerClimate** and install it.
 4. Restart Home Assistant.
+
+Pre-releases (alpha and beta versions) are only offered when you enable them for PowerClimate in HACS.
 
 ### Manual
 
@@ -54,115 +41,57 @@ Copy `custom_components/powerclimate/` into your Home Assistant `config/custom_c
 
 ## Setup
 
-1. Home Assistant → **Settings → Devices & Services → Add Integration → PowerClimate**.
-2. Select one or more room temperature sensors (PowerClimate uses an average of available values).
-3. Select thermostats that PowerClimate should mirror (optional). Only setpoint changes on these thermostats are copied to PowerClimate; turning a mirrored thermostat off does not turn PowerClimate off.
-4. Select an optional water-based heat pump (0 or 1) and zero or more air-based assist heat pumps. The first mirrored thermostat is preselected for the water heat pump.
-![Select heat pumps configuration](docs/images/Config_select_heat_pumps.png)
+1. Go to **Settings → Devices & Services → Add Integration → PowerClimate**.
+2. Give the hub a name and select one or more room temperature sensors (PowerClimate uses the average of the available values).
+3. Optionally select thermostats to mirror. Only their setpoint changes are copied to PowerClimate; turning a mirrored thermostat off does not turn PowerClimate off.
+4. Select an optional water-based heat pump (0 or 1) and zero or more air-based assist heat pumps. The first mirrored thermostat is preselected as water heat pump.
 
-5. Configure each selected device on its own page (role, sensors, offsets, and optional on/off control for assists).
+   ![Selecting the water and air heat pumps.](docs/images/config-select-devices.png)
 
-Note: Set the lower setpoint offset so that the heat pump almost, but not completely, switches off. In this example, the setpoint will be a minimum of 17 °C when the heat pump itself measures 20 °C.
+5. Configure each heat pump on its own page: power sensor, water temperature sensor (water heat pump), heating and cooling offsets, and whether PowerClimate may turn it on and off.
 
-![Config air warmtepomp](docs/images/Config%20air%20heatpump%201.png)
+   ![Configuring an air heat pump.](docs/images/config-air-device.png)
 
-## Support
+Set the lower heating offset so that the heat pump almost, but not completely, stops: with −3 °C the setpoint is at least 17 °C while the heat pump itself measures 20 °C.
 
-- Issues and feature requests: use the GitHub issue tracker linked in the integration manifest.
+Change the setup later under the hub's **Configure** button: edit the setup and devices, tune the advanced options, or set up the experimental supply advice.
 
-## Control Algorithm
+![The options menu of a PowerClimate hub.](docs/images/options-menu.png)
 
-### HVAC modes
+## Presets
 
-PowerClimate exposes three HVAC modes:
+| Preset | Water heat pump | Air heat pump(s) |
+|--------|-----------------|------------------|
+| **none** | Follows the room target within its offsets | Follow the room target if on; left alone if off (unless PowerClimate may switch them) |
+| **boost** | Current temperature + upper offset | Turned on (if allowed) and set to current temperature + upper offset (cooling: + lower offset) |
+| **away** | Minimal (current temperature + lower offset); the room target drops to the minimum setpoint | Turned off if allowed, otherwise minimal; in cool mode the room target rises to the maximum setpoint |
+| **main only** | As in `none` | Only the main heat pump runs (the first air heat pump when there is no water heat pump); the others are turned off if allowed, otherwise left alone |
+| **supply advice** | Its setpoint is steered so that the measured supply temperature follows an advice sensor | As in `none` |
 
-| Mode | Behaviour |
-|------|-----------|
-| **off** | All controlled devices are turned off. |
-| **heat** | Water HP (if configured) and air assists heat the room to the target temperature. |
-| **cool** | Air assists cool the room to the target temperature. The water HP is switched off because it cannot cool. |
-
-### Water-based heat pump (optional)
-- If configured, PowerClimate owns the HVAC mode for the water-based device: it is forced to HEAT while the virtual
-  climate entity is on and explicitly switched to OFF when PowerClimate is turned off.
-- The PowerClimate target temperature is clamped between the lower/upper offsets (and the global 16–30 °C limits)
-  before being sent to the water-based device.
-- Water temperature is tracked and exposed via diagnostics (when a water sensor is configured).
-
-### Air-based assist heat pumps (0..n)
-
-- The user controls each assist pump's HVAC mode. When an assist is off,
-  PowerClimate leaves it untouched.
-- When an assist pump is on, PowerClimate compares the room temperature to
-  the requested target:
-  - **Minimal mode** (room ≥ target): setpoint = current temp + lower offset.
-  - **Setpoint mode** (room < target): setpoint = requested target clamped
-    between `current + lower offset` and `current + upper offset`.
-- All temperatures are clamped between the global min/max before sending
-  commands, ensuring thermostats stay in a safe operating window.
-
-## Preset Behavior
-
-PowerClimate presets control how heat pumps operate in different scenarios:
-
-| Preset | 💧 Water Heat Pump | 🌬️ Air Heat Pump(s) | ❄️ Cool mode |
-|--------|-------------------|---------------------|-------------|
-| **none** | Normal operation (HEAT mode, follows setpoint) | Setpoint-tracking if ON, untouched if OFF | Air HPs follow cooling setpoint |
-| **boost** | Boost mode (current + upper offset) | Boost mode (current + upper offset) | Air HPs: aggressive cooling (current + lower offset) |
-| **Away** | Minimal mode (let temp drop to 16 °C) | OFF (if allow_on_off enabled), otherwise minimal | Target raised to max setpoint (disables cooling) |
-| **Main only** | Same as `none` | Main air HP (only without a water HP) as in `none`; the others OFF (if allow_on_off enabled), otherwise untouched | Only the main heat pump cools |
-| **Supply advice** | PI control of the supply temperature towards the advice of a supply advice sensor, via the room setpoint within the device offsets | Normal assist logic | Air HPs follow cooling setpoint |
-
-Away preset turns off air heat pumps only when `allow_on_off_control` is enabled for that device.
-Mirrored thermostat HVAC mode changes are not propagated; only temperature setpoint changes are mirrored.
-
-## Configuration Constants
-
-Absolute setpoint limits and the assist tuning are set under **Options → Advanced options**.
-
-The device offset defaults are defined in `const.py`:
-
-| Constant | Default | Description |
-|----------|---------|-------------|
-| `DEFAULT_LOWER_SETPOINT_OFFSET_HP1` | -0.3 | HP1 minimal-mode offset relative to its own sensed temperature. |
-| `DEFAULT_UPPER_SETPOINT_OFFSET_HP1` | 1.5 | HP1 ceiling offset relative to its sensed temperature. |
-| `DEFAULT_LOWER_SETPOINT_OFFSET_ASSIST` | -4.0 | Assist minimal-mode offset (room satisfied) — used as heating default. |
-| `DEFAULT_UPPER_SETPOINT_OFFSET_ASSIST` | 4.0 | Assist ceiling offset when chasing the room setpoint — used as heating default. |
-| `DEFAULT_LOWER_SETPOINT_OFFSET_COOLING` | -4.0 | Assist lower offset in cooling mode (most aggressive cooling). |
-| `DEFAULT_UPPER_SETPOINT_OFFSET_COOLING` | 0.0 | Assist upper offset in cooling mode (least aggressive / minimal). |
+The supply advice preset appears once a supply advice sensor is set under **Configure → Experimental**.
 
 ## Sensors
 
-Sensors are added only for pumps that have a configured `climate_entity_id`.
+Each hub is a device with these entities:
 
-| Sensor | Description |
+| Entity | Description |
 |--------|-------------|
-| Temperature Derivative | Room temperature change rate (°C/hour) |
-| Water Derivative | Water temperature change rate (°C/hour) |
-| Thermal Summary | Human-readable system state |
-| HP1 Behavior | HVAC status, temps, water temperature when available |
-| HP2+ Behavior | HVAC status, temps, and PowerClimate mode for each configured assist pump |
-| Total Power | Aggregated power from all configured pumps |
-| Target Temperature | PowerClimate's room target as a sensor (e.g. as comfort target for an external advice source) |
-| Supply Correction | Setpoint correction of the supply-temperature controller in the Supply advice preset |
+| Climate | The virtual thermostat; its attributes hold the full system state (room, ETA, status per heat pump, assist timers, supply control) |
+| HPx Mode | Per heat pump: the mode PowerClimate runs it in (`off`, `minimal`, `setpoint`, `boost`, `supply_advice`), with its status as attributes |
+| Temperature Derivative | Room temperature change (°C/h) |
+| Water Derivative | Supply water temperature change (°C/h) |
+| Total Power | Sum of the configured power sensors |
+| Target Temperature | PowerClimate's room target as a sensor |
+| Supply Correction | Setpoint correction of the supply-temperature control |
 
-Behavior sensors are created for every configured pump, not only the first five.
+![The entities of a PowerClimate hub.](docs/images/device-entities.png)
 
-Derivatives use the slope between the oldest and newest sample within the
-window (room: 15 minutes, water: 10 minutes), matching Home Assistant's
-Derivative helper behavior.
+## Documentation
 
-Behavior sensors label each pump as `<first word> (hpX)` to match the Thermal Summary format.
+- Detailed documentation (EN): [docs/README.md](docs/README.md)
+- Gedetailleerde documentatie (NL): [docs/README-NL.md](docs/README-NL.md)
+- Release notes: [CHANGELOG.md](CHANGELOG.md)
 
-## Heat Pump Tips
+## Support
 
-General setup guidance (always double-check your device manual):
-
-- Assist pumps (HP2–HP5): enable the manufacturer’s “heat shift” / °C offset if available to stabilize minimal mode, then tune `lower_setpoint_offset` accordingly so assists idle gently when the room is satisfied.
-- Water/hybrid pump (HP1): if hybrid, disable gas for space heating and cap CH/flow temperature around 45°C initially for better COP; adjust based on insulation and emitters.
-
-## Next Steps
-
-- Use Advanced options to tune assist thresholds (ETA in minutes) and anti-short-cycle
-- Use energy sensors or COP data for economic decisions
-- Add unit tests for the assist logic
+Issues and feature requests: use the GitHub issue tracker linked in the integration manifest.
