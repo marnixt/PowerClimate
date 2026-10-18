@@ -243,7 +243,9 @@ def _make_advice_entity(advice: float | None) -> PowerClimateClimate:
         maximum_overshoot=0.5,
         supply_advice_sensor="sensor.supply_advice",
     )
-    entity.coordinator = SimpleNamespace(data={"room_temperature": 21.0})
+    entity.coordinator = SimpleNamespace(
+        data={"room_temperature": 21.0, "water_temperature_filtered": 28.0, "water_spike": False}
+    )
     entity._read_supply_advice = MagicMock(return_value=(advice, None))
     entity._supply = SupplyController(entity._config)
     return entity
@@ -846,3 +848,33 @@ def test_calculate_mode_target_keeps_device_setpoint_without_temperature() -> No
     )
 
     assert target == 30.0
+
+
+def test_assists_get_the_filtered_water_temperature() -> None:
+    """A raw water spike must not reach the assist conditions."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.HEAT
+    entity._attr_preset_mode = "none"
+    entity._target_temperature = 21.0
+    entity._config = SimpleNamespace(
+        devices=[{CONF_CLIMATE_ENTITY: "climate.hp1"}, {CONF_CLIMATE_ENTITY: "climate.ac"}],
+        mirror_thermostats=[],
+        supply_advice_enabled=False,
+    )
+    entity.coordinator = SimpleNamespace(
+        data={"room_temperature": 20.0, "water_temperature_filtered": 35.0, "water_spike": True}
+    )
+    entity._supply = MagicMock()
+    entity._get_device_payloads = MagicMock(return_value={})
+    entity._process_water_device = AsyncMock(return_value=(61.0, "water_hp_only"))
+    entity._process_air_devices = AsyncMock(return_value=None)
+    entity._sync_devices = AsyncMock()
+    entity._sync_state_listeners = MagicMock()
+    entity.async_write_ha_state = MagicMock()
+    entity._emit_summary = MagicMock()
+
+    asyncio.run(entity._apply_staging())
+
+    water_temp = entity._process_air_devices.await_args.args[2]
+    assert water_temp == 35.0
+    assert entity._water_temperature == 61.0

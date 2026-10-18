@@ -79,7 +79,7 @@ room sensors, mirrored thermostats and devices), **Advanced options** and
   - off after a sustained overshoot: when the room stays above target + `Maximum overshoot` for the assist timer duration;
   - off when PowerClimate is turned off or set to cool.
 - Without that option PowerClimate never changes its HVAC mode; you keep control.
-- The water temperature is tracked when a water sensor is configured.
+- The water temperature is tracked when a water sensor is configured. PowerClimate also keeps a moving average of it (about two minutes) and ignores readings more than 5 K above that average for up to 10 minutes; the assist conditions and the supply advice control use this smoothed value. The climate attributes show it as `water_temperature_filtered`, with `water_spike` while a spike is ignored.
 
 ### Air-based assist heat pumps (0..n)
 
@@ -96,7 +96,7 @@ room sensors, mirrored thermostats and devices), **Advanced options** and
 - PowerClimate checks conditions and uses timers (5 minutes by default) against rapid cycling:
   - **On conditions**:
     1. **ETA above the on-threshold** (60 minutes by default): the room needs longer than that to reach the target.
-    2. **Water at or above the water threshold** (40 °C by default): the water heat pump runs hot.
+    2. **Water at or above the water threshold** (40 °C by default): the water heat pump runs hot. This uses the smoothed water temperature, so a short spike (such as a boiler making hot water through the same pipe) does not turn assists on.
     3. **Stalled below target**: room derivative ≤ 0 and the room is more than the stall delta (0.5 °C) below target.
   - **Off conditions**:
     1. **ETA below the off-threshold** (15 minutes by default).

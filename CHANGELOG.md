@@ -2,6 +2,11 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
+## Unreleased
+
+**Changed**
+- **Assists ignore water temperature spikes**: the "water at or above the threshold" assist condition uses the smoothed water temperature, the same one the supply advice control uses, so a boiler making hot water through the same pipe no longer turns assists on. The smoothing now runs on every update instead of only in the Supply advice preset; the climate attributes show it as `water_temperature_filtered` and `water_spike`.
+
 ## 0.9.0-alpha.1 — 2026-10-18
 
 **Summary**

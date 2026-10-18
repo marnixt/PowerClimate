@@ -6,7 +6,8 @@ temperature cannot be sent as is. A PI controller on
 around the temperature the device measures.
 
 Pure logic: the caller passes the readings and the current time, so the
-control can be tested without Home Assistant.
+control can be tested without Home Assistant. The coordinator smooths the
+supply temperature and flags spikes (see supply_filter.py).
 """
 
 from __future__ import annotations
@@ -16,15 +17,11 @@ from typing import Any, Protocol
 
 from .const import (
     FLOAT_COMPARISON_EPSILON,
-    SUPPLY_FILTER_TAU_SECONDS,
     SUPPLY_SETPOINT_DEADBAND,
-    SUPPLY_SPIKE_KELVIN,
-    SUPPLY_SPIKE_MAX_SECONDS,
 )
 from .mode_targets import SetpointLimits
 from .pi_controller import PIConfig, PIController, PIResult
 from .summary_payload import build_supply_pi_summary
-from .supply_filter import SupplyFilter
 from .utils import clamp_value
 
 
@@ -43,9 +40,6 @@ class SupplyController:
         """Initialize the controller with the configured tuning."""
         self._tuning = tuning
         self._pi = PIController()
-        self._filter = SupplyFilter(
-            SUPPLY_FILTER_TAU_SECONDS, SUPPLY_SPIKE_KELVIN, SUPPLY_SPIKE_MAX_SECONDS
-        )
         self._last_result: PIResult | None = None
         self._last_correction: float | None = None
         self._held_target: float | None = None
@@ -60,7 +54,6 @@ class SupplyController:
     def reset(self) -> None:
         """Start the control afresh."""
         self._pi.reset()
-        self._filter.reset()
         self._last_result = None
         self._last_correction = None
         self._held_target = None
@@ -78,6 +71,8 @@ class SupplyController:
         current_temp: float | None,
         current_target: float | None,
         water_temp: float | None,
+        water_filtered: float | None,
+        spike: bool,
         power: float | None,
         overshoot: bool,
         now: datetime,
@@ -90,7 +85,9 @@ class SupplyController:
             limits: The device's offsets bound the correction.
             current_temp: Temperature the device measures.
             current_target: The device's current setpoint.
-            water_temp: Measured supply temperature.
+            water_temp: Measured (raw) supply temperature.
+            water_filtered: Smoothed supply temperature the controller uses.
+            spike: True while the supply reading is a spike.
             power: The water heat pump's power.
             overshoot: True when the room is above target plus the maximum
                 overshoot.
@@ -99,18 +96,17 @@ class SupplyController:
         Returns None (normal setpoint logic) without an advice, a supply
         reading or a device temperature; the controller then keeps its state.
         """
-        if advice is None or water_temp is None or current_temp is None:
+        if advice is None or water_filtered is None or current_temp is None:
             return None
 
-        reading = self._filter.update(water_temp, now)
-        if reading.spike and self._last_correction is not None:
+        if spike and self._last_correction is not None:
             # Something else is heating the supply pipe (e.g. hot water from
             # a boiler): hold the last correction until the spike is over.
             self.summary = build_supply_pi_summary(
                 source,
                 advised_temp=advice,
                 supply_temp=water_temp,
-                supply_filtered=reading.filtered,
+                supply_filtered=water_filtered,
                 spike=True,
                 result=self._last_result,
                 correction=self._last_correction,
@@ -123,7 +119,7 @@ class SupplyController:
             output_min=limits.lower_offset,
             output_max=limits.upper_offset,
         )
-        error = advice - reading.filtered
+        error = advice - water_filtered
         if not self._pi.initialized:
             # Start from the device's current offset, so entering the preset
             # or restarting does not make the setpoint jump.
@@ -164,7 +160,7 @@ class SupplyController:
             source,
             advised_temp=advice,
             supply_temp=water_temp,
-            supply_filtered=reading.filtered,
+            supply_filtered=water_filtered,
             result=result,
             correction=correction,
         )

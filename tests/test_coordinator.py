@@ -171,3 +171,66 @@ class TestComputeDerivative:
         result = self.coordinator._compute_derivative(history, 22.0, 900 * 10)
         # denom would be 0; function should return None rather than raising
         assert result is None or isinstance(result, float)
+
+
+# ---------------------------------------------------------------------------
+# Water temperature filter
+# ---------------------------------------------------------------------------
+
+
+def test_water_spike_keeps_filtered_temperature() -> None:
+    """A sudden jump (e.g. boiler hot water) is flagged and not filtered in."""
+    import asyncio
+
+    from custom_components.powerclimate.const import (
+        SUPPLY_FILTER_TAU_SECONDS,
+        SUPPLY_SPIKE_KELVIN,
+        SUPPLY_SPIKE_MAX_SECONDS,
+    )
+    from custom_components.powerclimate.supply_filter import SupplyFilter
+
+    coord = _make_coordinator()
+    coord._water_filter = SupplyFilter(
+        SUPPLY_FILTER_TAU_SECONDS, SUPPLY_SPIKE_KELVIN, SUPPLY_SPIKE_MAX_SECONDS
+    )
+    coord.entry = SimpleNamespace(
+        data={
+            "devices": [
+                {"climate_entity_id": "climate.hp1", "water_sensor_entity_id": "sensor.w"}
+            ]
+        },
+        options={},
+    )
+    readings = {"sensor.w": "30.0"}
+    coord.hass.states.get.side_effect = (
+        lambda entity_id: SimpleNamespace(state=readings[entity_id], attributes={})
+        if entity_id in readings
+        else None
+    )
+
+    first = asyncio.run(coord._async_update_data())
+    readings["sensor.w"] = "60.0"
+    spike = asyncio.run(coord._async_update_data())
+
+    assert first["water_temperature_filtered"] == 30.0
+    assert first["water_spike"] is False
+    assert spike["devices"][0]["water_temperature"] == 60.0
+    assert spike["water_temperature_filtered"] == 30.0
+    assert spike["water_spike"] is True
+
+
+def test_water_filter_without_water_sensor() -> None:
+    import asyncio
+
+    coord = _make_coordinator()
+    coord._water_filter = MagicMock()
+    coord.entry = SimpleNamespace(
+        data={"devices": [{"climate_entity_id": "climate.ac"}]}, options={}
+    )
+    coord.hass.states.get.return_value = None
+
+    data = asyncio.run(coord._async_update_data())
+
+    assert data["water_temperature_filtered"] is None
+    assert data["water_spike"] is False
+    coord._water_filter.update.assert_not_called()

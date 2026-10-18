@@ -3,8 +3,14 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+from custom_components.powerclimate.const import (
+    SUPPLY_FILTER_TAU_SECONDS,
+    SUPPLY_SPIKE_KELVIN,
+    SUPPLY_SPIKE_MAX_SECONDS,
+)
 from custom_components.powerclimate.mode_targets import SetpointLimits
 from custom_components.powerclimate.supply_control import SupplyController
+from custom_components.powerclimate.supply_filter import SupplyFilter
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 # The water heat pump's heating offsets around its measured temperature.
@@ -12,10 +18,17 @@ LIMITS = SetpointLimits(16.0, 30.0, -0.3, 1.5)
 
 
 def _controller() -> SupplyController:
-    """Return a controller with kp 0.1 and a 10 minute integral time."""
-    return SupplyController(
+    """Return a controller with kp 0.1 and a 10 minute integral time.
+
+    It gets a supply filter, which the coordinator owns in the integration.
+    """
+    controller = SupplyController(
         SimpleNamespace(supply_pi_kp=0.1, supply_pi_ti_minutes=10.0, supply_pi_min_power_w=200.0)
     )
+    controller.test_filter = SupplyFilter(
+        SUPPLY_FILTER_TAU_SECONDS, SUPPLY_SPIKE_KELVIN, SUPPLY_SPIKE_MAX_SECONDS
+    )
+    return controller
 
 
 def _setpoint(
@@ -30,6 +43,7 @@ def _setpoint(
     overshoot: bool = False,
 ) -> float | None:
     """Return the water heat pump setpoint the correction leads to."""
+    reading = controller.test_filter.update(water_temp, at) if water_temp is not None else None
     correction = controller.correction(
         source="sensor.supply_advice",
         advice=advice,
@@ -37,6 +51,8 @@ def _setpoint(
         current_temp=current_temp,
         current_target=current_target,
         water_temp=water_temp,
+        water_filtered=reading.filtered if reading else None,
+        spike=reading.spike if reading else False,
         power=power,
         overshoot=overshoot,
         now=at,

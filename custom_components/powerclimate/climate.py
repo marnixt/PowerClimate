@@ -382,10 +382,15 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             if water_result:
                 water_temp, mode = water_result
 
-            # Process air devices
+            # Assists use the smoothed water temperature, so a short spike
+            # (e.g. a boiler making hot water) does not turn them on.
             air_mode = await self._process_air_devices(
-                room_temp, room_at_target, water_temp, device_payloads,
-                desired_devices, desired_targets
+                room_temp,
+                room_at_target,
+                self._water_filtered() if water_result else None,
+                device_payloads,
+                desired_devices,
+                desired_targets,
             )
             if air_mode:
                 mode = air_mode
@@ -551,6 +556,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._commands.ensure_mode(entity_id, HVACMode.OFF)
 
         return True
+
+    def _water_filtered(self) -> float | None:
+        """Return the coordinator's smoothed water temperature."""
+        return safe_float((self.coordinator.data or {}).get("water_temperature_filtered"))
 
     def _water_overshoot(self) -> bool:
         """Return True when the room is above target plus the maximum overshoot."""
@@ -807,6 +816,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 current_temp=current_temp,
                 current_target=current_target,
                 water_temp=water_temp,
+                water_filtered=self._water_filtered(),
+                spike=bool((self.coordinator.data or {}).get("water_spike")),
                 power=current_power,
                 overshoot=self._water_overshoot(),
                 now=datetime.now(UTC),
@@ -1070,6 +1081,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 self._room_eta_hours * 60.0 if self._room_eta_hours is not None else None
             ),
             "water_temperature": self._water_temperature,
+            "water_temperature_filtered": data.get("water_temperature_filtered"),
+            "water_spike": data.get("water_spike"),
             "water_derivative": data.get("water_derivative"),
             "hp_status": hp_status,
             "target_temperature": self._target_temperature,
