@@ -56,6 +56,9 @@ from .utils import safe_float
 
 _LOGGER = logging.getLogger(__name__)
 
+# Assist modes a user picks by hand; PowerClimate does not switch these back.
+_MANUAL_ASSIST_MODES = frozenset({HVACMode.FAN_ONLY.value, HVACMode.DRY.value})
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -603,6 +606,12 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             payload = device_payloads.get(entity_id, {}) or {}
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
             is_running = bool(hvac_mode) and hvac_mode != HVACMode.OFF.value
+
+            if hvac_mode in _MANUAL_ASSIST_MODES:
+                # Fan only or dry was chosen by hand: leave the pump alone.
+                self._assist_modes[entity_id] = MODE_OFF
+                self._hp_modes[entity_id] = MODE_OFF
+                continue
 
             if (
                 self._attr_preset_mode == PRESET_MAIN_ONLY

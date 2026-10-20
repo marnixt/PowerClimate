@@ -180,6 +180,19 @@ def test_main_only_turns_off_assists_with_on_off_control() -> None:
     assert entity._assist_modes["climate.air2"] == MODE_OFF
 
 
+def test_assist_in_fan_only_is_left_alone() -> None:
+    """A pump set to fan only by hand is neither switched back to heat nor turned off."""
+    for preset in ("none", "main_only"):
+        entity = _make_main_only_entity(water=True, air2_mode="fan_only")
+        entity._attr_preset_mode = preset
+
+        desired = _process_main_only(entity)
+
+        entity._commands.ensure_mode.assert_not_awaited()
+        assert "climate.air2" not in desired
+        assert entity._assist_modes["climate.air2"] == MODE_OFF
+
+
 def test_main_only_never_turns_on_other_pumps() -> None:
     """A stopped non-main pump stays off."""
     entity = _make_main_only_entity(water=True, air2_mode="off")
