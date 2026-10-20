@@ -11,6 +11,7 @@ MANUFACTURER = "MaxT"
 # Temperature derivative calculation windows
 DERIVATIVE_WINDOW_SECONDS = 900  # 15 minutes for room temperature
 DERIVATIVE_WATER_WINDOW_SECONDS = 900  # 15 minutes for water temperature
+DERIVATIVE_MIN_SPAN_SECONDS = 300  # samples must span this long before a slope is reported
 
 # Minimum interval between set_temperature/set_hvac_mode calls per device
 MIN_SET_CALL_INTERVAL_SECONDS = 20

@@ -132,6 +132,11 @@ class TestComputeDerivative:
         assert result is not None
         assert result == pytest.approx(0.0, abs=0.01)
 
+    def test_returns_none_until_samples_span_minimum(self) -> None:
+        """After a restart, flat samples seconds apart must not read as 0 °C/h."""
+        history: list = [(_ts(10), 21.1), (_ts(5), 21.1)]
+        assert self.coordinator._compute_derivative(history, 21.1, 900) is None
+
     def test_old_samples_pruned_outside_window(self) -> None:
         """Samples older than the window should be dropped."""
         history: list = [(_ts(7200), 18.0)]  # 2 hours old, window = 900 s

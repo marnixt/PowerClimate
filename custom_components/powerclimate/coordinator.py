@@ -13,6 +13,7 @@ from .const import (
     CONF_ROOM_TEMPERATURE_KEY,
     CONF_WATER_SENSOR,
     DEFAULT_SCAN_INTERVAL,
+    DERIVATIVE_MIN_SPAN_SECONDS,
     DERIVATIVE_WATER_WINDOW_SECONDS,
     DERIVATIVE_WINDOW_SECONDS,
     SUPPLY_FILTER_TAU_SECONDS,
@@ -280,6 +281,10 @@ class OSDataUpdateCoordinator(DataUpdateCoordinator):
 
         n = len(history)
         if n < 2:
+            return None
+        # Right after a (re)start the samples are seconds apart: a flat line
+        # over them says nothing, but would read as "not rising" (0 °C/h).
+        if (history[-1][0] - history[0][0]).total_seconds() < DERIVATIVE_MIN_SPAN_SECONDS:
             return None
 
         base_ts = history[0][0]
