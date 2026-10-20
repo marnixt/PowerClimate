@@ -73,6 +73,40 @@ def test_ensure_temperature_reapplies_after_external_change() -> None:
     commander.call_service.assert_awaited_once()
 
 
+def test_ensure_temperature_snaps_to_device_step() -> None:
+    """A 0.5 °C device gets 21.5 for 21.3, and is left alone once it reports it."""
+    state = SimpleNamespace(
+        state="heat", attributes={"temperature": 20.0, "target_temp_step": 0.5}
+    )
+    commander = _make_commander({"climate.hp1": state})
+
+    asyncio.run(commander.ensure_temperature("climate.hp1", 21.3))
+    assert commander.call_service.await_args.args[2]["temperature"] == 21.5
+
+    state.attributes = {"temperature": 21.5, "target_temp_step": 0.5}
+    commander.last_temp_call.clear()
+    asyncio.run(commander.ensure_temperature("climate.hp1", 21.3))
+    commander.call_service.assert_awaited_once()
+
+
+def test_ensure_temperature_ignores_echo_before_device_rounding() -> None:
+    """The optimistic echo of our value, then the device's rounding, is no external change."""
+    state = SimpleNamespace(state="heat", attributes={"temperature": 20.0})
+    commander = _make_commander({"climate.hp1": state})
+
+    asyncio.run(commander.ensure_temperature("climate.hp1", 21.3))
+    for reported in (21.3, 21.5, 21.5):
+        state.attributes = {"temperature": reported}
+        commander.last_temp_call.clear()
+        asyncio.run(commander.ensure_temperature("climate.hp1", 21.3))
+    commander.call_service.assert_awaited_once()
+
+    state.attributes = {"temperature": 19.0}
+    commander.last_temp_call.clear()
+    asyncio.run(commander.ensure_temperature("climate.hp1", 21.3))
+    assert commander.call_service.await_count == 2
+
+
 def test_call_service_skipped_while_off() -> None:
     hass = SimpleNamespace(services=SimpleNamespace(async_call=AsyncMock()))
     commander = DeviceCommander(hass, lambda: True)

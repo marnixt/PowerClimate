@@ -157,21 +157,26 @@ class DeviceCommander:
     async def ensure_temperature(self, entity_id: str, temperature: float) -> None:
         """Ensure device has the specified target temperature.
 
-        Skips the call when the device already reports the target, or when we
+        The target is rounded to the device's ``target_temp_step`` first. The
+        call is skipped when the device already reports the target, or when we
         already sent this target and the device's setpoint has not changed
-        since (devices may round, e.g. to 0.5 °C steps). A setpoint changed
-        externally is therefore re-applied.
+        since (devices may round without advertising a step). A setpoint
+        changed externally is therefore re-applied.
         """
+        temperature = self._snap_to_step(entity_id, temperature)
         reported = self.reported_setpoint(entity_id)
         if reported is not None and abs(reported - temperature) < SETPOINT_COMPARISON_THRESHOLD:
             return
         previous = self.device_targets.get(entity_id)
-        if (
-            previous is not None
-            and abs(previous - temperature) < SETPOINT_COMPARISON_THRESHOLD
-            and reported == self.device_reported_targets.get(entity_id)
-        ):
-            return
+        if previous is not None and abs(previous - temperature) < SETPOINT_COMPARISON_THRESHOLD:
+            if entity_id not in self.device_reported_targets:
+                # First report after our call: the device's own rounding of it.
+                # Recording it at call time would catch the optimistic echo of
+                # our value instead and resend on every rounded report.
+                self.device_reported_targets[entity_id] = reported
+                return
+            if reported == self.device_reported_targets[entity_id]:
+                return
         if self._recent_call(self.last_temp_call, entity_id):
             _LOGGER.debug("Skipping temperature set for %s due to cooldown", entity_id)
             return
@@ -185,7 +190,15 @@ class DeviceCommander:
         self._mark_call(self.last_temp_call, entity_id)
         if success:
             self.device_targets[entity_id] = temperature
-            self.device_reported_targets[entity_id] = self.reported_setpoint(entity_id)
+            self.device_reported_targets.pop(entity_id, None)
+
+    def _snap_to_step(self, entity_id: str, temperature: float) -> float:
+        """Round a setpoint to the device's target temperature step, if any."""
+        state = self.hass.states.get(entity_id)
+        step = safe_float(state.attributes.get("target_temp_step")) if state else None
+        if not step or step <= 0:
+            return temperature
+        return round(round(temperature / step) * step, 2)
 
     def reported_setpoint(self, entity_id: str) -> float | None:
         """Return the setpoint a climate entity currently reports."""
