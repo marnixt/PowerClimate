@@ -199,6 +199,21 @@ def test_assist_in_fan_only_is_left_alone() -> None:
         assert entity._assist_modes["climate.air2"] == MODE_OFF
 
 
+def test_unavailable_assist_is_left_alone() -> None:
+    """A pump that is unavailable (e.g. reconnecting after a restart) is not switched on."""
+    for mode in ("unavailable", "unknown", ""):
+        entity = _make_main_only_entity(water=True, air2_mode=mode)
+        entity._attr_preset_mode = "none"
+
+        desired = _process_main_only(entity)
+
+        entity._commands.ensure_mode.assert_not_awaited()
+        timer_updates = entity._assist_controller.update_timers.call_args_list
+        assert all(call.args[0] != "climate.air2" for call in timer_updates)
+        assert "climate.air2" not in desired
+        assert entity._assist_modes["climate.air2"] == MODE_OFF
+
+
 def test_main_only_never_turns_on_other_pumps() -> None:
     """A stopped non-main pump stays off."""
     entity = _make_main_only_entity(water=True, air2_mode="off")

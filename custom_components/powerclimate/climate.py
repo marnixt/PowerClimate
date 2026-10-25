@@ -15,7 +15,13 @@ from homeassistant.components.climate.const import (
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE, UnitOfTemperature
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    ATTR_TEMPERATURE,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -60,6 +66,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # Assist modes a user picks by hand; PowerClimate does not switch these back.
 _MANUAL_ASSIST_MODES = frozenset({HVACMode.FAN_ONLY.value, HVACMode.DRY.value})
+# States without a usable mode (no state, or not reachable, e.g. while the
+# device reconnects after a restart); PowerClimate does not act on these.
+_UNREACHABLE_STATES = frozenset({"", STATE_UNAVAILABLE, STATE_UNKNOWN})
 
 
 async def async_setup_entry(
@@ -625,8 +634,10 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             hvac_mode = str(payload.get("hvac_mode") or "").lower()
             is_running = bool(hvac_mode) and hvac_mode != HVACMode.OFF.value
 
-            if hvac_mode in _MANUAL_ASSIST_MODES:
-                # Fan only or dry was chosen by hand: leave the pump alone.
+            if hvac_mode in _MANUAL_ASSIST_MODES or hvac_mode in _UNREACHABLE_STATES:
+                # Fan only or dry was chosen by hand, or the pump's mode is
+                # not known: leave the pump alone. An unavailable pump used to
+                # count as running in the wrong mode and was switched to heat.
                 self._assist_modes[entity_id] = MODE_OFF
                 self._hp_modes[entity_id] = MODE_OFF
                 continue

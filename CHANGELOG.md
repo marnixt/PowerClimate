@@ -4,6 +4,9 @@ This file consolidates release notes and highlights useful for HACS and users.
 
 ## Unreleased
 
+**Fixed**
+- **Assists are not switched on after a restart**: an assist pump that was still unavailable while Home Assistant started (for example an ESPHome device reconnecting) counted as running in the wrong mode and was switched to heat. PowerClimate now leaves a pump whose state is unavailable or unknown alone until it reports a mode.
+
 **Added**
 - **Room control of the water heat pump (experimental)**: an option under Options → Experimental passes the room error PowerClimate measures on to the water heat pump and raises its setpoint while a shortage lasts (integral time, default 30 minutes), within its heating offsets, in the None and Main only presets. The integral stops growing once the smoothed supply reaches the assist water temperature threshold and does not shrink while an assist pump heats, so the water heat pump keeps its push when the assist turns off. With room control the "stalled below target" assist condition waits until the water heat pump cannot push harder. The Room Correction sensor shows the correction, with the controller state as attributes (also on the climate entity as `room_pi_*`). Off by default.
 
