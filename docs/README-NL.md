@@ -240,6 +240,14 @@ waterwarmtepomp aan in de presets `none` en `main only` (verwarmen):
 - **Dode zone**: het setpoint verandert pas bij een verschil van minstens
   0,2 °C.
 
+**Gebruik het met een thermostaat die niemand met de hand bedient.** Het
+setpoint dat de regeling stuurt, wijkt bewust af van het kamerdoel. Als
+bewoners die thermostaat ook gebruiken (knoppen, app of schema) en hij is
+gespiegeld, zien ze dat setpoint, en kan de thermostaat zijn schema verlaten
+omdat hij de wijziging als handmatig ziet. Houd de thermostaat die bewoners
+gebruiken gescheiden van het apparaat dat de warmtepomp aanstuurt, of laat de
+kamerregeling uit.
+
 Zet het aan onder **Configureren → Experimenteel → Kamerregeling van de
 waterwarmtepomp**. De sensor **Kamercorrectie** toont de correctie (setpoint
 min apparaattemperatuur), met de afwijking, het P- en I-deel en of de

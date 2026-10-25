@@ -232,6 +232,13 @@ presets (heating):
   HVAC mode change and after a Home Assistant restart.
 - **Deadband**: the setpoint only moves when it changes by at least 0.2 °C.
 
+**Use it with a thermostat nobody sets by hand.** The setpoint it sends
+differs from the room target on purpose. If people also use that thermostat
+(its buttons, app or schedule) and it is mirrored, they see that setpoint, and
+the thermostat may leave its schedule because it counts the change as manual.
+Keep the thermostat people use separate from the device that drives the heat
+pump, or leave room control off.
+
 Enable it under **Configure → Experimental → Room control of the water heat
 pump**. The **Room Correction** sensor shows the correction (setpoint minus
 device temperature), with the error, the P and I parts and whether the water
