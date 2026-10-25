@@ -82,8 +82,15 @@ SUPPLY_SPIKE_KELVIN = 5.0
 # A spike lasting longer than this is accepted as a real change.
 SUPPLY_SPIKE_MAX_SECONDS = 600.0
 # Only move the water heat pump's setpoint when it changes at least this much,
-# so supply noise does not send a new setpoint every few seconds.
-SUPPLY_SETPOINT_DEADBAND = 0.2
+# so sensor noise does not send a new setpoint every few seconds (supply and
+# room control).
+WATER_SETPOINT_DEADBAND = 0.2
+
+# Room control of the water heat pump (experimental, setpoint mode, heating).
+# The water heat pump gets the room error PowerClimate measures, plus an
+# integral that grows while a shortage lasts.
+CONF_ROOM_PI_ENABLED = "room_pi_enabled"
+CONF_ROOM_PI_TI_MINUTES = "room_pi_ti_minutes"
 
 # Setpoint offset configuration
 # Floor = current_temp + lower_offset (lower is typically negative or zero)

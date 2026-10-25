@@ -34,11 +34,16 @@ class AssistConditionChecker:
         room_eta_minutes: float | None, water_temp: float | None,
         room_derivative: float | None,
         hvac_mode: str = _HVAC_HEAT,
+        water_at_limit: bool | None = None,
     ) -> ConditionResult:
         """Check if any assist ON condition is met.
 
         For heating: eta_high, water_hot, stalled_below_target.
         For cooling: eta_high (room too warm), stalled_above_target.
+
+        water_at_limit comes from the water heat pump's room control: False
+        while it can still push harder, which holds stalled_below_target
+        back. None (no room control) leaves the condition as is.
         """
         if hvac_mode == _HVAC_COOL:
             result = self._check_eta_high_cool(room_temp, target_temp, room_eta_minutes)
@@ -55,7 +60,9 @@ class AssistConditionChecker:
         result = self._check_water_hot(room_temp, target_temp, water_temp, room_eta_minutes)
         if result.met:
             return result
-        result = self._check_stalled_below_target(room_temp, target_temp, room_derivative)
+        result = self._check_stalled_below_target(
+            room_temp, target_temp, room_derivative, water_at_limit
+        )
         if result.met:
             return result
         return ConditionResult.not_met()
@@ -124,7 +131,15 @@ class AssistConditionChecker:
         return ConditionResult.not_met()
 
     def _check_stalled_below_target(self, room_temp: float | None, target_temp: float | None,
-                                    room_derivative: float | None) -> ConditionResult:
+                                    room_derivative: float | None,
+                                    water_at_limit: bool | None = None) -> ConditionResult:
+        """Room below target and not warming up.
+
+        With room control the water heat pump pushes harder first; the
+        assist only joins once it cannot push further.
+        """
+        if water_at_limit is False:
+            return ConditionResult.not_met()
         stall_delta = self._config.assist_stall_temp_delta
         if (room_derivative is not None and room_derivative <= 0.0
             and room_temp is not None and target_temp is not None

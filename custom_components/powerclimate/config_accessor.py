@@ -24,6 +24,8 @@ from .const import (
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_ROOM_PI_ENABLED,
+    CONF_ROOM_PI_TI_MINUTES,
     CONF_ROOM_SENSORS,
     CONF_SUPPLY_ADVICE_SENSOR,
     CONF_SUPPLY_PI_KP,
@@ -116,6 +118,16 @@ class ConfigAccessor:
     def supply_pi_min_power_w(self) -> float:
         """Get the water heat pump power below which the integral is frozen."""
         return self._number(CONF_SUPPLY_PI_MIN_POWER_W)
+
+    @property
+    def room_pi_enabled(self) -> bool:
+        """Check if the room control of the water heat pump is enabled."""
+        return bool(self._get_config().get(CONF_ROOM_PI_ENABLED, False))
+
+    @property
+    def room_pi_ti_minutes(self) -> float:
+        """Get the room controller's integral time in minutes."""
+        return self._number(CONF_ROOM_PI_TI_MINUTES)
 
     @property
     def mirror_thermostats(self) -> list[str]:
@@ -285,6 +297,7 @@ class ConfigAccessor:
             **{key: self._number(key) for key in NUMBER_OPTIONS},
             "supply_advice_enabled": self.supply_advice_enabled,
             "supply_advice_sensor": self.supply_advice_sensor,
+            "room_pi_enabled": self.room_pi_enabled,
             "mirror_thermostats": self.mirror_thermostats,
             "device_count": len(self.devices),
         }

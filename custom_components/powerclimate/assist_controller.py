@@ -137,6 +137,7 @@ class AssistPumpController:
         room_derivative: float | None,
         is_running: bool,
         hvac_mode: str = "heat",
+        water_at_limit: bool | None = None,
     ) -> AssistTimerState:
         """Update timer state based on current conditions.
 
@@ -148,6 +149,8 @@ class AssistPumpController:
             water_temp: Current water temperature.
             room_derivative: Room temperature change rate.
             is_running: Whether the device is currently running.
+            water_at_limit: Whether the water heat pump's room control can
+                push no harder; None without room control.
 
         Returns:
             Updated AssistTimerState.
@@ -183,6 +186,7 @@ class AssistPumpController:
         on_result = self._condition_checker.check_on_conditions(
             room_temp, target_temp, room_eta_minutes, water_temp, room_derivative,
             hvac_mode=hvac_mode,
+            water_at_limit=water_at_limit,
         )
         off_result = self._condition_checker.check_off_conditions(
             room_temp, target_temp, room_eta_minutes, room_derivative,

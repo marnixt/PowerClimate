@@ -20,6 +20,7 @@ from .const import (
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIN_SETPOINT_OVERRIDE,
+    CONF_ROOM_PI_TI_MINUTES,
     CONF_SUPPLY_PI_KP,
     CONF_SUPPLY_PI_MIN_POWER_W,
     CONF_SUPPLY_PI_TI_MINUTES,
@@ -64,10 +65,16 @@ SUPPLY_PI_OPTIONS = (
     NumberOption(CONF_SUPPLY_PI_MIN_POWER_W, 200.0, 0, 2000, 10, "W"),
 )
 
+# Experimental options: tuning of the water heat pump's room control.
+ROOM_PI_OPTIONS = (
+    NumberOption(CONF_ROOM_PI_TI_MINUTES, 30.0, 5, 240, 1, "min"),
+)
+
 ADVANCED_OPTIONS = (*SETPOINT_OPTIONS, *ASSIST_OPTIONS)
 
 NUMBER_OPTIONS = {
-    option.key: option for option in (*ADVANCED_OPTIONS, *SUPPLY_PI_OPTIONS)
+    option.key: option
+    for option in (*ADVANCED_OPTIONS, *SUPPLY_PI_OPTIONS, *ROOM_PI_OPTIONS)
 }
 
 

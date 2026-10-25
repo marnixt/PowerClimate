@@ -1,4 +1,4 @@
-"""Proportional-integral controller for the supply-temperature correction.
+"""Proportional-integral controller for the water heat pump's setpoint corrections.
 
 Pure logic: the caller passes the error, the current time and the tuning on
 every update, so the controller can be tested without Home Assistant.
@@ -84,6 +84,8 @@ class PIController:
         config: PIConfig,
         *,
         integrate: bool = True,
+        allow_increase: bool = True,
+        allow_decrease: bool = True,
     ) -> PIResult:
         """Advance the controller and return the new output.
 
@@ -93,6 +95,8 @@ class PIController:
             config: Tuning and output limits.
             integrate: False freezes the integral; the proportional term
                 still responds.
+            allow_increase: False keeps the integral from growing.
+            allow_decrease: False keeps the integral from shrinking.
         """
         integral = self._integral if self._integral is not None else 0.0
         integral = clamp_value(integral, config.output_min, config.output_max)
@@ -113,6 +117,8 @@ class PIController:
             and dt > 0
             and not pushing_up
             and not pushing_down
+            and (allow_increase or error <= 0)
+            and (allow_decrease or error >= 0)
         )
         if integrating:
             integral += config.kp / config.ti_seconds * error * dt

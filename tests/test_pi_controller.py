@@ -128,3 +128,26 @@ def test_reset_forgets_state():
     assert controller.initialized is True  # update starts a fresh integral
     assert result.output == 0.0
     assert result.integrating is False  # first update after reset has no time step
+
+
+def test_integral_can_be_kept_from_growing():
+    controller = PIController()
+    controller.update(2.0, T0, CONFIG)
+
+    result = controller.update(2.0, _at(300), CONFIG, allow_increase=False)
+
+    assert result.i_term == 0.0
+    assert result.integrating is False
+
+
+def test_integral_can_be_kept_from_shrinking():
+    controller = PIController()
+    controller.update(2.0, T0, CONFIG)
+    grown = controller.update(2.0, _at(300), CONFIG).i_term
+
+    held = controller.update(-2.0, _at(600), CONFIG, allow_decrease=False)
+    assert held.i_term == pytest.approx(grown)
+
+    # Growing is still allowed.
+    result = controller.update(2.0, _at(900), CONFIG, allow_decrease=False)
+    assert result.i_term == pytest.approx(grown + 0.1)

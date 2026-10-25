@@ -12,14 +12,20 @@ from custom_components.powerclimate.const import (
     CONF_CLIMATE_ENTITY,
     MODE_BOOST,
     MODE_OFF,
+    MODE_SETPOINT,
     MODE_SUPPLY_ADVICE,
 )
+from custom_components.powerclimate.room_control import RoomController
 from custom_components.powerclimate.supply_control import SupplyController
 
 
 def make_entity() -> PowerClimateClimate:
     """Create a bare PowerClimateClimate instance for method-level unit tests."""
-    return PowerClimateClimate.__new__(PowerClimateClimate)
+    entity = PowerClimateClimate.__new__(PowerClimateClimate)
+    entity._room = RoomController(
+        SimpleNamespace(room_pi_ti_minutes=30.0, assist_water_temp_threshold=40.0)
+    )
+    return entity
 
 
 def test_apply_away_mode_uses_air_device_roles() -> None:
@@ -408,6 +414,7 @@ def test_process_water_device_turns_on_on_any_demand() -> None:
             },
             0,
         ),
+        room_pi_enabled=False,
     )
     entity._target_temperature = 21.0
     entity._room_eta_hours = None  # ETA unknown – should not block
@@ -919,3 +926,64 @@ def test_summary_shows_measured_water_temperature_when_off() -> None:
 
     assert entity.extra_state_attributes["water_temperature"] == 34.6
     assert entity.extra_state_attributes["water_temperature_filtered"] == 34.4
+
+
+# ---------------------------------------------------------------------------
+# Room control of the water heat pump; see test_room_control.py
+# ---------------------------------------------------------------------------
+
+
+def _make_room_entity() -> PowerClimateClimate:
+    """Return a heating entity whose room is 0.3 °C below its 22.0 °C target."""
+    entity = make_entity()
+    entity._attr_hvac_mode = HVACMode.HEAT
+    entity._attr_preset_mode = "none"
+    entity._target_temperature = 22.0
+    entity._config = SimpleNamespace(
+        min_setpoint=16.0,
+        max_setpoint=30.0,
+        get_device_lower_offset=lambda _device, _index: -0.3,
+        get_device_upper_offset=lambda _device, _index: 1.5,
+        maximum_overshoot=0.5,
+    )
+    entity.coordinator = SimpleNamespace(
+        data={"room_temperature": 21.7, "water_temperature_filtered": 30.0}
+    )
+    return entity
+
+
+def test_room_control_passes_room_error_to_water_heat_pump() -> None:
+    """The water setpoint is the device temperature plus the room error."""
+    entity = _make_room_entity()
+
+    def water_target(room_control: bool) -> float:
+        return entity._calculate_mode_target(
+            MODE_SETPOINT,
+            current_temp=21.9,
+            device={CONF_CLIMATE_ENTITY: "climate.hp1"},
+            index=0,
+            current_target=None,
+            room_control=room_control,
+        )
+
+    assert water_target(False) == 22.0
+    assert water_target(True) == 22.2
+    assert entity._room.summary["room_pi_active"] is True
+
+
+def test_assist_heating_reads_air_heat_pump_modes() -> None:
+    """Only an air heat pump in heat mode counts as a heating assist."""
+    entity = make_entity()
+    entity._config = SimpleNamespace(
+        get_air_devices=lambda: [
+            (1, {CONF_CLIMATE_ENTITY: "climate.air1"}),
+            (2, {CONF_CLIMATE_ENTITY: "climate.air2"}),
+        ]
+    )
+
+    assert entity._assist_heating(
+        {"climate.air1": {"hvac_mode": "fan_only"}, "climate.air2": {"hvac_mode": "heat"}}
+    )
+    assert not entity._assist_heating(
+        {"climate.air1": {"hvac_mode": "off"}, "climate.air2": {"hvac_mode": "dry"}}
+    )

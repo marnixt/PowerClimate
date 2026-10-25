@@ -309,6 +309,17 @@
               "supply_pi_ti_minutes": "Time in which the integral adds one proportional step; longer is slower and calmer (default: 45 minutes).",
               "supply_pi_min_power_w": "Below this water heat pump power the compressor counts as idle and the integral stops (default: 200 W)."
             }
+          },
+          "room_control": {
+            "name": "Room control of the water heat pump",
+            "data": {
+              "room_pi_enabled": "Enable room control",
+              "room_pi_ti_minutes": "Integral time"
+            },
+            "data_description": {
+              "room_pi_enabled": "Passes the room error PowerClimate measures on to the water heat pump and raises its setpoint while a shortage lasts, within the heating offsets. The integral stops rising once the supply reaches the assist water temperature threshold and does not fall while an assist pump heats. A stalled room only turns an assist pump on once the water heat pump cannot push harder.",
+              "room_pi_ti_minutes": "Time in which the integral adds the room error once more; shorter pushes harder, longer is calmer (default: 30 minutes)."
+            }
           }
         }
       }

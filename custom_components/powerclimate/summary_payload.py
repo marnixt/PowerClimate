@@ -78,6 +78,44 @@ def build_supply_pi_summary(
     }
 
 
+def build_room_pi_summary(
+    *,
+    result: PIResult | None = None,
+    correction: float | None = None,
+    supply_hot: bool = False,
+    assist_running: bool = False,
+    at_limit: bool = False,
+) -> dict[str, Any]:
+    """Build diagnostics for the water heat pump's room control.
+
+    Args:
+        result: Outcome of the last controller update; None while the
+            controller is not running.
+        correction: Correction applied to the device temperature.
+        supply_hot: True when the supply has reached the assist water
+            threshold (the integral does not grow).
+        assist_running: True while an assist pump heats (the integral
+            does not shrink).
+        at_limit: True when the water heat pump cannot push harder.
+    """
+
+    def rounded(value: float | None) -> float | None:
+        return round(value, 2) if value is not None else None
+
+    active = result is not None
+    return {
+        "room_pi_active": active,
+        "room_pi_error": rounded(result.error) if active else None,
+        "room_pi_p": rounded(result.p_term) if active else None,
+        "room_pi_i": rounded(result.i_term) if active else None,
+        "room_pi_correction": rounded(correction) if active else None,
+        "room_pi_integrating": result.integrating if active else None,
+        "room_pi_supply_hot": supply_hot if active else None,
+        "room_pi_assist_running": assist_running if active else None,
+        "room_pi_at_limit": at_limit if active else None,
+    }
+
+
 def build_hp_status(
     devices: list[dict[str, Any]],
     device_payloads: Mapping[str, Mapping[str, Any]],

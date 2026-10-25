@@ -97,7 +97,7 @@ wijzigen** (naam, ruimtesensoren, gemirrorde thermostaten en apparaten),
   - **Aan-condities**:
     1. **ETA boven de aan-drempel** (standaard 60 minuten): de ruimte doet er langer over om het doel te halen.
     2. **Water op of boven de waterdrempel** (standaard 40 °C): de waterwarmtepomp draait warm. Dit gebruikt de gemiddelde watertemperatuur, zodat een korte piek (bijvoorbeeld een ketel die via dezelfde leiding warm water maakt) de assists niet aanzet.
-    3. **Stilstand onder het doel**: temperatuurverloop ≤ 0 en de ruimte zit meer dan het stilstandverschil (0,5 °C) onder het doel.
+    3. **Stilstand onder het doel**: temperatuurverloop ≤ 0 en de ruimte zit meer dan het stilstandverschil (0,5 °C) onder het doel. Met [kamerregeling](#kamerregeling-experimenteel) pas als de waterwarmtepomp niet harder kan.
   - **Uit-condities**:
     1. **ETA onder de uit-drempel** (standaard 15 minuten).
     2. **Stilstand op het doel**: temperatuurverloop ≤ 0 en de ruimte zit binnen het stilstandverschil van het doel.
@@ -206,6 +206,43 @@ aanvoertemperatuur in °C werkt:
   ontbreekt. Gebruik een buitensensor die niet opwarmt door een draaiende
   buitenunit.
 
+### Kamerregeling (experimenteel)
+
+Zonder kamerregeling krijgt de waterwarmtepomp het kamerdoel als setpoint, en
+bepaalt zijn eigen thermostaat hoe hard hij werkt. Die thermostaat kan warmer
+meten dan de kamersensoren van PowerClimate, en een klein maar aanhoudend
+tekort geeft hem nauwelijks een afwijking om op te reageren, zodat een
+assist-pomp steeds bijspringt. Kamerregeling past het setpoint van de
+waterwarmtepomp aan in de presets `none` en `main only` (verwarmen):
+
+- **Setpoint**: apparaattemperatuur + (kamerdoel − kamertemperatuur) +
+  integraal. Het eerste deel geeft de kamerafwijking die PowerClimate meet één
+  op één door.
+- **Integraal**: groeit zolang de kamer onder het doel zit en krimpt zolang
+  hij erboven zit, met de kamerafwijking per integratietijd (standaard 30
+  minuten). Een tekort van 0,3 °C voegt zo'n 0,6 °C per uur toe.
+- **Grenzen**: de uitkomst blijft binnen de verwarmingsoffsets van het
+  waterapparaat en het globale minimum/maximum.
+- **Aanvoer op de drempel**: zodra de gemiddelde aanvoertemperatuur de
+  watertemperatuurdrempel haalt (Geavanceerde opties, standaard 40 °C), groeit
+  de integraal niet verder.
+- **Assist-pompen verwarmen**: zolang een luchtwarmtepomp verwarmt, krimpt de
+  integraal niet; een kamer boven het doel komt dan door de assist. Gaat de
+  assist uit, dan houdt de waterwarmtepomp zijn duw vast.
+- **Doorschot**: boven doel + `Maximale doorschot` gaat het setpoint naar de
+  onderste offset.
+- **Stilstaande kamer**: de assist-conditie *stilstand onder het doel* wacht
+  tot de waterwarmtepomp niet harder kan (setpoint op de bovenste offset, of
+  aanvoer op de drempel). De ETA- en watertemperatuurcondities veranderen niet.
+- **Schokvrije start** en een **dode zone van 0,2 °C**, net als bij de
+  aanvoertemperatuurregeling; de regelaar start opnieuw bij elke wissel van
+  preset of HVAC-modus.
+
+Zet het aan onder **Configureren → Experimenteel → Kamerregeling van de
+waterwarmtepomp**. De attributen `room_pi_*` van de climate-entiteit tonen de
+afwijking, het P- en I-deel, de correctie en of de waterwarmtepomp aan zijn
+grens zit.
+
 ## Geavanceerde opties
 
 Stem PowerClimate af via **Instellingen → Apparaten & diensten → PowerClimate → Configureren → Geavanceerde opties**. Alle velden zijn optioneel; lege velden gebruiken de standaardwaarde. Wijzigingen werken direct.
@@ -239,6 +276,13 @@ Onder **Configureren → Experimenteel**:
 | Proportionele versterking | 0,15 | 0,01–1,0 | Setpointwijziging in °C per °C aanvoerfout |
 | Integratietijd | 45 min | 5–240 min | Tijd waarin de integraal één proportionele stap toevoegt; langer is rustiger |
 | Minimaal compressorvermogen | 200 W | 0–2000 W | Onder dit vermogen van de waterwarmtepomp staat de integraal stil |
+
+- **Kamerregeling van de waterwarmtepomp** (presets `none` en `main only`, verwarmen); zie [Kamerregeling](#kamerregeling-experimenteel):
+
+| Optie | Standaard | Bereik | Beschrijving |
+|-------|-----------|--------|--------------|
+| Kamerregeling inschakelen | uit | | Geef de kamerafwijking door aan de waterwarmtepomp en verhoog zijn setpoint zolang een tekort aanhoudt |
+| Integratietijd | 30 min | 5–240 min | Tijd waarin de integraal de kamerafwijking nog eens toevoegt; korter duwt harder |
 
 ## Standaard-offsets van apparaten
 

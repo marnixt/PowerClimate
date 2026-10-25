@@ -2,7 +2,7 @@
 
 Pure logic: every input is passed in explicitly, so the rules can be tested
 without a climate entity. Inputs that are expensive or only meaningful for
-one mode (the supply-temperature correction) are passed as callables and only
+one mode (the supply and room corrections) are passed as callables and only
 evaluated when that mode needs them.
 """
 
@@ -39,6 +39,7 @@ def calculate_mode_target(
     is_cooling: bool,
     current_target: float | None = None,
     supply_correction: Callable[[], float | None] | None = None,
+    room_correction: Callable[[], float | None] | None = None,
 ) -> float:
     """Calculate the setpoint for a device in the given mode.
 
@@ -53,6 +54,8 @@ def calculate_mode_target(
         supply_correction: Returns the correction (°C) on the device
             temperature that steers the supply temperature towards the
             advice (supply advice mode, heating).
+        room_correction: Returns the correction (°C) on the device
+            temperature from the room control (setpoint mode, heating).
     """
     min_sp = limits.min_setpoint
     max_sp = limits.max_setpoint
@@ -70,6 +73,13 @@ def calculate_mode_target(
         # The device setpoint is a room setpoint: steer the supply temperature
         # by moving it relative to the temperature the device measures.
         correction = supply_correction()
+        if correction is not None:
+            return round(max(min_sp, min(current_temp + correction, max_sp)), 1)
+
+    if mode == MODE_SETPOINT and not is_cooling and room_correction is not None:
+        # Room control: pass on the room error PowerClimate measures, plus
+        # the integral, relative to the temperature the device measures.
+        correction = room_correction()
         if correction is not None:
             return round(max(min_sp, min(current_temp + correction, max_sp)), 1)
 

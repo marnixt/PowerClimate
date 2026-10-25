@@ -309,6 +309,17 @@
               "supply_pi_ti_minutes": "Tijd waarin het integrerende deel één proportionele stap toevoegt; langer is trager en rustiger (standaard: 45 minuten).",
               "supply_pi_min_power_w": "Onder dit vermogen van de waterwarmtepomp telt de compressor als stilstaand en stopt het integrerende deel (standaard: 200 W)."
             }
+          },
+          "room_control": {
+            "name": "Kamerregeling van de waterwarmtepomp",
+            "data": {
+              "room_pi_enabled": "Kamerregeling inschakelen",
+              "room_pi_ti_minutes": "Integratietijd"
+            },
+            "data_description": {
+              "room_pi_enabled": "Geeft de kamerafwijking die PowerClimate meet door aan de waterwarmtepomp en verhoogt het setpoint zolang een tekort aanhoudt, binnen de verwarmingsoffsets. Het integrerende deel stijgt niet verder zodra de aanvoer de watertemperatuurdrempel bereikt en daalt niet zolang een assist-pomp verwarmt. Een stilstaande kamer schakelt een assist-pomp pas in als de waterwarmtepomp niet harder kan.",
+              "room_pi_ti_minutes": "Tijd waarin het integrerende deel de kamerafwijking nog eens toevoegt; korter duwt harder, langer is rustiger (standaard: 30 minuten)."
+            }
           }
         }
       }

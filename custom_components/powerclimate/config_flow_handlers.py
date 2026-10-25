@@ -28,6 +28,7 @@ from .const import (
     CONF_MAX_SETPOINT_OVERRIDE,
     CONF_MIN_SETPOINT_OVERRIDE,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_ROOM_PI_ENABLED,
     CONF_ROOM_SENSORS,
     CONF_SUPPLY_ADVICE_SENSOR,
     CONF_UPPER_SETPOINT_OFFSET_COOLING,
@@ -46,6 +47,7 @@ from .const import (
 from .number_options import (
     ADVANCED_OPTIONS,
     ASSIST_OPTIONS,
+    ROOM_PI_OPTIONS,
     SETPOINT_OPTIONS,
     SUPPLY_PI_OPTIONS,
     NumberOption,
@@ -696,7 +698,16 @@ def build_experimental_schema(defaults: dict[str, Any]) -> vol.Schema:
         **build_fields(defaults, ((CONF_SUPPLY_ADVICE_SENSOR, entity_selector("sensor")),)),
         **number_fields(defaults, SUPPLY_PI_OPTIONS),
     }
-    return sectioned_schema((("supply_control", supply_control_fields, False),))
+    room_control_fields = {
+        **build_fields(defaults, ((CONF_ROOM_PI_ENABLED, bool),)),
+        **number_fields(defaults, ROOM_PI_OPTIONS),
+    }
+    return sectioned_schema(
+        (
+            ("supply_control", supply_control_fields, False),
+            ("room_control", room_control_fields, False),
+        )
+    )
 
 
 def experimental_form_defaults(
@@ -709,6 +720,8 @@ def experimental_form_defaults(
     return {
         CONF_SUPPLY_ADVICE_SENSOR: base.get(CONF_SUPPLY_ADVICE_SENSOR),
         **number_defaults(base, SUPPLY_PI_OPTIONS),
+        CONF_ROOM_PI_ENABLED: bool(base.get(CONF_ROOM_PI_ENABLED, False)),
+        **number_defaults(base, ROOM_PI_OPTIONS),
     }
 
 
@@ -720,4 +733,10 @@ def process_experimental_input(user_input: dict[str, Any]) -> dict[str, Any]:
     return {
         CONF_SUPPLY_ADVICE_SENSOR: sensor_entity_id or None,
         **submitted_numbers(user_input, SUPPLY_PI_OPTIONS),
+        **(
+            {CONF_ROOM_PI_ENABLED: bool(user_input[CONF_ROOM_PI_ENABLED])}
+            if CONF_ROOM_PI_ENABLED in user_input
+            else {}
+        ),
+        **submitted_numbers(user_input, ROOM_PI_OPTIONS),
     }

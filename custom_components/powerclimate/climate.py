@@ -36,6 +36,7 @@ from .const import (
     DOMAIN,
     MODE_BOOST,
     MODE_OFF,
+    MODE_SETPOINT,
     PRESET_AWAY,
     PRESET_BOOST,
     PRESET_MAIN_ONLY,
@@ -49,6 +50,7 @@ from .helpers import (
     summary_signal,
 )
 from .mode_targets import SetpointLimits, calculate_mode_target
+from .room_control import RoomController
 from .summary_payload import build_hp_status, build_supply_advice_summary
 from .supply_control import SupplyController
 from .timer_storage import TimerStorage
@@ -123,6 +125,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         )
         # Steers the water heat pump's supply temperature in the supply advice preset.
         self._supply = SupplyController(self._config)
+        # Passes the room error on to the water heat pump (experimental).
+        self._room = RoomController(self._config)
         self._commands = DeviceCommander(
             hass, lambda: self.hvac_mode == HVACMode.OFF
         )
@@ -266,6 +270,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             return
         if hvac_mode != self._attr_hvac_mode:
             self._supply.reset()
+            self._room.reset()
         self._attr_hvac_mode = hvac_mode
         if self._attr_preset_mode != PRESET_NONE:
             self._attr_preset_mode = PRESET_NONE
@@ -280,8 +285,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         if preset_mode not in self.preset_modes:
             return
         if preset_mode != self._attr_preset_mode:
-            # Start the supply-temperature control afresh in the new preset.
+            # Start the supply and room control afresh in the new preset.
             self._supply.reset()
+            self._room.reset()
 
         if preset_mode == PRESET_BOOST:
             await self._enter_boost_mode()
@@ -341,8 +347,9 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         devices = self._config.devices
         device_payloads = self._get_device_payloads()
         self._mirror_entities = set(self._config.mirror_thermostats)
-        # Filled again by the supply controller when it runs.
+        # Filled again by the supply and room controllers when they run.
         self._supply.clear_summary()
+        self._room.clear_summary()
         if self._attr_preset_mode == PRESET_BOOST:
             await self._apply_boost_mode()
             return
@@ -509,6 +516,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
 
         hp_mode = staging.water_mode(self._attr_preset_mode)
         self._hp_modes[entity_id] = hp_mode
+        room_control = self._config.room_pi_enabled and hp_mode == MODE_SETPOINT
 
         target = self._calculate_mode_target(
             hp_mode,
@@ -518,6 +526,8 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             current_power,
             current_target,
             water_temp,
+            room_control=room_control,
+            assist_running=room_control and self._assist_heating(device_payloads),
         )
         desired_targets[entity_id] = target
 
@@ -555,6 +565,14 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
             await self._commands.ensure_mode(entity_id, HVACMode.OFF)
 
         return True
+
+    def _assist_heating(self, device_payloads: dict[str, dict[str, Any]]) -> bool:
+        """Return True when an air heat pump is heating."""
+        for _index, device in self._config.get_air_devices():
+            payload = device_payloads.get(device.get(CONF_CLIMATE_ENTITY)) or {}
+            if str(payload.get("hvac_mode") or "").lower() == HVACMode.HEAT.value:
+                return True
+        return False
 
     def _water_filtered(self) -> float | None:
         """Return the coordinator's smoothed water temperature."""
@@ -631,6 +649,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 room_derivative,
                 is_running,
                 hvac_mode=current_hvac_mode,
+                water_at_limit=self._room.at_limit,
             )
 
             # Handle ON/OFF control if enabled
@@ -794,8 +813,15 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
         current_power: float | None = None,
         current_target: float | None = None,
         water_temp: float | None = None,
+        *,
+        room_control: bool = False,
+        assist_running: bool = False,
     ) -> float:
-        """Calculate target temperature for a given mode; see calculate_mode_target."""
+        """Calculate target temperature for a given mode; see calculate_mode_target.
+
+        room_control enables the room controller (water heat pump only);
+        assist_running tells it whether an assist pump heats.
+        """
         cooling = self._is_cooling()
         if cooling:
             lower_offset = self._config.get_device_lower_offset_cooling(device, index)
@@ -826,6 +852,23 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 power=current_power,
                 overshoot=self._water_overshoot(),
                 now=datetime.now(UTC),
+            ),
+            room_correction=(
+                (
+                    lambda: self._room.correction(
+                        room=self.current_temperature,
+                        target=self._target_temperature,
+                        limits=limits,
+                        current_temp=current_temp,
+                        current_target=current_target,
+                        water_filtered=self._water_filtered(),
+                        assist_running=assist_running,
+                        overshoot=self._water_overshoot(),
+                        now=datetime.now(UTC),
+                    )
+                )
+                if room_control
+                else None
             ),
         )
 
@@ -1096,6 +1139,7 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                 self._config.supply_advice_sensor, advised_temp, raw_state
             ),
             **self._supply.summary,
+            **self._room.summary,
         }
 
         self._summary_payload = payload

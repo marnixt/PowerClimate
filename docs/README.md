@@ -97,7 +97,7 @@ room sensors, mirrored thermostats and devices), **Advanced options** and
   - **On conditions**:
     1. **ETA above the on-threshold** (60 minutes by default): the room needs longer than that to reach the target.
     2. **Water at or above the water threshold** (40 °C by default): the water heat pump runs hot. This uses the smoothed water temperature, so a short spike (such as a boiler making hot water through the same pipe) does not turn assists on.
-    3. **Stalled below target**: room derivative ≤ 0 and the room is more than the stall delta (0.5 °C) below target.
+    3. **Stalled below target**: room derivative ≤ 0 and the room is more than the stall delta (0.5 °C) below target. With [room control](#room-control-experimental) only once the water heat pump cannot push harder.
   - **Off conditions**:
     1. **ETA below the off-threshold** (15 minutes by default).
     2. **Stalled at target**: room derivative ≤ 0 and the room is within the stall delta of the target.
@@ -198,6 +198,42 @@ supply temperature in °C works:
   the preset falls back to normal setpoint logic when the outdoor sensor is
   missing. Use an outdoor sensor that is not warmed by a running outdoor unit.
 
+### Room Control (experimental)
+
+Without room control the water heat pump gets the room target as its setpoint,
+and its own thermostat decides how hard it works. Its thermostat may read
+warmer than PowerClimate's room sensors, and a small but lasting shortage gives
+it hardly any error to act on, so an assist pump keeps stepping in. Room
+control changes the water heat pump's setpoint in the `none` and `main only`
+presets (heating):
+
+- **Setpoint**: device temperature + (room target − room temperature) +
+  integral. The first part passes on the room error PowerClimate measures, one
+  to one.
+- **Integral**: grows while the room is below target and shrinks while it is
+  above, by the room error once per integral time (default 30 minutes). A
+  shortage of 0.3 °C adds about 0.6 °C per hour.
+- **Limits**: the result stays within the water device's heating offsets and
+  the global min/max setpoint.
+- **Supply at the threshold**: once the smoothed supply temperature reaches
+  the water temperature threshold (Advanced options, default 40 °C), the
+  integral stops growing.
+- **Assist pumps heating**: while an air heat pump heats, the integral does
+  not shrink; a room above target is then the assist's doing. When the assist
+  turns off, the water heat pump keeps its push.
+- **Overshoot**: when the room is above target + `Maximum overshoot`, the
+  setpoint goes to the lower offset.
+- **Stalled room**: the *stalled below target* assist condition waits until
+  the water heat pump cannot push harder (setpoint at its upper offset, or
+  supply at the threshold). The ETA and water temperature conditions are
+  unchanged.
+- **Bumpless start** and a **0.2 °C deadband**, as in the supply advice
+  control; the controller restarts on every preset or HVAC mode change.
+
+Enable it under **Configure → Experimental → Room control of the water heat
+pump**. The climate entity's `room_pi_*` attributes show the error, the P and I
+parts, the correction and whether the water heat pump is at its limit.
+
 ## Advanced Options
 
 Fine-tune PowerClimate under **Settings → Devices & Services → PowerClimate → Configure → Advanced options**. All fields are optional; empty fields use the defaults. Changes take effect immediately.
@@ -231,6 +267,13 @@ Under **Configure → Experimental**:
 | Proportional gain | 0.15 | 0.01–1.0 | Setpoint change in °C per °C supply error |
 | Integral time | 45 min | 5–240 min | Time in which the integral adds one proportional step; longer is calmer |
 | Minimum compressor power | 200 W | 0–2000 W | Below this water heat pump power the integral is frozen |
+
+- **Room control of the water heat pump** (`none` and `main only` presets, heating); see [Room Control](#room-control-experimental):
+
+| Option | Default | Range | Description |
+|--------|---------|-------|-------------|
+| Enable room control | off | | Pass the room error on to the water heat pump and raise its setpoint while a shortage lasts |
+| Integral time | 30 min | 5–240 min | Time in which the integral adds the room error once more; shorter pushes harder |
 
 ## Device Offset Defaults
 

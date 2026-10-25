@@ -184,6 +184,38 @@ class TestAssistConditionChecker:
 
         assert result.met is False
 
+    def test_stalled_below_target_waits_for_water_heat_pump_at_limit(self):
+        """With room control the assist waits until the water heat pump cannot push harder."""
+        config = MockConfig(assist_stall_temp_delta=0.5)
+        checker = AssistConditionChecker(config)
+        stalled = {
+            "room_temp": 19.0,
+            "target_temp": 21.0,
+            "room_eta_minutes": None,
+            "water_temp": 30.0,
+            "room_derivative": 0.0,
+        }
+
+        assert checker.check_on_conditions(**stalled, water_at_limit=False).met is False
+        result = checker.check_on_conditions(**stalled, water_at_limit=True)
+        assert result.name == "stalled_below_target"
+
+    def test_eta_high_does_not_wait_for_water_heat_pump(self):
+        """A room far too slow still gets the assist right away."""
+        config = MockConfig(assist_on_eta_threshold_minutes=60)
+        checker = AssistConditionChecker(config)
+
+        result = checker.check_on_conditions(
+            room_temp=19.0,
+            target_temp=21.0,
+            room_eta_minutes=120.0,
+            water_temp=30.0,
+            room_derivative=0.01,
+            water_at_limit=False,
+        )
+
+        assert result.name == "eta_high"
+
     # --- OFF Conditions ---
 
     def test_eta_low_triggers_off(self):

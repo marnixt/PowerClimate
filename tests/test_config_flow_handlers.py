@@ -34,6 +34,8 @@ from custom_components.powerclimate.const import (
     CONF_LOWER_SETPOINT_OFFSET_HEATING,
     CONF_MAXIMUM_OVERSHOOT,
     CONF_MIRROR_CLIMATE_ENTITIES,
+    CONF_ROOM_PI_ENABLED,
+    CONF_ROOM_PI_TI_MINUTES,
     CONF_ROOM_SENSORS,
     CONF_SUPPLY_ADVICE_SENSOR,
     CONF_SUPPLY_PI_KP,
@@ -178,6 +180,18 @@ class TestExperimentalOptions:
         assert processed[CONF_SUPPLY_PI_TI_MINUTES] == 60
         assert processed[CONF_SUPPLY_PI_MIN_POWER_W] == 300
 
+    def test_room_control_defaults_off_and_is_stored(self):
+        """Room control is off until enabled; its integral time has a default."""
+        defaults = experimental_form_defaults({}, None)
+        assert defaults[CONF_ROOM_PI_ENABLED] is False
+        assert defaults[CONF_ROOM_PI_TI_MINUTES] == number_default(CONF_ROOM_PI_TI_MINUTES)
+
+        processed = process_experimental_input(
+            {CONF_ROOM_PI_ENABLED: True, CONF_ROOM_PI_TI_MINUTES: 20}
+        )
+        assert processed[CONF_ROOM_PI_ENABLED] is True
+        assert processed[CONF_ROOM_PI_TI_MINUTES] == 20
+
     def test_experimental_schema_sections_flatten(self):
         """Nested experimental form data flattens to the processor contract."""
         schema = build_experimental_schema(experimental_form_defaults({}, None))
@@ -187,6 +201,7 @@ class TestExperimentalOptions:
                     CONF_SUPPLY_ADVICE_SENSOR: "sensor.supply_advice",
                     CONF_SUPPLY_PI_KP: 0.25,
                 },
+                "room_control": {},
             }
         )
 

@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from .const import (
     FLOAT_COMPARISON_EPSILON,
-    SUPPLY_SETPOINT_DEADBAND,
+    WATER_SETPOINT_DEADBAND,
 )
 from .mode_targets import SetpointLimits
 from .pi_controller import PIConfig, PIController, PIResult
@@ -147,7 +147,7 @@ class SupplyController:
         if (
             not overshoot
             and held is not None
-            and abs(target - held) < SUPPLY_SETPOINT_DEADBAND - FLOAT_COMPARISON_EPSILON
+            and abs(target - held) < WATER_SETPOINT_DEADBAND - FLOAT_COMPARISON_EPSILON
             and config.output_min <= held - current_temp <= config.output_max
         ):
             correction = held - current_temp

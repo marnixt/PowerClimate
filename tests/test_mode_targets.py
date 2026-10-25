@@ -98,3 +98,22 @@ def test_supply_correction_only_evaluated_in_supply_advice_with_temperature():
 
 def test_unknown_mode_returns_minimum():
     assert _target(MODE_OFF) == 16.0
+
+
+def test_room_correction_moves_setpoint_from_device_temperature():
+    assert _target(MODE_SETPOINT, room_correction=lambda: 0.84) == 20.8
+    assert _target(MODE_SETPOINT, room_correction=lambda: -0.3) == 19.7
+
+
+def test_room_correction_falls_back_to_room_target():
+    assert _target(MODE_SETPOINT, room_correction=lambda: None, target=21.0) == 21.0
+
+
+def test_room_correction_only_evaluated_in_setpoint_mode_when_heating():
+    correction = MagicMock(return_value=1.0)
+
+    _target(MODE_SETPOINT, cooling=True, room_correction=correction)
+    _target(MODE_MINIMAL, room_correction=correction)
+    _target(MODE_SUPPLY_ADVICE, room_correction=correction)
+
+    correction.assert_not_called()
