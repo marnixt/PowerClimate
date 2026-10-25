@@ -27,7 +27,6 @@ def _setpoint(
     room: float | None = 21.7,
     target: float | None = 22.0,
     current_temp: float | None = 21.7,
-    current_target: float | None = 22.0,
     water_filtered: float | None = 30.0,
     assist_running: bool = False,
     overshoot: bool = False,
@@ -38,7 +37,6 @@ def _setpoint(
         target=target,
         limits=LIMITS,
         current_temp=current_temp,
-        current_target=current_target,
         water_filtered=water_filtered,
         assist_running=assist_running,
         overshoot=overshoot,
@@ -58,8 +56,8 @@ def _run(controller: RoomController, start: datetime, minutes: int, **kwargs) ->
     return at
 
 
-def test_starts_from_current_device_offset() -> None:
-    """Enabling the control keeps the device setpoint where it is (bumpless start)."""
+def test_starts_without_an_integral() -> None:
+    """The first setpoint is the device temperature plus the room error."""
     controller = _controller()
 
     assert _setpoint(controller) == 22.0
@@ -70,12 +68,25 @@ def test_starts_from_current_device_offset() -> None:
     assert summary["room_pi_i"] == 0.0
 
 
+def test_start_during_night_setback_does_not_wind_up() -> None:
+    """A restart with the target far below the room keeps the integral at zero."""
+    controller = _controller()
+
+    assert _setpoint(controller, room=21.2, target=18.0, current_temp=21.4) == 21.1
+    _run(controller, T0, 60, room=21.2, target=18.0, current_temp=21.4)
+
+    assert controller.summary["room_pi_i"] == 0.0
+    # Back to the day target: only the room error pushes.
+    morning = T0 + timedelta(hours=2)
+    assert _setpoint(controller, morning, room=21.2, target=21.3, current_temp=21.4) == 21.5
+
+
 def test_passes_on_the_room_error_relative_to_the_device_temperature() -> None:
     """A device that reads warmer than the room still sees the full room error."""
     controller = _controller()
 
     # The device reads 21.9, the room 21.7: the setpoint is 21.9 + 0.3.
-    assert _setpoint(controller, current_temp=21.9, current_target=None) == 22.2
+    assert _setpoint(controller, current_temp=21.9) == 22.2
 
 
 def test_integral_grows_while_the_shortage_lasts() -> None:

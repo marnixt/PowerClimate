@@ -234,9 +234,11 @@ waterwarmtepomp aan in de presets `none` en `main only` (verwarmen):
 - **Stilstaande kamer**: de assist-conditie *stilstand onder het doel* wacht
   tot de waterwarmtepomp niet harder kan (setpoint op de bovenste offset, of
   aanvoer op de drempel). De ETA- en watertemperatuurcondities veranderen niet.
-- **Schokvrije start** en een **dode zone van 0,2 °C**, net als bij de
-  aanvoertemperatuurregeling; de regelaar start opnieuw bij elke wissel van
-  preset of HVAC-modus.
+- **Start**: de integraal begint op nul, dus het eerste setpoint is de
+  apparaattemperatuur plus de kamerafwijking; de regelaar start opnieuw bij
+  elke wissel van preset of HVAC-modus en na een herstart van Home Assistant.
+- **Dode zone**: het setpoint verandert pas bij een verschil van minstens
+  0,2 °C.
 
 Zet het aan onder **Configureren → Experimenteel → Kamerregeling van de
 waterwarmtepomp**. De sensor **Kamercorrectie** toont de correctie (setpoint

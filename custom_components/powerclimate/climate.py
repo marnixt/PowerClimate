@@ -871,7 +871,6 @@ class PowerClimateClimate(CoordinatorEntity, ClimateEntity, RestoreEntity):
                         target=self._target_temperature,
                         limits=limits,
                         current_temp=current_temp,
-                        current_target=current_target,
                         water_filtered=self._water_filtered(),
                         assist_running=assist_running,
                         overshoot=self._water_overshoot(),

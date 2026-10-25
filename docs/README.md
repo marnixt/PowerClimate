@@ -227,8 +227,10 @@ presets (heating):
   the water heat pump cannot push harder (setpoint at its upper offset, or
   supply at the threshold). The ETA and water temperature conditions are
   unchanged.
-- **Bumpless start** and a **0.2 °C deadband**, as in the supply advice
-  control; the controller restarts on every preset or HVAC mode change.
+- **Start**: the integral starts at zero, so the first setpoint is the device
+  temperature plus the room error; the controller restarts on every preset or
+  HVAC mode change and after a Home Assistant restart.
+- **Deadband**: the setpoint only moves when it changes by at least 0.2 °C.
 
 Enable it under **Configure → Experimental → Room control of the water heat
 pump**. The **Room Correction** sensor shows the correction (setpoint minus

@@ -33,7 +33,6 @@ from .const import (
 from .mode_targets import SetpointLimits
 from .pi_controller import PIConfig, PIController
 from .summary_payload import build_room_pi_summary
-from .utils import clamp_value
 
 # The proportional part passes the room error on one to one.
 ROOM_PI_KP = 1.0
@@ -83,7 +82,6 @@ class RoomController:
         target: float | None,
         limits: SetpointLimits,
         current_temp: float | None,
-        current_target: float | None,
         water_filtered: float | None,
         assist_running: bool,
         overshoot: bool,
@@ -96,7 +94,6 @@ class RoomController:
             target: PowerClimate's room target.
             limits: The device's offsets bound the correction.
             current_temp: Temperature the device measures.
-            current_target: The device's current setpoint.
             water_filtered: Smoothed supply temperature, if measured.
             assist_running: True while an assist pump heats.
             overshoot: True when the room is above target plus the maximum
@@ -117,12 +114,12 @@ class RoomController:
         )
         error = target - room
         if not self._pi.initialized:
-            # Start from the device's current offset, so enabling the control
-            # or restarting does not make the setpoint jump.
-            start = current_target - current_temp if current_target is not None else error
-            self._pi.initialize(
-                clamp_value(start, config.output_min, config.output_max), error, config
-            )
+            # Start without an integral: the setpoint starts at the device
+            # temperature plus the room error. Starting from the device's
+            # current setpoint would put the difference into the integral;
+            # during a night setback that is the full upper offset, which then
+            # stays frozen until the morning and overshoots the room.
+            self._pi.initialize(ROOM_PI_KP * error, error, config)
 
         supply_hot = (
             water_filtered is not None
