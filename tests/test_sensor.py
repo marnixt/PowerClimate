@@ -9,6 +9,7 @@ from custom_components.powerclimate.const import (
 )
 from custom_components.powerclimate.sensor import (
     PowerClimateHeatPumpModeSensor,
+    PowerClimateRoomCorrectionSensor,
     PowerClimateSupplyCorrectionSensor,
     PowerClimateTargetTemperatureSensor,
     _build_heat_pump_sensors,
@@ -114,6 +115,36 @@ def test_supply_correction_sensor_exposes_controller_state() -> None:
 def test_supply_correction_sensor_none_when_inactive() -> None:
     sensor = PowerClimateSupplyCorrectionSensor(
         _summary_hass({"supply_pi_active": False, "supply_pi_correction": None}),
+        make_entry([]),
+    )
+
+    assert sensor.native_value is None
+
+
+def test_room_correction_sensor_exposes_controller_state() -> None:
+    sensor = PowerClimateRoomCorrectionSensor(
+        _summary_hass(
+            {
+                "room_pi_active": True,
+                "room_pi_error": 0.3,
+                "room_pi_i": 0.4,
+                "room_pi_correction": 0.7,
+                "room_pi_at_limit": False,
+            }
+        ),
+        make_entry([]),
+    )
+
+    assert sensor.native_value == 0.7
+    assert sensor.native_unit_of_measurement == "°C"
+    attributes = sensor.extra_state_attributes
+    assert attributes["room_pi_i"] == 0.4
+    assert attributes["room_pi_at_limit"] is False
+
+
+def test_room_correction_sensor_none_when_inactive() -> None:
+    sensor = PowerClimateRoomCorrectionSensor(
+        _summary_hass({"room_pi_active": False, "room_pi_correction": None}),
         make_entry([]),
     )
 

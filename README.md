@@ -83,6 +83,7 @@ Each hub is a device with these entities:
 | Total Power | Sum of the configured power sensors |
 | Target Temperature | PowerClimate's room target as a sensor |
 | Supply Correction | Setpoint correction of the supply-temperature control |
+| Room Correction | Setpoint correction of the water heat pump's room control (experimental) |
 
 ![The entities of a PowerClimate hub.](docs/images/device-entities.png)
 

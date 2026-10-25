@@ -239,9 +239,10 @@ waterwarmtepomp aan in de presets `none` en `main only` (verwarmen):
   preset of HVAC-modus.
 
 Zet het aan onder **Configureren → Experimenteel → Kamerregeling van de
-waterwarmtepomp**. De attributen `room_pi_*` van de climate-entiteit tonen de
-afwijking, het P- en I-deel, de correctie en of de waterwarmtepomp aan zijn
-grens zit.
+waterwarmtepomp**. De sensor **Kamercorrectie** toont de correctie (setpoint
+min apparaattemperatuur), met de afwijking, het P- en I-deel en of de
+waterwarmtepomp aan zijn grens zit als attributen, zodat je de regelaar in een
+grafiek kunt volgen.
 
 ## Geavanceerde opties
 
@@ -312,6 +313,7 @@ aanvoerregeling) als attributen.
 | Totaal vermogen | Som van de ingestelde vermogenssensoren |
 | Doeltemperatuur | Het ruimtedoel van PowerClimate, voor integraties die alleen een sensor accepteren (geen diagnostische entity) |
 | Aanvoercorrectie | Setpointcorrectie van de aanvoertemperatuurregeling, met de toestand als attributen |
+| Kamercorrectie | Setpointcorrectie van de kamerregeling van de waterwarmtepomp (setpoint min apparaattemperatuur), met de toestand als attributen |
 
 ![De entities van een PowerClimate-hub.](images/device-entities.png)
 

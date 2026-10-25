@@ -5,7 +5,7 @@ This file consolidates release notes and highlights useful for HACS and users.
 ## Unreleased
 
 **Added**
-- **Room control of the water heat pump (experimental)**: an option under Options → Experimental passes the room error PowerClimate measures on to the water heat pump and raises its setpoint while a shortage lasts (integral time, default 30 minutes), within its heating offsets, in the None and Main only presets. The integral stops growing once the smoothed supply reaches the assist water temperature threshold and does not shrink while an assist pump heats, so the water heat pump keeps its push when the assist turns off. With room control the "stalled below target" assist condition waits until the water heat pump cannot push harder. The climate attributes `room_pi_*` show the controller. Off by default.
+- **Room control of the water heat pump (experimental)**: an option under Options → Experimental passes the room error PowerClimate measures on to the water heat pump and raises its setpoint while a shortage lasts (integral time, default 30 minutes), within its heating offsets, in the None and Main only presets. The integral stops growing once the smoothed supply reaches the assist water temperature threshold and does not shrink while an assist pump heats, so the water heat pump keeps its push when the assist turns off. With room control the "stalled below target" assist condition waits until the water heat pump cannot push harder. The Room Correction sensor shows the correction, with the controller state as attributes (also on the climate entity as `room_pi_*`). Off by default.
 
 ## 0.9.0-alpha.2 — 2026-10-25
 

@@ -231,8 +231,9 @@ presets (heating):
   control; the controller restarts on every preset or HVAC mode change.
 
 Enable it under **Configure → Experimental → Room control of the water heat
-pump**. The climate entity's `room_pi_*` attributes show the error, the P and I
-parts, the correction and whether the water heat pump is at its limit.
+pump**. The **Room Correction** sensor shows the correction (setpoint minus
+device temperature), with the error, the P and I parts and whether the water
+heat pump is at its limit as attributes, so you can graph the controller.
 
 ## Advanced Options
 
@@ -303,6 +304,7 @@ as attributes.
 | Total Power | Sum of the configured power sensors |
 | Target Temperature | PowerClimate's room target, for integrations that only accept a sensor (not a diagnostic entity) |
 | Supply Correction | Setpoint correction of the supply-temperature control, with its state as attributes |
+| Room Correction | Setpoint correction of the water heat pump's room control (setpoint minus device temperature), with its state as attributes |
 
 ![The entities of a PowerClimate hub.](images/device-entities.png)
 

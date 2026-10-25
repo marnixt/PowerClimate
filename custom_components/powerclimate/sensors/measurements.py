@@ -1,4 +1,4 @@
-"""Numeric sensors: derivatives, supply control, target and total power."""
+"""Numeric sensors: derivatives, supply and room control, target and total power."""
 
 from __future__ import annotations
 
@@ -45,6 +45,17 @@ SUPPLY_PI_ATTRIBUTES = (
     "supply_pi_i",
     "supply_pi_integrating",
     "supply_pi_saturated",
+)
+
+ROOM_PI_ATTRIBUTES = (
+    "room_pi_active",
+    "room_pi_error",
+    "room_pi_p",
+    "room_pi_i",
+    "room_pi_integrating",
+    "room_pi_supply_hot",
+    "room_pi_assist_running",
+    "room_pi_at_limit",
 )
 
 
@@ -94,6 +105,30 @@ class PowerClimateSupplyCorrectionSensor(SummaryPayloadValueSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         payload = self._payload or {}
         return {key: payload.get(key) for key in SUPPLY_PI_ATTRIBUTES}
+
+
+class PowerClimateRoomCorrectionSensor(SummaryPayloadValueSensor):
+    """Correction the room controller applies to the water heat pump (experimental)."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:home-thermometer-outline"
+    _payload_key = "room_pi_correction"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the room correction sensor."""
+        super().__init__(
+            hass,
+            entry,
+            translation_key="room_correction",
+            unique_id_prefix="powerclimate_room_correction",
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        payload = self._payload or {}
+        return {key: payload.get(key) for key in ROOM_PI_ATTRIBUTES}
 
 
 class PowerClimateDerivativeSensor(CoordinatorEntity, SensorEntity):

@@ -84,6 +84,7 @@ Elke hub is een apparaat met deze entities:
 | Totaal vermogen | Som van de ingestelde vermogenssensoren |
 | Doeltemperatuur | Het ruimtedoel van PowerClimate als sensor |
 | Aanvoercorrectie | Setpointcorrectie van de aanvoertemperatuurregeling |
+| Kamercorrectie | Setpointcorrectie van de kamerregeling van de waterwarmtepomp (experimenteel) |
 
 ![De entities van een PowerClimate-hub.](docs/images/device-entities.png)
 

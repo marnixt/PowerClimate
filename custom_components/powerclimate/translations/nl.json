@@ -376,6 +376,9 @@
       },
       "supply_correction": {
         "name": "Aanvoercorrectie"
+      },
+      "room_correction": {
+        "name": "Kamercorrectie"
       }
     }
   }

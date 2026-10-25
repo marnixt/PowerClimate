@@ -39,6 +39,7 @@ from .helpers import (
 from .sensors.heat_pump import PowerClimateHeatPumpModeSensor
 from .sensors.measurements import (
     PowerClimateDerivativeSensor,
+    PowerClimateRoomCorrectionSensor,
     PowerClimateSupplyCorrectionSensor,
     PowerClimateTargetTemperatureSensor,
     PowerClimateTotalPowerSensor,
@@ -48,6 +49,7 @@ from .sensors.measurements import (
 __all__ = [
     "PowerClimateDerivativeSensor",
     "PowerClimateHeatPumpModeSensor",
+    "PowerClimateRoomCorrectionSensor",
     "PowerClimateSupplyCorrectionSensor",
     "PowerClimateTargetTemperatureSensor",
     "PowerClimateTotalPowerSensor",
@@ -82,6 +84,7 @@ async def async_setup_entry(
         total_power_sensor,
         PowerClimateTargetTemperatureSensor(hass, entry),
         PowerClimateSupplyCorrectionSensor(hass, entry),
+        PowerClimateRoomCorrectionSensor(hass, entry),
     ]
 
     sensors.extend(_build_heat_pump_sensors(hass, entry))
