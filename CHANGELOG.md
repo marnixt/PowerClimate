@@ -2,7 +2,16 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
-## Unreleased
+## 0.9.0-alpha.2 — 2026-10-25
+
+**Summary**
+Second alpha of 0.9.0: fixes for assists switching on or off at the wrong moment and for setpoints being resent to devices that round them.
+
+**Fixed**
+- **No assist start just before the room reaches target**: the "water hot" assist condition no longer starts an assist pump when the room reaches its target within the assist OFF ETA threshold. The pump used to start only to overshoot and switch off again minutes later.
+- **Setpoints a device rounds are not resent**: setpoints are rounded to the device's temperature step before they are compared and sent, so a device's own rounding no longer looks like an external change.
+- **No temperature slope right after a restart**: the room temperature slope is only reported once its samples span five minutes. Two flat samples seconds apart used to read as "not rising" and could switch an assist off.
+- **Fan only and dry mode are left alone**: an assist set to fan only or dry by hand is no longer switched back to heating or cooling, also in the Main only preset.
 
 **Changed**
 - **Assists ignore water temperature spikes**: the "water at or above the threshold" assist condition uses the smoothed water temperature, the same one the supply advice control uses, so a boiler making hot water through the same pipe no longer turns assists on. The smoothing now runs on every update instead of only in the Supply advice preset; the climate attributes show it as `water_temperature_filtered` and `water_spike`.
