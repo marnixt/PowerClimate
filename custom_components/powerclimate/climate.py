@@ -84,12 +84,18 @@ async def async_setup_entry(
 
 
 def _changed_setpoint(old_state, new_state) -> float | None:
-    """Return the new setpoint of a state change, or None when it did not change."""
+    """Return the new setpoint of a state change, or None when it did not change.
+
+    Only a change between two known setpoints counts. A thermostat that
+    appears or comes back (no state or unavailable before, e.g. after a
+    restart) reports the setpoint it already had; when PowerClimate drives
+    that thermostat, that is PowerClimate's own setpoint, not a user's.
+    """
     new_temp = safe_float((new_state.attributes if new_state else {}).get(ATTR_TEMPERATURE))
     old_temp = safe_float((old_state.attributes if old_state else {}).get(ATTR_TEMPERATURE))
-    if new_temp is None:
+    if new_temp is None or old_temp is None:
         return None
-    if old_temp is not None and abs(new_temp - old_temp) < TEMPERATURE_CHANGE_THRESHOLD:
+    if abs(new_temp - old_temp) < TEMPERATURE_CHANGE_THRESHOLD:
         return None
     return new_temp
 

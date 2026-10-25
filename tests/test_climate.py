@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.climate.const import HVACAction, HVACMode
 
-from custom_components.powerclimate.climate import PowerClimateClimate
+from custom_components.powerclimate.climate import PowerClimateClimate, _changed_setpoint
 from custom_components.powerclimate.const import (
     CONF_ALLOW_ON_OFF_CONTROL,
     CONF_CLIMATE_ENTITY,
@@ -852,6 +852,18 @@ def test_handle_hp_state_change_forwards_mirror_while_refresh_pending() -> None:
     entity._handle_hp_state_change(event)
 
     entity._maybe_forward_setpoint.assert_called_once()
+
+
+def test_mirror_forwards_only_changes_between_known_setpoints() -> None:
+    """A mirror that appears or comes back after a restart is not a setpoint change."""
+    def state(temperature):
+        attributes = {} if temperature is None else {"temperature": temperature}
+        return SimpleNamespace(attributes=attributes)
+
+    assert _changed_setpoint(state(21.8), state(22.3)) == 22.3
+    assert _changed_setpoint(state(21.8), state(21.8)) is None
+    assert _changed_setpoint(None, state(22.3)) is None
+    assert _changed_setpoint(state(None), state(22.3)) is None  # back from unavailable
 
 
 def test_handle_assist_control_does_not_record_failed_turn_on() -> None:
