@@ -52,7 +52,7 @@ class AssistConditionChecker:
         result = self._check_eta_high(room_temp, target_temp, room_eta_minutes)
         if result.met:
             return result
-        result = self._check_water_hot(room_temp, target_temp, water_temp)
+        result = self._check_water_hot(room_temp, target_temp, water_temp, room_eta_minutes)
         if result.met:
             return result
         result = self._check_stalled_below_target(room_temp, target_temp, room_derivative)
@@ -105,8 +105,18 @@ class AssistConditionChecker:
         return ConditionResult.not_met()
 
     def _check_water_hot(self, room_temp: float | None, target_temp: float | None,
-                         water_temp: float | None) -> ConditionResult:
+                         water_temp: float | None,
+                         room_eta_minutes: float | None = None) -> ConditionResult:
+        """Hot water while the room still has real heat demand.
+
+        Suppressed when the room is about to reach target on its own (the
+        eta_low OFF condition would hold), otherwise water_hot would win over
+        eta_low and start the assist pump only to overshoot minutes later.
+        """
         water_threshold = self._config.assist_water_temp_threshold
+        eta_off_threshold = self._config.assist_off_eta_threshold_minutes
+        if room_eta_minutes is not None and room_eta_minutes < eta_off_threshold:
+            return ConditionResult.not_met()
         if (water_temp is not None and water_temp >= water_threshold
             and room_temp is not None and target_temp is not None
             and room_temp < target_temp):

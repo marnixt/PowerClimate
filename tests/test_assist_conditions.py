@@ -104,6 +104,24 @@ class TestAssistConditionChecker:
         assert result.met is True
         assert result.name == "water_hot"
 
+    def test_water_hot_suppressed_when_room_nearly_at_target(self):
+        """Hot water must not trigger ON when the room reaches target soon (eta_low)."""
+        config = MockConfig(
+            assist_water_temp_threshold=40.0,
+            assist_off_eta_threshold_minutes=15.0,
+        )
+        checker = AssistConditionChecker(config)
+
+        result = checker.check_on_conditions(
+            room_temp=21.2,
+            target_temp=21.3,
+            room_eta_minutes=3.0,  # Room reaches target in 3 min
+            water_temp=43.7,
+            room_derivative=1.9,
+        )
+
+        assert result.met is False
+
     def test_water_hot_not_triggered_when_water_cool(self):
         """Cool water should not trigger water_hot."""
         config = MockConfig(assist_water_temp_threshold=35.0)
