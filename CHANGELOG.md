@@ -2,6 +2,17 @@
 
 This file consolidates release notes and highlights useful for HACS and users.
 
+## 0.9.0-alpha.4 — 2026-10-26
+
+**Summary**
+Fourth alpha of 0.9.0: assist pumps start one at a time, and setpoints stay within the range a device accepts.
+
+**Fixed**
+- **Setpoints within the device range**: a setpoint is kept within the `min_temp` and `max_temp` the device reports before it is sent. An air conditioner that accepts 16–30 °C used to reject a 31 °C setpoint ("Provided temperature 31.0 is not valid"), so its setpoint was not updated at all; it now gets 30 °C.
+
+**Changed**
+- **Assist pumps start one at a time**: the ON conditions are the same for every assist pump, so they all reached their timer in the same cycle and started together, even for a small shortage. An assist pump now waits until every other running assist has been on for the minimum ON time. If the shortage is gone by then, it stays off. While it waits, the heat pump status shows `blocked_by: stagger <seconds>s`.
+
 ## 0.9.0-alpha.3 — 2026-10-26
 
 **Summary**
