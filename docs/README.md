@@ -108,8 +108,9 @@ room sensors, mirrored thermostats and devices), **Advanced options** and
   - on until it has been off for the *minimum off time* (10 minutes by default).
 
   This also applies after you switch an assist by hand.
+- **One at a time**: with several assists, PowerClimate starts the next one only after every running assist has been on for the *minimum on time*. If the shortage is gone by then, the next assist stays off. The heat pump status shows `stagger` with the remaining seconds while an assist waits.
 - Timer states are stored and survive Home Assistant restarts.
-- All setpoints are clamped between the global minimum and maximum before they are sent.
+- All setpoints are clamped between the global minimum and maximum, and within the minimum and maximum the device itself accepts, before they are sent.
 
 ## Preset Behavior
 

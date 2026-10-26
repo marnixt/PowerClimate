@@ -108,8 +108,9 @@ wijzigen** (naam, ruimtesensoren, gemirrorde thermostaten en apparaten),
   - aan voordat hij de *minimale UIT-tijd* uit stond (standaard 10 minuten).
 
   Dit geldt ook nadat je een assist met de hand hebt geschakeld.
+- **Eén voor één**: met meerdere assists start PowerClimate de volgende pas als elke draaiende assist de *minimale AAN-tijd* aan staat. Is het tekort dan weg, dan blijft de volgende assist uit. Zolang een assist wacht, toont de warmtepompstatus `stagger` met de resterende seconden.
 - De timerstatus wordt opgeslagen en overleeft een herstart van Home Assistant.
-- Alle setpoints worden begrensd tussen het globale minimum en maximum voordat ze worden verstuurd.
+- Alle setpoints worden begrensd tussen het globale minimum en maximum, en binnen het minimum en maximum dat het apparaat zelf accepteert, voordat ze worden verstuurd.
 
 ## Preset-gedrag
 

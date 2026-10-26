@@ -323,3 +323,55 @@ def test_update_timers_accumulates_independently_per_pump() -> None:
 
     assert controller.get_timer_state("climate.a").on_timer_seconds == 300.0
     assert controller.get_timer_state("climate.b").on_timer_seconds == 300.0
+
+
+# ---------------------------------------------------------------------------
+# Staggered start of assist pumps
+# ---------------------------------------------------------------------------
+
+
+def _ready_to_start(controller: AssistPumpController, entity_id: str) -> AssistTimerState:
+    state = controller.get_timer_state(entity_id)
+    state.on_timer_seconds = 65.0
+    state.active_condition = "water_hot"
+    return state
+
+
+def test_assist_pumps_do_not_start_in_the_same_cycle() -> None:
+    """The second pump waits when the first one starts in the same cycle."""
+    controller = _make_controller()
+    _ready_to_start(controller, "climate.hp2")
+    second = _ready_to_start(controller, "climate.hp3")
+
+    action, _ = controller.evaluate_action("climate.hp2", is_running=False)
+    assert action == "heat"
+    controller.record_turn_on("climate.hp2")
+
+    action, _ = controller.evaluate_action("climate.hp3", is_running=False)
+    assert action is None
+    assert second.block_reason.startswith("stagger")
+    assert second.target_hvac_mode == "heat"
+
+
+def test_second_assist_starts_after_first_ran_min_on() -> None:
+    """Once the running pump has run min_on_minutes, the next one may start."""
+    controller = _make_controller()
+    first = controller.get_timer_state("climate.hp2")
+    first.running_state = True
+    first.last_on = datetime.now(UTC) - timedelta(minutes=6)  # min_on = 5 min
+    _ready_to_start(controller, "climate.hp3")
+
+    action, _ = controller.evaluate_action("climate.hp3", is_running=False)
+    assert action == "heat"
+
+
+def test_stopped_assist_does_not_hold_back_another() -> None:
+    """A pump that started recently but is off again does not block a start."""
+    controller = _make_controller()
+    first = controller.get_timer_state("climate.hp2")
+    first.running_state = False
+    first.last_on = datetime.now(UTC) - timedelta(seconds=30)
+    _ready_to_start(controller, "climate.hp3")
+
+    action, _ = controller.evaluate_action("climate.hp3", is_running=False)
+    assert action == "heat"

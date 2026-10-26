@@ -249,6 +249,10 @@ class AssistPumpController:
             if self._is_off_blocked(entity_id, state, now):
                 return None, ""
 
+            # Start assist pumps one at a time
+            if self._is_stagger_blocked(entity_id, state, now):
+                return None, ""
+
             return active_mode, state.active_condition
 
         # Check if OFF action should be taken
@@ -286,6 +290,39 @@ class AssistPumpController:
                 return True
 
         return False
+
+    def _is_stagger_blocked(
+        self,
+        entity_id: str,
+        state: AssistTimerState,
+        now: datetime,
+    ) -> bool:
+        """Check if turning ON waits for another assist pump that just started.
+
+        The ON conditions are shared by all assist pumps, so without this they
+        all reach their timer in the same cycle and start together. A pump
+        now waits until every other running assist pump has run for
+        min_on_minutes; if the shortage is gone by then, it stays off.
+        """
+        stagger_seconds = self._config.assist_min_on_minutes * 60.0
+        remaining = 0.0
+        for other_id, other in self._timer_states.items():
+            if other_id == entity_id or not other.running_state or other.last_on is None:
+                continue
+            seconds_since_on = (now - other.last_on).total_seconds()
+            remaining = max(remaining, stagger_seconds - seconds_since_on)
+
+        if remaining <= 0:
+            return False
+
+        state.block_reason = f"stagger {int(remaining)}s"
+        _LOGGER.debug(
+            "Assist ON for %s waits for another assist pump that just started: "
+            "remaining=%ss",
+            entity_id,
+            int(remaining),
+        )
+        return True
 
     def _is_on_blocked(
         self,
