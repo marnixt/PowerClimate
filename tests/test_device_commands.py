@@ -134,3 +134,24 @@ def test_is_own_state() -> None:
     assert commander.is_own_state(SimpleNamespace(context=commander.context))
     assert not commander.is_own_state(SimpleNamespace(context=Context()))
     assert not commander.is_own_state(None)
+
+
+def test_ensure_temperature_keeps_setpoint_within_device_range() -> None:
+    """A target above the device maximum is sent as the maximum, not rejected."""
+    state = SimpleNamespace(
+        state="heat",
+        attributes={
+            "temperature": 26.0,
+            "target_temp_step": 0.5,
+            "min_temp": 16,
+            "max_temp": 30,
+        },
+    )
+    commander = _make_commander({"climate.ac": state})
+
+    asyncio.run(commander.ensure_temperature("climate.ac", 31.0))
+    assert commander.call_service.await_args.args[2]["temperature"] == 30
+
+    commander.last_temp_call.clear()
+    asyncio.run(commander.ensure_temperature("climate.ac", 12.0))
+    assert commander.call_service.await_args.args[2]["temperature"] == 16

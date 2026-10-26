@@ -157,7 +157,8 @@ class DeviceCommander:
     async def ensure_temperature(self, entity_id: str, temperature: float) -> None:
         """Ensure device has the specified target temperature.
 
-        The target is rounded to the device's ``target_temp_step`` first. The
+        The target is rounded to the device's ``target_temp_step`` and kept
+        within its ``min_temp``/``max_temp`` first. The
         call is skipped when the device already reports the target, or when we
         already sent this target and the device's setpoint has not changed
         since (devices may round without advertising a step). A setpoint
@@ -193,12 +194,27 @@ class DeviceCommander:
             self.device_reported_targets.pop(entity_id, None)
 
     def _snap_to_step(self, entity_id: str, temperature: float) -> float:
-        """Round a setpoint to the device's target temperature step, if any."""
+        """Fit a setpoint to the device: its step and its min/max range.
+
+        The setpoint is rounded to the device's ``target_temp_step`` and then
+        kept within the ``min_temp``/``max_temp`` the device reports, so a
+        target above the device's range (a 31 °C target for a 16–30 °C air
+        conditioner) is sent as the device maximum instead of being rejected.
+        """
         state = self.hass.states.get(entity_id)
-        step = safe_float(state.attributes.get("target_temp_step")) if state else None
-        if not step or step <= 0:
+        attributes = state.attributes if state else {}
+        step = safe_float(attributes.get("target_temp_step"))
+        if step and step > 0:
+            temperature = round(round(temperature / step) * step, 2)
+        device_min = safe_float(attributes.get("min_temp"))
+        device_max = safe_float(attributes.get("max_temp"))
+        if device_min is not None and device_max is not None and device_min > device_max:
             return temperature
-        return round(round(temperature / step) * step, 2)
+        if device_max is not None and temperature > device_max:
+            temperature = device_max
+        if device_min is not None and temperature < device_min:
+            temperature = device_min
+        return temperature
 
     def reported_setpoint(self, entity_id: str) -> float | None:
         """Return the setpoint a climate entity currently reports."""
